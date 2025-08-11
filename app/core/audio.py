@@ -32,8 +32,19 @@ class AudioCore:
 
     def list_devices(self):
         devs = []
+        wasapi_index = None
+        if sys.platform.startswith("win"):
+            try:
+                wasapi_index = self.audio.get_host_api_info_by_type(pyaudio.paWASAPI)["index"]
+            except Exception:
+                pass
         for i in range(self.audio.get_device_count()):
             info = self.audio.get_device_info_by_index(i)
+            if wasapi_index is not None:
+                if info.get("hostApi") != wasapi_index:
+                    continue
+                if info.get("isLoopbackDevice", False):
+                    continue
             devs.append(info)
         return devs
 
