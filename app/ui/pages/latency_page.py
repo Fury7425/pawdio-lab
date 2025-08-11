@@ -165,7 +165,8 @@ class LatencyPage(ctk.CTkScrollableFrame):
     def _build_text_report(self):
         all_results = getattr(self, "last_all_results", {})
         repeats = getattr(self, "last_repeats", 0)
-        sr = self.core.sample_rate
+        sr_out = self.core.sample_rate
+        sr_in = self.core.input_sample_rate
         dur = self.core.duration
         global_off = float(self.cfg.get("global_system_offset_ms", 0.0))
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -181,7 +182,8 @@ class LatencyPage(ctk.CTkScrollableFrame):
             "="*60,
             f"Test Date: {now}",
             f"Overall Tests Per Sound Type: {repeats}",
-            f"Sample Rate: {sr} Hz",
+            f"Output Sample Rate: {sr_out} Hz",
+            f"Input Sample Rate: {sr_in} Hz",
             f"Default Test Signal Buffer Duration: {dur} seconds (Sine waves use this primarily)",
             f"Calibration Offset Applied: {global_off:.4f} ms",
             "",

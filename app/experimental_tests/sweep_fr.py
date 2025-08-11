@@ -12,18 +12,25 @@ def run(core, log, f0=20, f1=20000, duration=6.0, save_plot_dir=None):
     sig, t = core.generate_log_chirp(f0=f0, f1=f1, duration=duration, amp=0.5)
     rec = _play_and_record(core, sig, both=True, settle=0.05, rec_dur=duration+0.5)
 
-    delay_ms, _ = AudioCore.find_delay_ms(rec, sig, core.sample_rate)
+    if core.input_sample_rate != core.sample_rate:
+        sig_ref = signal.resample(sig, int(len(sig)*core.input_sample_rate/core.sample_rate))
+        t_ref = np.linspace(0, duration, len(sig_ref), endpoint=False)
+    else:
+        sig_ref = sig
+        t_ref = t
+
+    delay_ms, _ = AudioCore.find_delay_ms(rec, sig_ref, core.input_sample_rate)
     delay_s = 0.0 if delay_ms is None else delay_ms/1000.0
-    shift = int(round(delay_s * core.sample_rate))
-    rec_aligned = rec[shift: shift + len(sig)] if shift >= 0 else rec[:len(sig)]
-    if len(rec_aligned) < len(sig):
-        rec_aligned = np.pad(rec_aligned, (0, len(sig)-len(rec_aligned)))
+    shift = int(round(delay_s * core.input_sample_rate))
+    rec_aligned = rec[shift: shift + len(sig_ref)] if shift >= 0 else rec[:len(sig_ref)]
+    if len(rec_aligned) < len(sig_ref):
+        rec_aligned = np.pad(rec_aligned, (0, len(sig_ref)-len(rec_aligned)))
 
     env = np.abs(signal.hilbert(rec_aligned))
     env = env / (np.max(env)+1e-12)
 
     T = duration
-    freqs_inst = f0 * (f1/f0) ** (t / T)
+    freqs_inst = f0 * (f1/f0) ** (t_ref / T)
 
     grid = np.logspace(np.log10(max(20,f0)), np.log10(min(f1,20000)), 200)
     mag = np.zeros_like(grid)

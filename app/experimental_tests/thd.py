@@ -9,7 +9,7 @@ def run(core, log, tones=(100, 1000, 6000), tone_dur=1.0, amp=0.6):
     for f in tones:
         sig = core.generate_sine(freq=f, duration=tone_dur, amp=amp)
         rec = _play_and_record(core, sig, both=True, settle=0.05)
-        thd = _compute_thd(rec, f, sr=core.sample_rate)
+        thd = _compute_thd(rec, f, sr=core.input_sample_rate)
         items.append({"freq": f, "thd_percent": thd})
         log(f"  {f} Hz -> {thd:.3f}%")
     res = TestResult("thd", params={"tones": list(tones), "tone_dur": tone_dur}, metrics={"items": items})
