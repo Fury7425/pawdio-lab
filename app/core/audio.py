@@ -177,16 +177,24 @@ class AudioCore:
         out = self.audio.open(format=pyaudio.paInt16, channels=2, rate=self.sample_rate, output=True, output_device_index=self.output_device_index)
         out.write(audio_data); out.stop_stream(); out.close()
 
-    def record_audio(self, duration):
-        inp = self.audio.open(format=pyaudio.paInt16, channels=1, rate=self.input_sample_rate, input=True,
-                              frames_per_buffer=self.chunk_size, input_device_index=self.input_device_index)
+    def record_audio(self, duration, channels=1):
+        inp = self.audio.open(
+            format=pyaudio.paInt16,
+            channels=int(channels),
+            rate=self.input_sample_rate,
+            input=True,
+            frames_per_buffer=self.chunk_size,
+            input_device_index=self.input_device_index,
+        )
         frames = []
         num_chunks = int(self.input_sample_rate * duration / self.chunk_size)
         for _ in range(num_chunks):
             data = inp.read(self.chunk_size, exception_on_overflow=False)
             frames.append(data)
         inp.stop_stream(); inp.close()
-        audio_data = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32)/32767.0
+        audio_data = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32) / 32767.0
+        if channels > 1:
+            audio_data = audio_data.reshape(-1, channels)
         return audio_data
 
     def set_sample_rates(self, output_rate: int = None, input_rate: int = None):
