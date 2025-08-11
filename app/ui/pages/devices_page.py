@@ -98,19 +98,13 @@ class DevicesPage(ctk.CTkFrame):
         self.on_toggle_experimental(bool(self.experimental_var.get()))
 
     def _update_sr_menus(self):
-        out_idx = self._out_idx.get(self.out_menu.get())
-        in_idx = self._in_idx.get(self.in_menu.get())
-        rates_out, _ = self.core.get_device_capabilities(out_idx, is_input=False)
-        rates_in, _ = self.core.get_device_capabilities(in_idx, is_input=True)
-        out_info = self.core.audio.get_device_info_by_index(out_idx) if out_idx is not None else {}
-        in_info = self.core.audio.get_device_info_by_index(in_idx) if in_idx is not None else {}
-        out_default = int(out_info.get("defaultSampleRate", 44100))
-        in_default = int(in_info.get("defaultSampleRate", 44100))
-        out_values = sorted({str(r) for r in rates_out} | {str(out_default)}) or [str(out_default)]
-        in_values = sorted({str(r) for r in rates_in} | {str(in_default)}) or [str(in_default)]
-        self.out_sr_menu.configure(values=out_values)
-        self.in_sr_menu.configure(values=in_values)
-        stored_out = str(self.cfg["last_settings"].get("output_sample_rate", out_default))
-        stored_in = str(self.cfg["last_settings"].get("input_sample_rate", in_default))
-        self.out_sr_menu.set(stored_out if stored_out in out_values else out_values[0])
-        self.in_sr_menu.set(stored_in if stored_in in in_values else in_values[0])
+        # Populate sample rate menus with a broad range of options so users can
+        # manually match the system's settings. We offer values from 44.1 kHz up
+        # to 192 kHz in 100 Hz increments.
+        all_rates = [str(r) for r in range(44100, 192001, 100)]
+        self.out_sr_menu.configure(values=all_rates)
+        self.in_sr_menu.configure(values=all_rates)
+        stored_out = str(self.cfg["last_settings"].get("output_sample_rate", 44100))
+        stored_in = str(self.cfg["last_settings"].get("input_sample_rate", 44100))
+        self.out_sr_menu.set(stored_out if stored_out in all_rates else all_rates[0])
+        self.in_sr_menu.set(stored_in if stored_in in all_rates else all_rates[0])
