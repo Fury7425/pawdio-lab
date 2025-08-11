@@ -1,7 +1,7 @@
 
 from tkinter import messagebox
 from ..core.utils import dbfs
-from .base import TestResult
+from ..tests.base import TestResult
 
 def run(core, log, freq=1000.0, tone_dur=1.0, settle=0.2):
     log("[BALANCE] Place mic on LEFT earcup, then click OK")

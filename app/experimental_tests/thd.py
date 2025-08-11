@@ -1,7 +1,7 @@
 
 import numpy as np
 from scipy import signal
-from .base import TestResult
+from ..tests.base import TestResult
 
 def run(core, log, tones=(100, 1000, 6000), tone_dur=1.0, amp=0.6):
     log("[THD] " + ", ".join(str(x) for x in tones))
