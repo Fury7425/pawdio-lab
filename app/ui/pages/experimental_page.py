@@ -29,10 +29,16 @@ class ExperimentalPage(ctk.CTkFrame):
 
         fr = ctk.CTkFrame(self); fr.grid(row=2, column=0, padx=18, pady=12, sticky="nsew")
         self.var_dur = ctk.StringVar(value="6.0")
+        self.var_rep = ctk.IntVar(value=1)
         ctk.CTkLabel(fr, text="Sweep FR (relative)").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
         ctk.CTkLabel(fr, text="Duration (s)").grid(row=1, column=0, sticky="w", padx=8)
         ctk.CTkEntry(fr, textvariable=self.var_dur, width=90).grid(row=1, column=1, sticky="w", padx=8)
-        ctk.CTkButton(fr, text="Run", command=self.on_sweep).grid(row=2, column=0, padx=8, pady=8, sticky="w")
+        ctk.CTkLabel(fr, text="Repeats").grid(row=2, column=0, sticky="w", padx=8)
+        rep_slider = ctk.CTkSlider(fr, from_=1, to=20, number_of_steps=19)
+        rep_slider.set(self.var_rep.get()); rep_slider.grid(row=2, column=1, sticky="ew", padx=8)
+        rep_lab = ctk.CTkLabel(fr, text=str(self.var_rep.get())); rep_lab.grid(row=2, column=2, padx=8, sticky="w")
+        rep_slider.configure(command=lambda v: (self.var_rep.set(int(v)), rep_lab.configure(text=str(int(v)))))
+        ctk.CTkButton(fr, text="Run", command=self.on_sweep).grid(row=3, column=0, padx=8, pady=8, sticky="w")
 
         thd_card = ctk.CTkFrame(self); thd_card.grid(row=2, column=1, padx=18, pady=12, sticky="nsew")
         ctk.CTkLabel(thd_card, text="THD (100/1k/6k Hz)").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
@@ -60,7 +66,7 @@ class ExperimentalPage(ctk.CTkFrame):
 
     def on_sweep(self):
         out = self.cfg["last_settings"].get("output_dir", os.getcwd())
-        r = sweep_fr.run(self.core, self.log, duration=float(self.var_dur.get()), save_plot_dir=out)
+        r = sweep_fr.run(self.core, self.log, duration=float(self.var_dur.get()), repeats=int(self.var_rep.get()), save_plot_dir=out)
         self._push(r)
 
     def on_thd(self):

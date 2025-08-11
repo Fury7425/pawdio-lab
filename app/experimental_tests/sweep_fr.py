@@ -7,10 +7,9 @@ from ..core.audio import AudioCore
 from ..core.utils import ensure_dir
 from .base import TestResult
 
-def run(core, log, f0=20, f1=20000, duration=6.0, save_plot_dir=None):
+def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None):
     log("[SWEEP FR] Keep mic steady near driver.")
     sig, t = core.generate_log_chirp(f0=f0, f1=f1, duration=duration, amp=0.5)
-    rec = _play_and_record(core, sig, both=True, settle=0.05, rec_dur=duration+0.5)
 
     if core.input_sample_rate != core.sample_rate:
         sig_ref = signal.resample(sig, int(len(sig)*core.input_sample_rate/core.sample_rate))
@@ -19,44 +18,73 @@ def run(core, log, f0=20, f1=20000, duration=6.0, save_plot_dir=None):
         sig_ref = sig
         t_ref = t
 
-    delay_ms, _ = AudioCore.find_delay_ms(rec, sig_ref, core.input_sample_rate)
-    delay_s = 0.0 if delay_ms is None else delay_ms/1000.0
-    shift = int(round(delay_s * core.input_sample_rate))
-    rec_aligned = rec[shift: shift + len(sig_ref)] if shift >= 0 else rec[:len(sig_ref)]
-    if len(rec_aligned) < len(sig_ref):
-        rec_aligned = np.pad(rec_aligned, (0, len(sig_ref)-len(rec_aligned)))
+    grid = np.logspace(np.log10(max(20, f0)), np.log10(min(f1, 20000)), 200)
+    mags = []
+    delays = []
+    for i in range(int(repeats)):
+        log(f"[SWEEP FR] Sweep {i+1}/{repeats}")
+        rec = _play_and_record(core, sig, both=True, settle=0.05, rec_dur=duration+0.5)
 
-    env = np.abs(signal.hilbert(rec_aligned))
-    env = env / (np.max(env)+1e-12)
+        delay_ms, _ = AudioCore.find_delay_ms(rec, sig_ref, core.input_sample_rate)
+        delays.append(delay_ms)
+        delay_s = 0.0 if delay_ms is None else delay_ms/1000.0
+        shift = int(round(delay_s * core.input_sample_rate))
+        rec_aligned = rec[shift: shift + len(sig_ref)] if shift >= 0 else rec[:len(sig_ref)]
+        if len(rec_aligned) < len(sig_ref):
+            rec_aligned = np.pad(rec_aligned, (0, len(sig_ref)-len(rec_aligned)))
 
-    T = duration
-    freqs_inst = f0 * (f1/f0) ** (t_ref / T)
+        env = np.abs(signal.hilbert(rec_aligned))
+        env = env / (np.max(env)+1e-12)
 
-    grid = np.logspace(np.log10(max(20,f0)), np.log10(min(f1,20000)), 200)
-    mag = np.zeros_like(grid)
-    for i, f in enumerate(grid):
-        idx = np.argmin(np.abs(freqs_inst - f)); mag[i] = env[idx]
+        T = duration
+        freqs_inst = f0 * (f1/f0) ** (t_ref / T)
+        mag = np.zeros_like(grid)
+        for j, f in enumerate(grid):
+            idx = np.argmin(np.abs(freqs_inst - f)); mag[j] = env[idx]
+        mags.append(mag)
 
-    mag_db = 20*np.log10(np.maximum(mag, 1e-6))
+    mags = np.array(mags)
+    avg_mag = np.mean(mags, axis=0)
+    mag_db_avg = 20*np.log10(np.maximum(avg_mag, 1e-6))
+    mag_db_all = 20*np.log10(np.maximum(mags, 1e-6))
+
     files = {}
     if save_plot_dir:
         ensure_dir(save_plot_dir)
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        out = os.path.join(save_plot_dir, f"sweep_fr_{ts}.png")
+        out_avg = os.path.join(save_plot_dir, f"sweep_fr_avg_{ts}.png")
         plt.figure(figsize=(9,5))
-        plt.semilogx(grid, mag_db)
-        plt.xlabel("Frequency (Hz)"); plt.ylabel("Relative Level (dB)"); plt.title("Relative Frequency Response")
+        plt.semilogx(grid, mag_db_avg)
+        plt.xlabel("Frequency (Hz)"); plt.ylabel("Relative Level (dB)"); plt.title("Average Frequency Response")
         plt.grid(True, which='both', ls=':', alpha=0.6)
-        plt.tight_layout(); plt.savefig(out); plt.close()
-        files["plot"] = out
+        plt.tight_layout(); plt.savefig(out_avg); plt.close()
+        files["plot_avg"] = out_avg
 
-    res = TestResult("sweep_fr",
-        params={"f0": f0, "f1": f1, "duration": duration},
-        metrics={"delay_ms": delay_ms},
-        data={"freqs": grid.tolist(), "mag_db": mag_db.tolist()},
+        out_all = os.path.join(save_plot_dir, f"sweep_fr_all_{ts}.png")
+        plt.figure(figsize=(9,5))
+        for arr in mag_db_all:
+            plt.semilogx(grid, arr, alpha=0.4)
+        plt.xlabel("Frequency (Hz)"); plt.ylabel("Relative Level (dB)"); plt.title("All Sweeps Frequency Response")
+        plt.grid(True, which='both', ls=':', alpha=0.6)
+        plt.tight_layout(); plt.savefig(out_all); plt.close()
+        files["plot_all"] = out_all
+
+    avg_delay = float(np.mean([d for d in delays if d is not None])) if delays else None
+    res = TestResult(
+        "sweep_fr",
+        params={"f0": f0, "f1": f1, "duration": duration, "repeats": repeats},
+        metrics={"delay_ms": avg_delay},
+        data={
+            "freqs": grid.tolist(),
+            "mag_db_avg": mag_db_avg.tolist(),
+            "mag_db_all": mag_db_all.tolist(),
+        },
         files=files
     )
-    log(f"[SWEEP FR] Done (delay {delay_ms:.1f} ms)")
+    if avg_delay is not None:
+        log(f"[SWEEP FR] Done (avg delay {avg_delay:.1f} ms)")
+    else:
+        log("[SWEEP FR] Done")
     return res
 
 def _play_and_record(core, mono_signal, left_only=False, right_only=False, both=False, settle=0.05, rec_dur=None):
