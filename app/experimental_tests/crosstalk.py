@@ -25,8 +25,8 @@ def run(core, log, freq=1000.0, tone_dur=1.0, settle=0.2, direction="LtoR"):
         messagebox.showinfo("Crosstalk", "Move mic to LEFT earcup (LEAK), then click OK")
         core.generate_sine(freq=freq, duration=tone_dur)
         rec_leak = _play_and_record(core, core.test_signal, right_only=True, settle=settle)
-
-    p = rms(rec_primary); l = rms(rec_leak)
+    p = rms(rec_primary)
+    l = rms(rec_leak)
     crosstalk_db = 20*np.log10(max(l,1e-12)/max(p,1e-12))
     res = TestResult("crosstalk",
         params={"freq": freq, "duration": tone_dur, "direction": direction},
@@ -35,11 +35,12 @@ def run(core, log, freq=1000.0, tone_dur=1.0, settle=0.2, direction="LtoR"):
     log(f"[CROSSTALK {direction}] {crosstalk_db:.2f} dB")
     return res
 
-def _play_and_record(core, mono_signal, left_only=False, right_only=False, both=False, settle=0.05, rec_dur=None):
+def _play_and_record(core, mono_signal, left_only=False, right_only=False, settle=0.05, rec_dur=None):
     import threading, time, numpy as np
     if rec_dur is None: rec_dur = float(core.duration) + 0.3
     rec = {"audio": None}
-    def worker(): rec["audio"] = core.record_audio(rec_dur)
+    def worker():
+        rec["audio"] = core.record_audio(rec_dur, channels=1)
     t = threading.Thread(target=worker, daemon=True); t.start()
     time.sleep(0.05 + settle)
     if left_only:

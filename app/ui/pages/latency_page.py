@@ -8,7 +8,7 @@ class LatencyPage(ctk.CTkScrollableFrame):
     def __init__(self, master, core, cfg, log_fn):
         super().__init__(master, corner_radius=0)
         self.core = core; self.cfg = cfg; self.log = log_fn
-        self.runner = DelayRunner(self.cfg, self.log)
+        self.runner = DelayRunner(self.cfg, self.log, stereo=True)
 
         self.grid_columnconfigure(1, weight=1)
 
@@ -136,10 +136,21 @@ class LatencyPage(ctk.CTkScrollableFrame):
         all_results = {}; overall = []; last = None; bars = {}
         for p in presets:
             results = self.runner.run_test(self.core, p, repeats=repeats, save_plot_dir=out_dir if self.save_plots_var.get() else None)
-            delays = [r for r in results if r is not None]
-            all_results[p["name"]] = {"per_sound_baseline_ms": self.cfg["per_sound_offsets_ms"].get(p["key"], 0.0), "delays_ms": delays}
-            bars[p["name"]] = delays
-            if delays: overall.extend(delays); last = delays[-1]
+            l = results["left_ms"]
+            r = results["right_ms"]
+            avg = results["avg_ms"]
+            diff = results["diff_ms"]
+            all_results[p["name"]] = {
+                "per_sound_baseline_ms": self.cfg["per_sound_offsets_ms"].get(p["key"], 0.0),
+                "left_ms": l,
+                "right_ms": r,
+                "avg_ms": avg,
+                "diff_ms": diff,
+            }
+            bars[p["name"]] = avg
+            if avg:
+                overall.extend(avg)
+                last = avg[-1]
 
         self.last_all_results = all_results
         self._refresh_summary(all_results)
@@ -171,10 +182,17 @@ class LatencyPage(ctk.CTkScrollableFrame):
         global_off = float(self.cfg.get("global_system_offset_ms", 0.0))
         now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-        overall_delays = [d for v in all_results.values() for d in v["delays_ms"]]
-        overall_avg = np.mean(overall_delays) if overall_delays else 0.0
-        overall_std = np.std(overall_delays) if overall_delays else 0.0
-        total_success = len(overall_delays)
+        overall_left = [d for v in all_results.values() for d in v["left_ms"]]
+        overall_right = [d for v in all_results.values() for d in v["right_ms"]]
+        overall_diff = [d for v in all_results.values() for d in v["diff_ms"]]
+        overall_avg_list = [d for v in all_results.values() for d in v["avg_ms"]]
+        overall_avg_L = float(np.mean(overall_left)) if overall_left else 0.0
+        overall_avg_R = float(np.mean(overall_right)) if overall_right else 0.0
+        overall_avg_diff = float(np.mean(overall_diff)) if overall_diff else 0.0
+        overall_std_diff = float(np.std(overall_diff)) if overall_diff else 0.0
+        overall_avg = float(np.mean(overall_avg_list)) if overall_avg_list else 0.0
+        overall_std = float(np.std(overall_avg_list)) if overall_avg_list else 0.0
+        total_success = len(overall_avg_list)
 
         lines = [
             "="*60,
@@ -189,8 +207,11 @@ class LatencyPage(ctk.CTkScrollableFrame):
             "",
             "",
             "==================== OVERALL AVERAGE CALIBRATED DELAY (ALL SOUND TYPES) ====================",
-            f"Overall Average Calibrated Delay: {overall_avg:.4f} ms",
-            f"Overall Standard Deviation: {overall_std:.4f} ms",
+            f"Overall Average Calibrated Delay: L {overall_avg_L:.4f} ms | R {overall_avg_R:.4f} ms",
+            f"Overall Average Difference (L-R): {overall_avg_diff:.4f} ms",
+            f"Std Dev of Difference: {overall_std_diff:.4f} ms",
+            f"Overall Average (L&R): {overall_avg:.4f} ms",
+            f"Overall Standard Deviation (avg): {overall_std:.4f} ms",
             f"Total Successful Tests: {total_success}",
             "="*60,
             "",
@@ -201,35 +222,37 @@ class LatencyPage(ctk.CTkScrollableFrame):
             if name not in all_results:
                 continue
             data = all_results[name]
-            delays = data["delays_ms"]
+            l = data["left_ms"]
+            r = data["right_ms"]
+            diff = data["diff_ms"]
             lines.append(f"==================== Results for '{name}' ====================")
             lines.append("Individual test results (Calibrated):")
             lines.append("------------------------------")
-            for i, d in enumerate(delays, 1):
-                lines.append(f"Test {i}: {d:.4f} ms")
+            for i in range(len(l)):
+                lines.append(f"Test {i+1}: L {l[i]:.4f} ms | R {r[i]:.4f} ms | Δ {diff[i]:.4f} ms")
             lines.append("")
             lines.append(f"STATISTICAL ANALYSIS for '{name}' (Calibrated):")
             lines.append("------------------------------")
-            if delays:
-                avg = float(np.mean(delays))
-                std = float(np.std(delays))
-                mn = float(np.min(delays))
-                mx = float(np.max(delays))
-                rng = mx - mn
+            if l and r:
+                avg_l = float(np.mean(l)); std_l = float(np.std(l))
+                avg_r = float(np.mean(r)); std_r = float(np.std(r))
+                avg_diff = float(np.mean(diff)); std_diff = float(np.std(diff))
                 lines.extend([
-                    f"Average calibrated delay: {avg:.4f} ms",
-                    f"Standard deviation: {std:.4f} ms",
-                    f"Minimum calibrated delay: {mn:.4f} ms",
-                    f"Maximum calibrated delay: {mx:.4f} ms",
-                    f"Range: {rng:.4f} ms",
+                    f"Average L delay: {avg_l:.4f} ms",
+                    f"Std Dev L: {std_l:.4f} ms",
+                    f"Average R delay: {avg_r:.4f} ms",
+                    f"Std Dev R: {std_r:.4f} ms",
+                    f"Average difference (L-R): {avg_diff:.4f} ms",
+                    f"Std Dev difference: {std_diff:.4f} ms",
                 ])
             else:
-                avg = std = None
+                avg_l = avg_r = None
                 lines.append("No successful runs")
             lines.append("")
             lines.append(f"PERFORMANCE ASSESSMENT for '{name}' (Calibrated):")
             lines.append("------------------------------")
-            if avg is not None:
+            if avg_l is not None and avg_r is not None:
+                avg = float(np.mean([avg_l, avg_r]))
                 perf_label, perf_desc = self._performance_label(avg)
                 lines.append(f"Performance: {perf_label}")
                 lines.append(perf_desc)
@@ -238,18 +261,21 @@ class LatencyPage(ctk.CTkScrollableFrame):
             lines.append("")
             lines.append(f"CONSISTENCY ANALYSIS for '{name}':")
             lines.append("------------------------------")
-            if std is not None:
-                cons_label = self._consistency_label(std)
+            if avg_l is not None and avg_r is not None:
+                std_avg = float(np.mean([std_l, std_r]))
+                cons_label = self._consistency_label(std_avg)
                 lines.append(f"Consistency: {cons_label}")
             else:
                 lines.append("Consistency: N/A")
             lines.append("")
             lines.append(f"RAW DATA (Calibrated Delays for '{name}'):")
             lines.append("------------------------------")
-            if delays:
-                lines.append("Delays (ms): " + ", ".join(f"{d:.4f}" for d in delays))
+            if l and r:
+                lines.append("L (ms): " + ", ".join(f"{x:.4f}" for x in l))
+                lines.append("R (ms): " + ", ".join(f"{x:.4f}" for x in r))
+                lines.append("Δ (ms): " + ", ".join(f"{x:.4f}" for x in diff))
             else:
-                lines.append("Delays (ms): none")
+                lines.append("No data")
             lines.append("")
 
         lines.append("="*60)
@@ -287,9 +313,13 @@ class LatencyPage(ctk.CTkScrollableFrame):
     def _refresh_summary(self, all_results):
         lines = ["=== SUMMARY (Calibrated) ==="]
         for name, data in all_results.items():
-            dd = data["delays_ms"]
-            if dd: lines.append(f"{name}: avg {np.mean(dd):.2f} ms | std {np.std(dd):.2f} | n {len(dd)}")
-            else: lines.append(f"{name}: no successful runs")
+            l = data["left_ms"]
+            r = data["right_ms"]
+            diff = data["diff_ms"]
+            if l and r:
+                lines.append(f"{name}: L {np.mean(l):.2f} ms | R {np.mean(r):.2f} ms | Δ {np.mean(diff):.2f} ms")
+            else:
+                lines.append(f"{name}: no successful runs")
         self.summary_box.delete("1.0", "end"); self.summary_box.insert("1.0", "\n".join(lines))
 
     def _refresh_baseline_box(self):

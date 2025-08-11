@@ -8,8 +8,9 @@ def run(core, log, tones=(100, 1000, 6000), tone_dur=1.0, amp=0.6):
     items = []
     for f in tones:
         sig = core.generate_sine(freq=f, duration=tone_dur, amp=amp)
-        rec = _play_and_record(core, sig, both=True, settle=0.05)
-        thd = _compute_thd(rec, f, sr=core.input_sample_rate)
+        rec = _play_and_record(core, sig, settle=0.05)
+        rec_mono = rec
+        thd = _compute_thd(rec_mono, f, sr=core.input_sample_rate)
         items.append({"freq": f, "thd_percent": thd})
         log(f"  {f} Hz -> {thd:.3f}%")
     res = TestResult("thd", params={"tones": list(tones), "tone_dur": tone_dur}, metrics={"items": items})
@@ -19,11 +20,15 @@ def _play_and_record(core, mono_signal, both=False, settle=0.05, rec_dur=None):
     import threading, time
     if rec_dur is None: rec_dur = float(core.duration) + 0.3
     rec = {"audio": None}
-    def worker(): rec["audio"] = core.record_audio(rec_dur)
+    def worker():
+        ch = 2 if both else 1
+        rec["audio"] = core.record_audio(rec_dur, channels=ch)
     t = threading.Thread(target=worker, daemon=True); t.start()
     time.sleep(0.05 + settle)
-    if both: core.play_stereo(mono_signal, mono_signal)
-    else: core.play_mono(mono_signal)
+    if both:
+        core.play_stereo(mono_signal, mono_signal)
+    else:
+        core.play_mono(mono_signal)
     t.join(); return rec["audio"]
 
 def _compute_thd(x, f0, sr, n_harm=10):
