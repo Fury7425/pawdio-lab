@@ -102,14 +102,9 @@ class LatencyPage(ctk.CTkScrollableFrame):
         out_dir = self.output_dir_var.get() or os.getcwd()
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
         path = os.path.join(out_dir, f"latency_report_{ts}.txt")
+        report = self._build_text_report()
         with open(path, "w", encoding="utf-8") as f:
-            f.write("Latency Report\n")
-            for name, data in self.last_all_results.items():
-                dd = data["delays_ms"]
-                if dd:
-                    f.write(f"{name}: avg {np.mean(dd):.3f} ms, std {np.std(dd):.3f}, n {len(dd)}\n")
-                else:
-                    f.write(f"{name}: no successful runs\n")
+            f.write(report)
         self.log(f"[SAVE] report -> {path}")
 
     def on_cal_selected(self):
@@ -135,6 +130,7 @@ class LatencyPage(ctk.CTkScrollableFrame):
 
     def _run_tests(self, presets):
         repeats = int(self.repeats_slider.get())
+        self.last_repeats = repeats
         out_dir = self.output_dir_var.get() or os.getcwd(); ensure_dir(out_dir)
 
         all_results = {}; overall = []; last = None; bars = {}
@@ -165,6 +161,115 @@ class LatencyPage(ctk.CTkScrollableFrame):
             except Exception as e:
                 self.log(f"[WARN] bar chart failed: {e}")
         self.log("[DONE] tests complete.")
+
+    def _build_text_report(self):
+        all_results = getattr(self, "last_all_results", {})
+        repeats = getattr(self, "last_repeats", 0)
+        sr = self.core.sample_rate
+        dur = self.core.duration
+        global_off = float(self.cfg.get("global_system_offset_ms", 0.0))
+        now = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        overall_delays = [d for v in all_results.values() for d in v["delays_ms"]]
+        overall_avg = np.mean(overall_delays) if overall_delays else 0.0
+        overall_std = np.std(overall_delays) if overall_delays else 0.0
+        total_success = len(overall_delays)
+
+        lines = [
+            "="*60,
+            "HEADPHONE DELAY TEST REPORT",
+            "="*60,
+            f"Test Date: {now}",
+            f"Overall Tests Per Sound Type: {repeats}",
+            f"Sample Rate: {sr} Hz",
+            f"Default Test Signal Buffer Duration: {dur} seconds (Sine waves use this primarily)",
+            f"Calibration Offset Applied: {global_off:.4f} ms",
+            "",
+            "",
+            "==================== OVERALL AVERAGE CALIBRATED DELAY (ALL SOUND TYPES) ====================",
+            f"Overall Average Calibrated Delay: {overall_avg:.4f} ms",
+            f"Overall Standard Deviation: {overall_std:.4f} ms",
+            f"Total Successful Tests: {total_success}",
+            "="*60,
+            "",
+        ]
+
+        for p in SOUND_PRESETS:
+            name = p["name"]
+            if name not in all_results:
+                continue
+            data = all_results[name]
+            delays = data["delays_ms"]
+            lines.append(f"==================== Results for '{name}' ====================")
+            lines.append("Individual test results (Calibrated):")
+            lines.append("------------------------------")
+            for i, d in enumerate(delays, 1):
+                lines.append(f"Test {i}: {d:.4f} ms")
+            lines.append("")
+            lines.append(f"STATISTICAL ANALYSIS for '{name}' (Calibrated):")
+            lines.append("------------------------------")
+            if delays:
+                avg = float(np.mean(delays))
+                std = float(np.std(delays))
+                mn = float(np.min(delays))
+                mx = float(np.max(delays))
+                rng = mx - mn
+                lines.extend([
+                    f"Average calibrated delay: {avg:.4f} ms",
+                    f"Standard deviation: {std:.4f} ms",
+                    f"Minimum calibrated delay: {mn:.4f} ms",
+                    f"Maximum calibrated delay: {mx:.4f} ms",
+                    f"Range: {rng:.4f} ms",
+                ])
+            else:
+                avg = std = None
+                lines.append("No successful runs")
+            lines.append("")
+            lines.append(f"PERFORMANCE ASSESSMENT for '{name}' (Calibrated):")
+            lines.append("------------------------------")
+            if avg is not None:
+                perf_label, perf_desc = self._performance_label(avg)
+                lines.append(f"Performance: {perf_label}")
+                lines.append(perf_desc)
+            else:
+                lines.append("Performance: N/A")
+            lines.append("")
+            lines.append(f"CONSISTENCY ANALYSIS for '{name}':")
+            lines.append("------------------------------")
+            if std is not None:
+                cons_label = self._consistency_label(std)
+                lines.append(f"Consistency: {cons_label}")
+            else:
+                lines.append("Consistency: N/A")
+            lines.append("")
+            lines.append(f"RAW DATA (Calibrated Delays for '{name}'):")
+            lines.append("------------------------------")
+            if delays:
+                lines.append("Delays (ms): " + ", ".join(f"{d:.4f}" for d in delays))
+            else:
+                lines.append("Delays (ms): none")
+            lines.append("")
+
+        lines.append("="*60)
+        lines.append("REPORT END")
+        lines.append("="*60)
+        return "\n".join(lines)
+
+    @staticmethod
+    def _performance_label(avg):
+        if avg <= 40:
+            return "Good (< 40ms)", "Your headphones have low latency - suitable for most tasks."
+        if avg <= 80:
+            return "Moderate (40-80ms)", "Your headphones have moderate latency - may be noticeable."
+        return "Poor (> 80ms)", "Your headphones have high latency - may cause audio sync issues."
+
+    @staticmethod
+    def _consistency_label(std):
+        if std <= 10:
+            return "Good (low variation)"
+        if std <= 30:
+            return "Moderate (some variation)"
+        return "Poor (high variation - check audio setup)"
 
     def _cal_presets(self, presets):
         reps = int(self.cal_repeats_var.get())
