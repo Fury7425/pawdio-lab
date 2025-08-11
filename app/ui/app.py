@@ -8,7 +8,7 @@ from .pages.experimental_page import ExperimentalPage
 from .pages.devices_page import DevicesPage
 from .pages.results_page import ResultsPage
 
-APP_TITLE = "PawdioLab — Modular Sleek"
+APP_TITLE = "PawdioLab"
 
 class MainApp(ctk.CTk):
     def __init__(self):
