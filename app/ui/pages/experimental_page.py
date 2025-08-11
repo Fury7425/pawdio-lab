@@ -1,16 +1,16 @@
 
 import os, json, customtkinter as ctk
-from ...tests import balance, crosstalk, sweep_fr, thd, isolation
+from ...experimental_tests import balance, crosstalk, sweep_fr, thd, isolation
 from ...core.utils import ensure_dir
 
-class LabPage(ctk.CTkFrame):
+class ExperimentalPage(ctk.CTkFrame):
     def __init__(self, master, core, cfg, log_fn):
         super().__init__(master, corner_radius=0)
         self.core = core; self.cfg = cfg; self.log = log_fn
         self.results = []
         self.grid_columnconfigure(0, weight=1); self.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(self, text="Lab Tests", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, columnspan=2, padx=18, pady=(18,4), sticky="w")
+        ctk.CTkLabel(self, text="Experimental Tests", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, columnspan=2, padx=18, pady=(18,4), sticky="w")
 
         bal = ctk.CTkFrame(self); bal.grid(row=1, column=0, padx=18, pady=12, sticky="nsew")
         self.var_bal = ctk.StringVar(value="1000")
@@ -44,7 +44,7 @@ class LabPage(ctk.CTkFrame):
 
         res = ctk.CTkFrame(self); res.grid(row=3, column=1, padx=18, pady=12, sticky="nsew")
         res.grid_rowconfigure(1, weight=1); res.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(res, text="Lab Results").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
+        ctk.CTkLabel(res, text="Experimental Results").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
         self.box = ctk.CTkTextbox(res); self.box.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
         row = ctk.CTkFrame(res); row.grid(row=2, column=0, sticky="ew", padx=8, pady=(0,8))
         ctk.CTkButton(row, text="Export LAST (JSON)", command=self.export_last).pack(side="left", padx=4)
@@ -82,7 +82,7 @@ class LabPage(ctk.CTkFrame):
         last = self.results[-1]
         import json, datetime
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = os.path.join(out_dir, f"lab_last_{ts}.json")
+        path = os.path.join(out_dir, f"experimental_last_{ts}.json")
         with open(path, "w", encoding="utf-8") as f: json.dump(last, f, indent=2, ensure_ascii=False)
         self.log(f"[EXPORT] last -> {path}")
 
@@ -91,6 +91,6 @@ class LabPage(ctk.CTkFrame):
         out_dir = self.cfg["last_settings"].get("output_dir", os.getcwd()); ensure_dir(out_dir)
         import json, datetime
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        path = os.path.join(out_dir, f"lab_all_{ts}.json")
+        path = os.path.join(out_dir, f"experimental_all_{ts}.json")
         with open(path, "w", encoding="utf-8") as f: json.dump(self.results, f, indent=2, ensure_ascii=False)
         self.log(f"[EXPORT] all -> {path}")
