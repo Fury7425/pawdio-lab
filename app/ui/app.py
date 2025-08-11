@@ -4,6 +4,7 @@ from .theme import apply_theme
 from ..config import load_config, save_config
 from ..core.audio import AudioCore
 from .pages.latency_page import LatencyPage
+from .pages.sweep_fr_page import SweepFRPage
 from .pages.experimental_page import ExperimentalPage
 from .pages.devices_page import DevicesPage
 from .pages.results_page import ResultsPage
@@ -23,8 +24,9 @@ class MainApp(ctk.CTk):
         ctk.CTkLabel(self.sidebar, text="PawdioLab", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=18, pady=(18,8), sticky="w")
 
         self.btn_latency = ctk.CTkButton(self.sidebar, text="Latency", command=lambda: self._show("latency")); self.btn_latency.grid(row=2, column=0, padx=16, pady=6, sticky="ew")
-        self.btn_devices = ctk.CTkButton(self.sidebar, text="Devices / Settings", command=lambda: self._show("devices")); self.btn_devices.grid(row=3, column=0, padx=16, pady=6, sticky="ew")
-        self.btn_results = ctk.CTkButton(self.sidebar, text="Results / Export", command=lambda: self._show("results")); self.btn_results.grid(row=4, column=0, padx=16, pady=6, sticky="ew")
+        self.btn_sweep = ctk.CTkButton(self.sidebar, text="Sweep FR", command=lambda: self._show("sweep_fr")); self.btn_sweep.grid(row=3, column=0, padx=16, pady=6, sticky="ew")
+        self.btn_devices = ctk.CTkButton(self.sidebar, text="Devices / Settings", command=lambda: self._show("devices")); self.btn_devices.grid(row=4, column=0, padx=16, pady=6, sticky="ew")
+        self.btn_results = ctk.CTkButton(self.sidebar, text="Results / Export", command=lambda: self._show("results")); self.btn_results.grid(row=5, column=0, padx=16, pady=6, sticky="ew")
 
         self.btn_experimental = None
 
@@ -39,6 +41,7 @@ class MainApp(ctk.CTk):
 
         self.pages = {}
         self.pages["latency"] = LatencyPage(self.main, self.core, self.cfg, self._log)
+        self.pages["sweep_fr"] = SweepFRPage(self.main, self.core, self.cfg, self._log)
         self.pages["devices"] = DevicesPage(self.main, self.core, self.cfg, self._log, on_toggle_experimental=self._toggle_experimental)
         self.pages["results"] = ResultsPage(self.main, self._log_sink)
         if self.cfg["ui"].get("labs_enabled", True):
@@ -50,7 +53,7 @@ class MainApp(ctk.CTk):
         self.pages["experimental"] = ExperimentalPage(self.main, self.core, self.cfg, self._log)
         if self.btn_experimental is None:
             self.btn_experimental = ctk.CTkButton(self.sidebar, text="Experimental Tests", command=lambda: self._show("experimental"))
-            self.btn_experimental.grid(row=5, column=0, padx=16, pady=6, sticky="ew")
+            self.btn_experimental.grid(row=6, column=0, padx=16, pady=6, sticky="ew")
 
     def _remove_experimental_page(self):
         if "experimental" in self.pages:

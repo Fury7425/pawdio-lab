@@ -1,6 +1,6 @@
 
 import os, json, customtkinter as ctk
-from ...experimental_tests import balance, crosstalk, sweep_fr, thd, isolation
+from ...experimental_tests import balance, crosstalk, thd, isolation
 from ...core.utils import ensure_dir
 
 class ExperimentalPage(ctk.CTkFrame):
@@ -27,28 +27,13 @@ class ExperimentalPage(ctk.CTkFrame):
         ctk.CTkOptionMenu(xt, values=["LtoR","RtoL"], variable=self.var_dir).grid(row=1, column=2, padx=8)
         ctk.CTkButton(xt, text="Run", command=self.on_crosstalk).grid(row=2, column=0, padx=8, pady=8, sticky="w")
 
-        fr = ctk.CTkFrame(self); fr.grid(row=2, column=0, padx=18, pady=12, sticky="nsew")
-        self.var_dur = ctk.StringVar(value="6.0")
-        self.var_rep = ctk.IntVar(value=1)
-        ctk.CTkLabel(fr, text="Sweep FR (relative)").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
-        ctk.CTkLabel(fr, text="Duration (s)").grid(row=1, column=0, sticky="w", padx=8)
-        ctk.CTkEntry(fr, textvariable=self.var_dur, width=90).grid(row=1, column=1, sticky="w", padx=8)
-        ctk.CTkLabel(fr, text="Repeats").grid(row=2, column=0, sticky="w", padx=8)
-        rep_slider = ctk.CTkSlider(fr, from_=1, to=20, number_of_steps=19)
-        rep_slider.set(self.var_rep.get()); rep_slider.grid(row=2, column=1, sticky="ew", padx=8)
-        rep_lab = ctk.CTkLabel(fr, text=str(self.var_rep.get())); rep_lab.grid(row=2, column=2, padx=8, sticky="w")
-        rep_slider.configure(command=lambda v: (self.var_rep.set(int(v)), rep_lab.configure(text=str(int(v)))))
-        ctk.CTkButton(fr, text="Run", command=self.on_sweep).grid(row=3, column=0, padx=8, pady=8, sticky="w")
-
-        thd_card = ctk.CTkFrame(self); thd_card.grid(row=2, column=1, padx=18, pady=12, sticky="nsew")
+        thd_card = ctk.CTkFrame(self); thd_card.grid(row=2, column=0, padx=18, pady=12, sticky="nsew")
         ctk.CTkLabel(thd_card, text="THD (100/1k/6k Hz)").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
         ctk.CTkButton(thd_card, text="Run", command=self.on_thd).grid(row=1, column=0, padx=8, pady=8, sticky="w")
-
-        iso = ctk.CTkFrame(self); iso.grid(row=3, column=0, padx=18, pady=12, sticky="nsew")
+        iso = ctk.CTkFrame(self); iso.grid(row=2, column=1, padx=18, pady=12, sticky="nsew")
         ctk.CTkLabel(iso, text="Isolation (Inside → Outside)").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
         ctk.CTkButton(iso, text="Run", command=self.on_isolation).grid(row=1, column=0, padx=8, pady=8, sticky="w")
-
-        res = ctk.CTkFrame(self); res.grid(row=3, column=1, padx=18, pady=12, sticky="nsew")
+        res = ctk.CTkFrame(self); res.grid(row=3, column=0, columnspan=2, padx=18, pady=12, sticky="nsew")
         res.grid_rowconfigure(1, weight=1); res.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(res, text="Experimental Results").grid(row=0, column=0, sticky="w", padx=8, pady=(8,4))
         self.box = ctk.CTkTextbox(res); self.box.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
@@ -62,11 +47,6 @@ class ExperimentalPage(ctk.CTkFrame):
 
     def on_crosstalk(self):
         r = crosstalk.run(self.core, self.log, freq=float(self.var_xt.get()), direction=self.var_dir.get())
-        self._push(r)
-
-    def on_sweep(self):
-        out = self.cfg["last_settings"].get("output_dir", os.getcwd())
-        r = sweep_fr.run(self.core, self.log, duration=float(self.var_dur.get()), repeats=int(self.var_rep.get()), save_plot_dir=out)
         self._push(r)
 
     def on_thd(self):
