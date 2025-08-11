@@ -8,7 +8,7 @@ from .pages.lab_page import LabPage
 from .pages.devices_page import DevicesPage
 from .pages.results_page import ResultsPage
 
-APP_TITLE = "LatencyLab — Modular Sleek"
+APP_TITLE = "PawdioLab — Modular Sleek"
 
 class MainApp(ctk.CTk):
     def __init__(self):
@@ -20,7 +20,7 @@ class MainApp(ctk.CTk):
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
         self.sidebar = ctk.CTkFrame(self, corner_radius=0, width=230); self.sidebar.grid(row=0, column=0, sticky="nsw")
         self.sidebar.grid_rowconfigure(10, weight=1)
-        ctk.CTkLabel(self.sidebar, text="LatencyLab", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=18, pady=(18,8), sticky="w")
+        ctk.CTkLabel(self.sidebar, text="PawdioLab", font=ctk.CTkFont(size=20, weight="bold")).grid(row=0, column=0, padx=18, pady=(18,8), sticky="w")
 
         self.btn_latency = ctk.CTkButton(self.sidebar, text="Latency", command=lambda: self._show("latency")); self.btn_latency.grid(row=2, column=0, padx=16, pady=6, sticky="ew")
         self.btn_devices = ctk.CTkButton(self.sidebar, text="Devices / Settings", command=lambda: self._show("devices")); self.btn_devices.grid(row=3, column=0, padx=16, pady=6, sticky="ew")
@@ -48,7 +48,7 @@ class MainApp(ctk.CTk):
     def _add_labs_page(self):
         self.pages["lab"] = LabPage(self.main, self.core, self.cfg, self._log)
         if self.btn_lab is None:
-            self.btn_lab = ctk.CTkButton(self.sidebar, text="Lab Tests", command=lambda: self._show("lab"))
+            self.btn_lab = ctk.CTkButton(self.sidebar, text="Experimental Tests", command=lambda: self._show("lab"))
             self.btn_lab.grid(row=5, column=0, padx=16, pady=6, sticky="ew")
 
     def _remove_labs_page(self):

@@ -36,7 +36,7 @@ class DevicesPage(ctk.CTkFrame):
         self.color = ctk.CTkOptionMenu(ap, values=["blue","dark-blue","green"]); self.color.set(self.cfg["ui"].get("color_theme","blue")); self.color.grid(row=0, column=3, padx=8, sticky="w")
 
         self.labs_var = ctk.BooleanVar(value=bool(self.cfg["ui"].get("labs_enabled", True)))
-        ctk.CTkSwitch(ap, text="Enable Lab Tests (experimental)", variable=self.labs_var, command=self._toggle_labs).grid(row=1, column=0, columnspan=2, padx=8, pady=(8,6), sticky="w")
+        ctk.CTkSwitch(ap, text="Enable Experimental Tests", variable=self.labs_var, command=self._toggle_labs).grid(row=1, column=0, columnspan=2, padx=8, pady=(8,6), sticky="w")
 
         self._refresh_devices()
 
