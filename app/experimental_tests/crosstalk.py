@@ -2,7 +2,7 @@
 from tkinter import messagebox
 import numpy as np
 from ..core.utils import rms
-from .base import TestResult
+from ..tests.base import TestResult
 
 def run(core, log, freq=1000.0, tone_dur=1.0, settle=0.2, direction="LtoR"):
     if direction=="LtoR":

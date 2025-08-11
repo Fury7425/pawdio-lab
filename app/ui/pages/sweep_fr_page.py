@@ -1,5 +1,5 @@
 import os, json, customtkinter as ctk
-from ...experimental_tests import sweep_fr
+from ...tests import sweep_fr
 from ...core.utils import ensure_dir
 from ...config import save_config
 

@@ -1,7 +1,7 @@
 
 from tkinter import messagebox
 from ..core.utils import dbfs
-from .base import TestResult
+from ..tests.base import TestResult
 
 def run(core, log, noise_dur=2.0, amp=0.4):
     log("[ISOLATION] Inside: mic near earcup seal. OK to measure.")
