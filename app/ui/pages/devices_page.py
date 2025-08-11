@@ -102,11 +102,15 @@ class DevicesPage(ctk.CTkFrame):
         in_idx = self._in_idx.get(self.in_menu.get())
         rates_out, _ = self.core.get_device_capabilities(out_idx, is_input=False)
         rates_in, _ = self.core.get_device_capabilities(in_idx, is_input=True)
-        out_values = [str(r) for r in rates_out] or [str(self.out_sr_var.get())]
-        in_values = [str(r) for r in rates_in] or [str(self.in_sr_var.get())]
+        out_info = self.core.audio.get_device_info_by_index(out_idx) if out_idx is not None else {}
+        in_info = self.core.audio.get_device_info_by_index(in_idx) if in_idx is not None else {}
+        out_default = int(out_info.get("defaultSampleRate", 44100))
+        in_default = int(in_info.get("defaultSampleRate", 44100))
+        out_values = sorted({str(r) for r in rates_out} | {str(out_default)}) or [str(out_default)]
+        in_values = sorted({str(r) for r in rates_in} | {str(in_default)}) or [str(in_default)]
         self.out_sr_menu.configure(values=out_values)
         self.in_sr_menu.configure(values=in_values)
-        if self.out_sr_var.get() not in out_values:
-            self.out_sr_menu.set(out_values[0])
-        if self.in_sr_var.get() not in in_values:
-            self.in_sr_menu.set(in_values[0])
+        stored_out = str(self.cfg["last_settings"].get("output_sample_rate", out_default))
+        stored_in = str(self.cfg["last_settings"].get("input_sample_rate", in_default))
+        self.out_sr_menu.set(stored_out if stored_out in out_values else out_values[0])
+        self.in_sr_menu.set(stored_in if stored_in in in_values else in_values[0])

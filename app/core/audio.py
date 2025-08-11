@@ -78,7 +78,14 @@ class AudioCore:
         if device_index is None:
             return [], []
 
+        info = self.audio.get_device_info_by_index(device_index)
+        channels_key = "maxInputChannels" if is_input else "maxOutputChannels"
+        channels = int(info.get(channels_key, 1)) or 1
+
+        default_rate = int(info.get("defaultSampleRate", 0))
         standard_rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+        if default_rate and default_rate not in standard_rates:
+            standard_rates.append(default_rate)
         formats = {8: pyaudio.paInt8, 16: pyaudio.paInt16, 24: pyaudio.paInt24, 32: pyaudio.paInt32}
         supported_rates: List[int] = []
         supported_bits: List[int] = []
@@ -86,10 +93,10 @@ class AudioCore:
             try:
                 if self.audio.is_format_supported(rate,
                                                  input_device=device_index if is_input else None,
-                                                 input_channels=1 if is_input else None,
+                                                 input_channels=channels if is_input else None,
                                                  input_format=pyaudio.paInt16 if is_input else None,
                                                  output_device=device_index if not is_input else None,
-                                                 output_channels=1 if not is_input else None,
+                                                 output_channels=channels if not is_input else None,
                                                  output_format=pyaudio.paInt16 if not is_input else None):
                     supported_rates.append(rate)
             except Exception:
@@ -98,14 +105,15 @@ class AudioCore:
             try:
                 if self.audio.is_format_supported(self.sample_rate,
                                                  input_device=device_index if is_input else None,
-                                                 input_channels=1 if is_input else None,
+                                                 input_channels=channels if is_input else None,
                                                  input_format=fmt if is_input else None,
                                                  output_device=device_index if not is_input else None,
-                                                 output_channels=1 if not is_input else None,
+                                                 output_channels=channels if not is_input else None,
                                                  output_format=fmt if not is_input else None):
                     supported_bits.append(bits)
             except Exception:
                 pass
+        supported_rates = sorted(set(supported_rates))
         return supported_rates, supported_bits
 
     def set_devices(self, output_index=None, input_index=None):
@@ -195,15 +203,34 @@ class AudioCore:
                 pass
 
     def _apply_windows_sample_rate(self, device_index: int, rate: int, is_input: bool):
-        """Attempt to update the Windows default format for a device.
-
-        This implementation is a stub; actual modification of the Windows
-        device format requires additional platform specific code and
-        dependencies which may not be available at runtime.
-        """
+        """Attempt to update the Windows default format for a device."""
         try:
-            import comtypes  # type: ignore  # noqa: F401
-            # Placeholder for real implementation using pycaw/IAudioClient.
+            from ctypes import byref, sizeof, c_byte, memmove, POINTER, cast
+            from comtypes.automation import PROPVARIANT
+            from pycaw.pycaw import AudioUtilities
+            from pycaw.constants import PKEY_AudioEngine_DeviceFormat
+            from pycaw.utils import AudioFormat
+
+            pa_name = self.audio.get_device_info_by_index(device_index).get("name")
+            devices = AudioUtilities.GetAllDevices()
+            device = next((d for d in devices if d.FriendlyName == pa_name), None)
+            if device is None:
+                return
+            store = device.OpenPropertyStore()
+            channels = 1 if is_input else 2
+            bits = 16
+            block_align = channels * bits // 8
+            avg_bytes = rate * block_align
+            fmt = AudioFormat(1, channels, rate, avg_bytes, block_align, bits, 0)
+
+            blob = (c_byte * sizeof(fmt))()
+            memmove(blob, byref(fmt), sizeof(fmt))
+            pv = PROPVARIANT()
+            pv.vt = 0x1011  # VT_BLOB
+            pv.blob.cbSize = sizeof(fmt)
+            pv.blob.pBlobData = cast(blob, POINTER(c_byte))
+            store.SetValue(PKEY_AudioEngine_DeviceFormat, pv)
+            store.Commit()
         except Exception:
             pass
 
