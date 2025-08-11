@@ -9,6 +9,10 @@ def default_config():
         "per_sound_offsets_ms": {},
         "last_settings": {
             "sample_rate": 44100,
+            "input_sample_rate": 44100,
+            "output_sample_rate": 44100,
+            "input_bit_depth": 16,
+            "output_bit_depth": 16,
             "duration": 0.5,
             "repeats": 5,
             "input_device_index": None,
@@ -37,6 +41,15 @@ def load_config(path=CALIBRATION_JSON):
             pass
     cfg.setdefault("per_sound_offsets_ms", {})
     cfg.setdefault("ui", {}).setdefault("labs_enabled", True)
+    ls = cfg.setdefault("last_settings", {})
+    if "input_sample_rate" not in ls:
+        ls["input_sample_rate"] = ls.get("sample_rate", 44100)
+    if "output_sample_rate" not in ls:
+        ls["output_sample_rate"] = ls.get("sample_rate", 44100)
+    if "input_bit_depth" not in ls:
+        ls["input_bit_depth"] = 16
+    if "output_bit_depth" not in ls:
+        ls["output_bit_depth"] = 16
     return cfg
 
 def save_config(cfg, path=CALIBRATION_JSON):

@@ -31,10 +31,11 @@ class MainApp(ctk.CTk):
         self.main = ctk.CTkFrame(self, corner_radius=0); self.main.grid(row=0, column=1, sticky="nsew")
         self.main.grid_rowconfigure(0, weight=1); self.main.grid_columnconfigure(0, weight=1)
 
-        self.core = AudioCore(sample_rate=self.cfg["last_settings"]["sample_rate"],
+        self.core = AudioCore(sample_rate=self.cfg["last_settings"].get("output_sample_rate", self.cfg["last_settings"].get("sample_rate", 44100)),
                               chunk_size=1024, duration=self.cfg["last_settings"]["duration"],
                               output_device_index=self.cfg["last_settings"]["output_device_index"],
-                              input_device_index=self.cfg["last_settings"]["input_device_index"])
+                              input_device_index=self.cfg["last_settings"]["input_device_index"],
+                              input_sample_rate=self.cfg["last_settings"].get("input_sample_rate", self.cfg["last_settings"].get("sample_rate", 44100)))
 
         self.pages = {}
         self.pages["latency"] = LatencyPage(self.main, self.core, self.cfg, self._log)

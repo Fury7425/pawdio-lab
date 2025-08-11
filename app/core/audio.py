@@ -2,10 +2,27 @@
 import numpy as np
 from scipy import signal
 import pyaudio
+import sys
+from typing import List, Tuple
 
 class AudioCore:
-    def __init__(self, sample_rate=44100, chunk_size=1024, duration=0.5, output_device_index=None, input_device_index=None):
+    def __init__(self, sample_rate=44100, chunk_size=1024, duration=0.5,
+                 output_device_index=None, input_device_index=None,
+                 input_sample_rate=None):
+        """Initialize the audio core.
+
+        Parameters
+        ----------
+        sample_rate : int
+            Output sample rate. Historically this was the single sample rate
+            used by the application so we keep the attribute name for
+            backwards compatibility.
+        input_sample_rate : int or None
+            Optional input device sample rate. If ``None`` the output sample
+            rate is used.
+        """
         self.sample_rate = int(sample_rate)
+        self.input_sample_rate = int(input_sample_rate) if input_sample_rate is not None else int(sample_rate)
         self.chunk_size = int(chunk_size)
         self.duration = float(duration)
         self.audio = pyaudio.PyAudio()
@@ -15,10 +32,89 @@ class AudioCore:
 
     def list_devices(self):
         devs = []
+        wasapi_index = None
+        if sys.platform.startswith("win"):
+            try:
+                wasapi_index = self.audio.get_host_api_info_by_type(pyaudio.paWASAPI)["index"]
+            except Exception:
+                pass
         for i in range(self.audio.get_device_count()):
             info = self.audio.get_device_info_by_index(i)
+            if wasapi_index is not None:
+                if info.get("hostApi") != wasapi_index:
+                    continue
+                if info.get("isLoopbackDevice", False):
+                    continue
             devs.append(info)
         return devs
+
+    def get_default_output_index(self):
+        try:
+            return self.audio.get_default_output_device_info().get("index")
+        except Exception:
+            return None
+
+    def get_default_input_index(self):
+        try:
+            return self.audio.get_default_input_device_info().get("index")
+        except Exception:
+            return None
+
+    def get_device_capabilities(self, device_index: int, is_input: bool) -> Tuple[List[int], List[int]]:
+        """Return supported sample rates and bit depths for a device.
+
+        Parameters
+        ----------
+        device_index : int
+            The PortAudio index of the device to probe.
+        is_input : bool
+            ``True`` for input device, ``False`` for output device.
+
+        Returns
+        -------
+        (rates, bit_depths) : tuple(list[int], list[int])
+            Lists of supported sample rates and bit depths.
+        """
+        if device_index is None:
+            return [], []
+
+        info = self.audio.get_device_info_by_index(device_index)
+        channels_key = "maxInputChannels" if is_input else "maxOutputChannels"
+        channels = int(info.get(channels_key, 1)) or 1
+
+        default_rate = int(info.get("defaultSampleRate", 0))
+        standard_rates = [8000, 11025, 16000, 22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000]
+        if default_rate and default_rate not in standard_rates:
+            standard_rates.append(default_rate)
+        formats = {8: pyaudio.paInt8, 16: pyaudio.paInt16, 24: pyaudio.paInt24, 32: pyaudio.paInt32}
+        supported_rates: List[int] = []
+        supported_bits: List[int] = []
+        for rate in standard_rates:
+            try:
+                if self.audio.is_format_supported(rate,
+                                                 input_device=device_index if is_input else None,
+                                                 input_channels=channels if is_input else None,
+                                                 input_format=pyaudio.paInt16 if is_input else None,
+                                                 output_device=device_index if not is_input else None,
+                                                 output_channels=channels if not is_input else None,
+                                                 output_format=pyaudio.paInt16 if not is_input else None):
+                    supported_rates.append(rate)
+            except Exception:
+                pass
+        for bits, fmt in formats.items():
+            try:
+                if self.audio.is_format_supported(self.sample_rate,
+                                                 input_device=device_index if is_input else None,
+                                                 input_channels=channels if is_input else None,
+                                                 input_format=fmt if is_input else None,
+                                                 output_device=device_index if not is_input else None,
+                                                 output_channels=channels if not is_input else None,
+                                                 output_format=fmt if not is_input else None):
+                    supported_bits.append(bits)
+            except Exception:
+                pass
+        supported_rates = sorted(set(supported_rates))
+        return supported_rates, supported_bits
 
     def set_devices(self, output_index=None, input_index=None):
         self.output_device_index = output_index
@@ -82,16 +178,61 @@ class AudioCore:
         out.write(audio_data); out.stop_stream(); out.close()
 
     def record_audio(self, duration):
-        inp = self.audio.open(format=pyaudio.paInt16, channels=1, rate=self.sample_rate, input=True,
+        inp = self.audio.open(format=pyaudio.paInt16, channels=1, rate=self.input_sample_rate, input=True,
                               frames_per_buffer=self.chunk_size, input_device_index=self.input_device_index)
         frames = []
-        num_chunks = int(self.sample_rate * duration / self.chunk_size)
+        num_chunks = int(self.input_sample_rate * duration / self.chunk_size)
         for _ in range(num_chunks):
             data = inp.read(self.chunk_size, exception_on_overflow=False)
             frames.append(data)
         inp.stop_stream(); inp.close()
         audio_data = np.frombuffer(b"".join(frames), dtype=np.int16).astype(np.float32)/32767.0
         return audio_data
+
+    def set_sample_rates(self, output_rate: int = None, input_rate: int = None):
+        if output_rate is not None:
+            self.sample_rate = int(output_rate)
+        if input_rate is not None:
+            self.input_sample_rate = int(input_rate)
+
+        if sys.platform.startswith("win"):
+            try:
+                self._apply_windows_sample_rate(self.output_device_index, self.sample_rate, False)
+                self._apply_windows_sample_rate(self.input_device_index, self.input_sample_rate, True)
+            except Exception:
+                pass
+
+    def _apply_windows_sample_rate(self, device_index: int, rate: int, is_input: bool):
+        """Attempt to update the Windows default format for a device."""
+        try:
+            from ctypes import byref, sizeof, c_byte, memmove, POINTER, cast
+            from comtypes.automation import PROPVARIANT
+            from pycaw.pycaw import AudioUtilities
+            from pycaw.constants import PKEY_AudioEngine_DeviceFormat
+            from pycaw.utils import AudioFormat
+
+            pa_name = self.audio.get_device_info_by_index(device_index).get("name")
+            devices = AudioUtilities.GetAllDevices()
+            device = next((d for d in devices if d.FriendlyName == pa_name), None)
+            if device is None:
+                return
+            store = device.OpenPropertyStore()
+            channels = 1 if is_input else 2
+            bits = 16
+            block_align = channels * bits // 8
+            avg_bytes = rate * block_align
+            fmt = AudioFormat(1, channels, rate, avg_bytes, block_align, bits, 0)
+
+            blob = (c_byte * sizeof(fmt))()
+            memmove(blob, byref(fmt), sizeof(fmt))
+            pv = PROPVARIANT()
+            pv.vt = 0x1011  # VT_BLOB
+            pv.blob.cbSize = sizeof(fmt)
+            pv.blob.pBlobData = cast(blob, POINTER(c_byte))
+            store.SetValue(PKEY_AudioEngine_DeviceFormat, pv)
+            store.Commit()
+        except Exception:
+            pass
 
     @staticmethod
     def find_delay_ms(recorded_signal, reference_signal, sample_rate):

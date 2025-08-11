@@ -34,8 +34,13 @@ class DelayRunner:
         time.sleep(0.08)
         core.play_mono(core.test_signal)
         t.join()
-        delay_ms, _ = AudioCore.find_delay_ms(rec_data["audio"], core.test_signal, core.sample_rate)
-        return delay_ms, rec_data["audio"], core.test_signal
+        ref = core.test_signal
+        if core.input_sample_rate != core.sample_rate and ref is not None:
+            # Resample reference to match recording rate
+            ref_len = int(len(ref) * core.input_sample_rate / core.sample_rate)
+            ref = signal.resample(ref, ref_len)
+        delay_ms, _ = AudioCore.find_delay_ms(rec_data["audio"], ref, core.input_sample_rate)
+        return delay_ms, rec_data["audio"], ref
 
     # Calibration
     def calibrate_preset(self, core, preset, repeats=5):
@@ -94,7 +99,7 @@ class DelayRunner:
             rec, ref = first_good
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
             out = os.path.join(save_plot_dir, f"{preset['key']}_plot_{ts}.png")
-            self._save_plot(rec, ref, avg, core.sample_rate, out, f"{preset['name']} avg {avg:.1f} ms")
+            self._save_plot(rec, ref, avg, core.input_sample_rate, out, f"{preset['name']} avg {avg:.1f} ms")
             self.log(f"  saved plot -> {out}")
         return results
 

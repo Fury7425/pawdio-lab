@@ -11,21 +11,38 @@ class DevicesPage(ctk.CTkFrame):
         ctk.CTkLabel(self, text="Devices / Settings", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, columnspan=2, padx=18, pady=(18,4), sticky="w")
 
         card = ctk.CTkFrame(self); card.grid(row=1, column=0, columnspan=2, padx=18, pady=12, sticky="ew")
-        for i in range(6): card.grid_columnconfigure(i, weight=1)
-        ctk.CTkLabel(card, text="Sample Rate").grid(row=0, column=0, padx=8, pady=8, sticky="w")
-        self.sr_var = ctk.IntVar(value=self.cfg["last_settings"]["sample_rate"])
-        ctk.CTkEntry(card, textvariable=self.sr_var, width=120).grid(row=0, column=1, padx=8, pady=8, sticky="w")
-        ctk.CTkLabel(card, text="Signal Duration (s)").grid(row=0, column=2, padx=8, pady=8, sticky="w")
+        for i in range(7): card.grid_columnconfigure(i, weight=1)
+        ctk.CTkLabel(card, text="Output Sample Rate").grid(row=0, column=0, padx=8, pady=8, sticky="w")
+        self.out_sr_var = ctk.StringVar(value=str(self.cfg["last_settings"].get("output_sample_rate", 44100)))
+        self.out_sr_menu = ctk.CTkOptionMenu(card, values=[], variable=self.out_sr_var, width=120)
+        self.out_sr_menu.grid(row=0, column=1, padx=8, pady=8, sticky="w")
+        ctk.CTkLabel(card, text="Input Sample Rate").grid(row=0, column=2, padx=8, pady=8, sticky="w")
+        self.in_sr_var = ctk.StringVar(value=str(self.cfg["last_settings"].get("input_sample_rate", 44100)))
+        self.in_sr_menu = ctk.CTkOptionMenu(card, values=[], variable=self.in_sr_var, width=120)
+        self.in_sr_menu.grid(row=0, column=3, padx=8, pady=8, sticky="w")
+        ctk.CTkLabel(card, text="Signal Duration (s)").grid(row=0, column=4, padx=8, pady=8, sticky="w")
         self.dur_var = ctk.DoubleVar(value=self.cfg["last_settings"]["duration"])
-        ctk.CTkEntry(card, textvariable=self.dur_var, width=120).grid(row=0, column=3, padx=8, pady=8, sticky="w")
-        ctk.CTkButton(card, text="Apply", command=self._apply).grid(row=0, column=5, padx=8, pady=8, sticky="e")
+        ctk.CTkEntry(card, textvariable=self.dur_var, width=120).grid(row=0, column=5, padx=8, pady=8, sticky="w")
+        ctk.CTkButton(card, text="Apply", command=self._apply).grid(row=0, column=6, padx=8, pady=8, sticky="e")
+        self.out_bits_label = ctk.CTkLabel(card, text="Output Bit Depth")
+        self.out_bits_label.grid(row=1, column=0, padx=8, pady=8, sticky="w")
+        self.out_bits_var = ctk.StringVar(value=str(self.cfg["last_settings"].get("output_bit_depth", "")))
+        self.out_bits_menu = ctk.CTkOptionMenu(card, values=[], variable=self.out_bits_var, width=120)
+        self.out_bits_menu.grid(row=1, column=1, padx=8, pady=8, sticky="w")
+        self.in_bits_label = ctk.CTkLabel(card, text="Input Bit Depth")
+        self.in_bits_label.grid(row=1, column=2, padx=8, pady=8, sticky="w")
+        self.in_bits_var = ctk.StringVar(value=str(self.cfg["last_settings"].get("input_bit_depth", "")))
+        self.in_bits_menu = ctk.CTkOptionMenu(card, values=[], variable=self.in_bits_var, width=120)
+        self.in_bits_menu.grid(row=1, column=3, padx=8, pady=8, sticky="w")
+        self.out_bits_label.grid_remove(); self.out_bits_menu.grid_remove()
+        self.in_bits_label.grid_remove(); self.in_bits_menu.grid_remove()
 
         dev = ctk.CTkFrame(self); dev.grid(row=2, column=0, columnspan=2, padx=18, pady=12, sticky="ew")
         dev.grid_columnconfigure(1, weight=1)
         ctk.CTkLabel(dev, text="Output Device").grid(row=0, column=0, padx=8, pady=(8,4), sticky="w")
-        self.out_menu = ctk.CTkOptionMenu(dev, values=["<refresh>"]); self.out_menu.grid(row=0, column=1, padx=8, pady=(8,4), sticky="ew")
+        self.out_menu = ctk.CTkOptionMenu(dev, values=["<refresh>"], command=lambda _: self._update_sr_menus()); self.out_menu.grid(row=0, column=1, padx=8, pady=(8,4), sticky="ew")
         ctk.CTkLabel(dev, text="Input Device").grid(row=1, column=0, padx=8, pady=(4,8), sticky="w")
-        self.in_menu = ctk.CTkOptionMenu(dev, values=["<refresh>"]); self.in_menu.grid(row=1, column=1, padx=8, pady=(4,8), sticky="ew")
+        self.in_menu = ctk.CTkOptionMenu(dev, values=["<refresh>"], command=lambda _: self._update_sr_menus()); self.in_menu.grid(row=1, column=1, padx=8, pady=(4,8), sticky="ew")
         ctk.CTkButton(dev, text="Refresh Devices", command=self._refresh_devices).grid(row=0, column=2, rowspan=2, padx=8)
 
         ap = ctk.CTkFrame(self); ap.grid(row=3, column=0, columnspan=2, padx=18, pady=12, sticky="ew")
@@ -42,14 +59,20 @@ class DevicesPage(ctk.CTkFrame):
 
     def _apply(self):
         try:
-            self.core.sample_rate = int(self.sr_var.get())
+            self.core.set_sample_rates(output_rate=int(self.out_sr_menu.get()), input_rate=int(self.in_sr_menu.get()))
             self.core.duration = float(self.dur_var.get())
+            self.cfg["last_settings"]["output_sample_rate"] = self.core.sample_rate
+            self.cfg["last_settings"]["input_sample_rate"] = self.core.input_sample_rate
             self.cfg["last_settings"]["sample_rate"] = self.core.sample_rate
+            if self.out_bits_var.get():
+                self.cfg["last_settings"]["output_bit_depth"] = int(self.out_bits_var.get())
+            if self.in_bits_var.get():
+                self.cfg["last_settings"]["input_bit_depth"] = int(self.in_bits_var.get())
             self.cfg["last_settings"]["duration"] = self.core.duration
             self.cfg["ui"]["appearance_mode"] = self.appearance.get()
             self.cfg["ui"]["color_theme"] = self.color.get()
             save_config(self.cfg)
-            self.log(f"[SET] sr={self.core.sample_rate}, dur={self.core.duration}s, theme={self.appearance.get()}/{self.color.get()}")
+            self.log(f"[SET] sr_out={self.core.sample_rate}, sr_in={self.core.input_sample_rate}, dur={self.core.duration}s, theme={self.appearance.get()}/{self.color.get()}")
         except Exception as e:
             self.log(f"[ERROR] settings: {e}")
 
@@ -65,19 +88,81 @@ class DevicesPage(ctk.CTkFrame):
         self.out_menu.configure(values=out_values or ["<no outputs>"]); self.in_menu.configure(values=in_values or ["<no inputs>"])
         out_stored = self.cfg["last_settings"].get("output_device_index")
         in_stored = self.cfg["last_settings"].get("input_device_index")
+        out_default = self.core.get_default_output_index()
+        in_default = self.core.get_default_input_index()
         if out_values:
-            target = next((lbl for lbl,idx in self._out_idx.items() if idx==out_stored), out_values[0]); self.out_menu.set(target)
+            target_idx = out_stored if out_stored is not None else out_default
+            target = next((lbl for lbl,idx in self._out_idx.items() if idx==target_idx), out_values[0]); self.out_menu.set(target)
         if in_values:
-            target = next((lbl for lbl,idx in self._in_idx.items() if idx==in_stored), in_values[0]); self.in_menu.set(target)
+            target_idx = in_stored if in_stored is not None else in_default
+            target = next((lbl for lbl,idx in self._in_idx.items() if idx==target_idx), in_values[0]); self.in_menu.set(target)
+        self._update_sr_menus()
 
     def use_selected_devices(self):
         out_idx = self._out_idx.get(self.out_menu.get()); in_idx = self._in_idx.get(self.in_menu.get())
         if out_idx is None or in_idx is None: return
         self.core.set_devices(output_index=out_idx, input_index=in_idx)
+        self.core.set_sample_rates(output_rate=int(self.out_sr_menu.get()), input_rate=int(self.in_sr_menu.get()))
         self.cfg["last_settings"]["output_device_index"] = out_idx
         self.cfg["last_settings"]["input_device_index"] = in_idx
-        save_config(self.cfg); self.log(f"[SET] devices out={out_idx}, in={in_idx}")
+        self.cfg["last_settings"]["output_sample_rate"] = self.core.sample_rate
+        self.cfg["last_settings"]["input_sample_rate"] = self.core.input_sample_rate
+        if self.out_bits_var.get():
+            self.cfg["last_settings"]["output_bit_depth"] = int(self.out_bits_var.get())
+        if self.in_bits_var.get():
+            self.cfg["last_settings"]["input_bit_depth"] = int(self.in_bits_var.get())
+        save_config(self.cfg); self.log(f"[SET] devices out={out_idx}, in={in_idx}, sr_out={self.core.sample_rate}, sr_in={self.core.input_sample_rate}")
 
     def _toggle_experimental(self):
         self.cfg["ui"]["labs_enabled"] = bool(self.experimental_var.get()); save_config(self.cfg)
         self.on_toggle_experimental(bool(self.experimental_var.get()))
+
+    def _update_sr_menus(self):
+        out_idx = self._out_idx.get(self.out_menu.get())
+        in_idx = self._in_idx.get(self.in_menu.get())
+
+        out_rates, out_bits = self.core.get_device_capabilities(out_idx, False)
+        in_rates, in_bits = self.core.get_device_capabilities(in_idx, True)
+
+        out_rate_vals = [str(r) for r in out_rates]
+        in_rate_vals = [str(r) for r in in_rates]
+        self.out_sr_menu.configure(values=out_rate_vals)
+        self.in_sr_menu.configure(values=in_rate_vals)
+
+        stored_out = str(self.cfg["last_settings"].get("output_sample_rate", 44100))
+        stored_in = str(self.cfg["last_settings"].get("input_sample_rate", 44100))
+        def _pick_rate(stored, vals, default_info_idx):
+            if stored in vals:
+                return stored
+            if default_info_idx is not None:
+                info = self.core.audio.get_device_info_by_index(default_info_idx)
+                default_rate = str(int(info.get("defaultSampleRate", 0)))
+                if default_rate in vals:
+                    return default_rate
+            return vals[0] if vals else stored
+
+        self.out_sr_menu.set(_pick_rate(stored_out, out_rate_vals, out_idx))
+        self.in_sr_menu.set(_pick_rate(stored_in, in_rate_vals, in_idx))
+
+        out_bit_vals = [str(b) for b in out_bits]
+        in_bit_vals = [str(b) for b in in_bits]
+        self.out_bits_menu.configure(values=out_bit_vals)
+        self.in_bits_menu.configure(values=in_bit_vals)
+
+        if len(out_bit_vals) > 1:
+            self.out_bits_label.grid(); self.out_bits_menu.grid()
+            stored = str(self.cfg["last_settings"].get("output_bit_depth", out_bit_vals[0]))
+            self.out_bits_menu.set(stored if stored in out_bit_vals else out_bit_vals[0])
+        else:
+            self.out_bits_label.grid_remove(); self.out_bits_menu.grid_remove()
+            if out_bit_vals:
+                self.out_bits_var.set(out_bit_vals[0])
+
+        if len(in_bit_vals) > 1:
+            self.in_bits_label.grid(); self.in_bits_menu.grid()
+            stored = str(self.cfg["last_settings"].get("input_bit_depth", in_bit_vals[0]))
+            self.in_bits_menu.set(stored if stored in in_bit_vals else in_bit_vals[0])
+        else:
+            self.in_bits_label.grid_remove(); self.in_bits_menu.grid_remove()
+            if in_bit_vals:
+                self.in_bits_var.set(in_bit_vals[0])
