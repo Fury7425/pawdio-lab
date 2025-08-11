@@ -11,6 +11,8 @@ def default_config():
             "sample_rate": 44100,
             "input_sample_rate": 44100,
             "output_sample_rate": 44100,
+            "input_bit_depth": 16,
+            "output_bit_depth": 16,
             "duration": 0.5,
             "repeats": 5,
             "input_device_index": None,
@@ -44,6 +46,10 @@ def load_config(path=CALIBRATION_JSON):
         ls["input_sample_rate"] = ls.get("sample_rate", 44100)
     if "output_sample_rate" not in ls:
         ls["output_sample_rate"] = ls.get("sample_rate", 44100)
+    if "input_bit_depth" not in ls:
+        ls["input_bit_depth"] = 16
+    if "output_bit_depth" not in ls:
+        ls["output_bit_depth"] = 16
     return cfg
 
 def save_config(cfg, path=CALIBRATION_JSON):
