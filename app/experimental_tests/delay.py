@@ -115,3 +115,50 @@ class DelayRunner:
         plt.plot(corr_time, correlation); plt.axvline(x=avg_delay_ms, linestyle="--", label=f"Avg: {avg_delay_ms:.1f} ms"); plt.legend()
         plt.xlabel("Delay (ms)"); plt.ylabel("corr")
         plt.tight_layout(); plt.savefig(filepath); plt.close()
+
+    @staticmethod
+    def save_bar(results, filepath):
+        """Save a bar chart of delay results.
+
+        Parameters
+        ----------
+        results : Mapping[str, Sequence[float]]
+            Mapping of test name to list of delay measurements in milliseconds.
+        filepath : str
+            Destination path for the generated PNG file.
+
+        Returns
+        -------
+        bool
+            ``True`` if the chart was generated, ``False`` otherwise (e.g. no data).
+        """
+
+        if not results:
+            return False
+
+        names, means, stds = [], [], []
+        for name, vals in results.items():
+            vals = [v for v in vals if v is not None]
+            if not vals:
+                continue
+            names.append(name)
+            means.append(float(np.mean(vals)))
+            stds.append(float(np.std(vals)))
+
+        if not names:
+            return False
+
+        xs = np.arange(len(names))
+        plt.figure(figsize=(max(6, len(names) * 1.2), 4.5))
+        bars = plt.bar(xs, means, yerr=stds, capsize=5, color="#3A86FF", alpha=0.8)
+
+        for bar, mean in zip(bars, means):
+            plt.text(bar.get_x() + bar.get_width() / 2, bar.get_height(), f"{mean:.1f}",
+                     ha="center", va="bottom", fontweight="bold")
+
+        plt.ylabel("Delay (ms)")
+        plt.xticks(xs, names, rotation=45, ha="right")
+        plt.tight_layout()
+        plt.savefig(filepath)
+        plt.close()
+        return True
