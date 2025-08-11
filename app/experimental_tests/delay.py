@@ -44,14 +44,16 @@ class DelayRunner:
         for i in range(repeats):
             self._gen(core, preset)
             d, _, _ = self._record_and_play(core, preset)
-            if d is None: self.log(f"  ✗ {i+1}/{repeats}")
-            else: self.log(f"  ✓ {i+1}/{repeats}: {d:.2f} ms")
+            if d is None:
+                self.log(f"  ✗ {i+1}/{repeats}: no audio detected")
+            else:
+                self.log(f"  ✓ {i+1}/{repeats}: {d:.4f} ms")
             delays.append(d); time.sleep(0.15)
         avg, std = safe_mean(delays), safe_std(delays)
         if avg is not None:
             self.cfg["per_sound_offsets_ms"].setdefault(preset["key"], 0.0)
             self.cfg["per_sound_offsets_ms"][preset["key"]] = float(avg)
-            self.log(f"  -> baseline {avg:.2f} ± {std:.2f} ms saved")
+            self.log(f"  -> baseline {avg:.4f} ± {std:.4f} ms saved")
         return avg, std
 
     def calibrate_global(self, core, repeats=10):
@@ -60,13 +62,15 @@ class DelayRunner:
         delays=[]
         for i in range(repeats):
             self._gen(core, pseudo); d,_,_ = self._record_and_play(core, pseudo)
-            if d is None: self.log(f"  ✗ {i+1}/{repeats}")
-            else: self.log(f"  ✓ {i+1}/{repeats}: {d:.2f} ms")
+            if d is None:
+                self.log(f"  ✗ {i+1}/{repeats}: no audio detected")
+            else:
+                self.log(f"  ✓ {i+1}/{repeats}: {d:.4f} ms")
             delays.append(d); time.sleep(0.15)
         avg, std = safe_mean(delays), safe_std(delays)
         if avg is not None:
             self.cfg["global_system_offset_ms"] = float(avg)
-            self.log(f"  -> GLOBAL {avg:.2f} ± {std:.2f} ms saved")
+            self.log(f"  -> GLOBAL {avg:.4f} ± {std:.4f} ms saved")
         return avg, std
 
     # Testing
@@ -74,22 +78,50 @@ class DelayRunner:
         per_sound = self.cfg["per_sound_offsets_ms"].get(preset["key"], 0.0)
         global_off = float(self.cfg.get("global_system_offset_ms", 0.0))
         calib = per_sound + global_off
-        self.log(f"[TEST] {preset['name']} x{repeats}  (calib={calib:.2f} ms)")
+        self.log(f"[TEST] {preset['name']} x{repeats}  (calib={calib:.4f} ms)")
         results = []
         first_good = None
         for i in range(repeats):
             self._gen(core, preset)
             d_raw, rec, ref = self._record_and_play(core, preset)
             if d_raw is None:
-                self.log(f"  ✗ {i+1}/{repeats}"); results.append(None)
+                self.log(f"  ✗ {i+1}/{repeats}: no audio detected")
+                results.append(None)
             else:
-                d_cal = d_raw - calib; self.log(f"  ✓ {i+1}/{repeats}: {d_cal:.2f} ms")
+                d_cal = d_raw - calib
+                self.log(
+                    f"  ✓ {i+1}/{repeats}: raw {d_raw:.4f} ms | offset {calib:.4f} ms -> calibrated {d_cal:.4f} ms"
+                )
+                if d_cal < 0:
+                    self.log(
+                        "    Warning: Negative calibrated delay. Check calibration or measurement."
+                    )
+                elif d_cal > 100:
+                    self.log(
+                        "    Warning: High calibrated delay detected. Check your audio setup, connections, and system settings."
+                    )
+                else:
+                    self.log("    Calibrated delay is within acceptable range.")
                 results.append(d_cal)
                 if first_good is None and rec is not None and ref is not None:
                     first_good = (rec, ref)
             time.sleep(0.12)
         avg, std = safe_mean(results), safe_std(results)
-        if avg is not None: self.log(f"  -> avg {avg:.2f} ± {std:.2f} ms")
+        if avg is not None:
+            vals = [r for r in results if r is not None]
+            min_d, max_d = min(vals), max(vals)
+            self.log(f"  -> avg {avg:.4f} ± {std:.4f} ms")
+            self.log(
+                f"     min {min_d:.4f} ms | max {max_d:.4f} ms | range {(max_d - min_d):.4f} ms"
+            )
+            if avg < 20:
+                self.log("     Performance: Excellent (< 20ms)")
+            elif avg < 40:
+                self.log("     Performance: Good (20-40ms)")
+            elif avg < 80:
+                self.log("     Performance: Acceptable (40-80ms)")
+            else:
+                self.log("     Performance: Poor (> 80ms)")
         if save_plot_dir and first_good and avg is not None:
             rec, ref = first_good
             ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
