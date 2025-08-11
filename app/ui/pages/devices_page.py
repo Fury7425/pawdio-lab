@@ -3,9 +3,9 @@ import customtkinter as ctk
 from ...config import save_config
 
 class DevicesPage(ctk.CTkFrame):
-    def __init__(self, master, core, cfg, log_fn, on_toggle_labs):
+    def __init__(self, master, core, cfg, log_fn, on_toggle_experimental):
         super().__init__(master, corner_radius=0)
-        self.core = core; self.cfg = cfg; self.log = log_fn; self.on_toggle_labs = on_toggle_labs
+        self.core = core; self.cfg = cfg; self.log = log_fn; self.on_toggle_experimental = on_toggle_experimental
         self.grid_columnconfigure(1, weight=1)
 
         ctk.CTkLabel(self, text="Devices / Settings", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, columnspan=2, padx=18, pady=(18,4), sticky="w")
@@ -35,8 +35,8 @@ class DevicesPage(ctk.CTkFrame):
         ctk.CTkLabel(ap, text="Accent").grid(row=0, column=2, padx=8, pady=8, sticky="w")
         self.color = ctk.CTkOptionMenu(ap, values=["blue","dark-blue","green"]); self.color.set(self.cfg["ui"].get("color_theme","blue")); self.color.grid(row=0, column=3, padx=8, sticky="w")
 
-        self.labs_var = ctk.BooleanVar(value=bool(self.cfg["ui"].get("labs_enabled", True)))
-        ctk.CTkSwitch(ap, text="Enable Lab Tests (experimental)", variable=self.labs_var, command=self._toggle_labs).grid(row=1, column=0, columnspan=2, padx=8, pady=(8,6), sticky="w")
+        self.experimental_var = ctk.BooleanVar(value=bool(self.cfg["ui"].get("labs_enabled", True)))
+        ctk.CTkSwitch(ap, text="Enable Experimental Tests", variable=self.experimental_var, command=self._toggle_experimental).grid(row=1, column=0, columnspan=2, padx=8, pady=(8,6), sticky="w")
 
         self._refresh_devices()
 
@@ -78,6 +78,6 @@ class DevicesPage(ctk.CTkFrame):
         self.cfg["last_settings"]["input_device_index"] = in_idx
         save_config(self.cfg); self.log(f"[SET] devices out={out_idx}, in={in_idx}")
 
-    def _toggle_labs(self):
-        self.cfg["ui"]["labs_enabled"] = bool(self.labs_var.get()); save_config(self.cfg)
-        self.on_toggle_labs(bool(self.labs_var.get()))
+    def _toggle_experimental(self):
+        self.cfg["ui"]["labs_enabled"] = bool(self.experimental_var.get()); save_config(self.cfg)
+        self.on_toggle_experimental(bool(self.experimental_var.get()))

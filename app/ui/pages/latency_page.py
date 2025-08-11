@@ -1,6 +1,6 @@
 
 import os, datetime, numpy as np, customtkinter as ctk
-from ...tests.delay import DelayRunner, SOUND_PRESETS
+from ...experimental_tests.delay import DelayRunner, SOUND_PRESETS
 from ...core.utils import ensure_dir
 from ...config import save_config
 
@@ -157,7 +157,7 @@ class LatencyPage(ctk.CTkScrollableFrame):
 
         if self.save_bar_var.get():
             try:
-                from ...tests.delay import DelayRunner
+                from ...experimental_tests.delay import DelayRunner
                 ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
                 bar_path = os.path.join(out_dir, f"overall_bar_{ts}.png")
                 ok = DelayRunner.save_bar(bars, bar_path)
@@ -186,7 +186,7 @@ class LatencyPage(ctk.CTkScrollableFrame):
         self.summary_box.delete("1.0", "end"); self.summary_box.insert("1.0", "\n".join(lines))
 
     def _refresh_baseline_box(self):
-        from ...tests.delay import SOUND_PRESETS
+        from ...experimental_tests.delay import SOUND_PRESETS
         lines = ["Per-sound baselines (ms):"]
         for p in SOUND_PRESETS:
             val = self.cfg["per_sound_offsets_ms"].get(p["key"], 0.0)
