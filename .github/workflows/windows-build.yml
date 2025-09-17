@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-windows:
-    runs-on: windows-latest
+    runs-on: windows-2022   # Pin to 2022 for stability (or keep windows-latest if okay with 2025)
 
     steps:
       - name: Checkout
@@ -43,10 +43,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Pawdio-Lab-${{ github.sha }}
-          path: dist/Pawdio-Lab
+          path: dist/Pawdio-Lab.exe   # ✅ fixed
 
   release:
-    # Create a release when a tag like v0.1.0 is pushed
     if: startsWith(github.ref, 'refs/tags/')
     needs: build-windows
     runs-on: ubuntu-latest
@@ -61,6 +60,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/Pawdio-Lab.exe
+            dist/Pawdio-Lab.exe   # ✅ matches above
           draft: false
           prerelease: false
