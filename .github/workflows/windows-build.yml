@@ -36,14 +36,14 @@ jobs:
 
       - name: Build EXE
         run: |
-          pyinstaller --onefile --noconsole --name "LatencyLab-Modular" -p app app/main.py
+          pyinstaller --onefile --noconsole --name "Pawdio-Lab" -p app app/main.py
           dir dist
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: LatencyLab-Modular-${{ github.sha }}
-          path: dist/LatencyLab-Modular.exe
+          name: Pawdio-Lab-${{ github.sha }}
+          path: dist/Pawdio-Lab
 
   release:
     # Create a release when a tag like v0.1.0 is pushed
@@ -54,13 +54,13 @@ jobs:
       - name: Download artifact
         uses: actions/download-artifact@v4
         with:
-          name: LatencyLab-Modular-${{ github.sha }}
+          name: Pawdio-Lab-${{ github.sha }}
           path: dist
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/LatencyLab-Modular.exe
+            dist/Pawdio-Lab.exe
           draft: false
           prerelease: false
