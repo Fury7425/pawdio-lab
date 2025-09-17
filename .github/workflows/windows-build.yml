@@ -43,15 +43,6 @@ jobs:
         run: |
           Compress-Archive -Path dist/Pawdio-Lab.exe -DestinationPath dist/Pawdio-Lab.zip
 
-      - name: Delete old artifacts
-        run: |
-          $artifacts = gh run artifact list --json id,name | ConvertFrom-Json
-          foreach ($artifact in $artifacts) {
-              Write-Host "Deleting artifact: $($artifact.name)"
-              gh run artifact delete $artifact.id --confirm
-          }
-        shell: pwsh
-
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
