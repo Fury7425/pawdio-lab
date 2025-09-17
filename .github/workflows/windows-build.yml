@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-windows:
-    runs-on: windows-2022   # Pin to 2022 for stability (or keep windows-latest if okay with 2025)
+    runs-on: windows-2022
 
     steps:
       - name: Checkout
@@ -39,16 +39,29 @@ jobs:
           pyinstaller --onefile --noconsole --name "Pawdio-Lab" -p app app/main.py
           dir dist
 
+      - name: Compress EXE
+        run: |
+          Compress-Archive -Path dist/Pawdio-Lab.exe -DestinationPath dist/Pawdio-Lab.zip
+
+      - name: Delete old artifacts
+        run: |
+          gh run artifact list --limit 50 | ForEach-Object {
+            $id = ($_ -split '\s+')[0]
+            gh run artifact delete $id
+          }
+        shell: pwsh
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Pawdio-Lab-${{ github.sha }}
-          path: dist/Pawdio-Lab.exe   # ✅ fixed
+          path: dist/Pawdio-Lab.zip
 
   release:
     if: startsWith(github.ref, 'refs/tags/')
     needs: build-windows
     runs-on: ubuntu-latest
+
     steps:
       - name: Download artifact
         uses: actions/download-artifact@v4
@@ -60,6 +73,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            dist/Pawdio-Lab.exe   # ✅ matches above
+            dist/Pawdio-Lab.zip
           draft: false
           prerelease: false
