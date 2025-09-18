@@ -68,3 +68,4 @@ jobs:
             dist/Pawdio-Lab.zip
           draft: false
           prerelease: false
+
