@@ -132,6 +132,11 @@ class SweepFRPage(ctk.CTkFrame):
         self.clip_warning = ctk.CTkLabel(control_frame, text="", text_color="red", font=ctk.CTkFont(size=12, weight="bold"))
         self.clip_warning.pack(side="right", padx=12)
 
+        # --- Level Test Button ---
+        self.level_test_button = ctk.CTkButton(control_frame, text="Start Level Test", command=self.run_level_test, width=140)
+        self.level_test_button.pack(side="left", padx=6)
+        # --- End Level Test Button ---
+
         return level_card
 
     def _build_results(self):
@@ -239,3 +244,40 @@ class SweepFRPage(ctk.CTkFrame):
     def reset_peak(self):
         self.peak_level = -96.0
         self.clip_count = 0
+
+    # ====== LEVEL TEST METHOD ======
+    def run_level_test(self):
+        try:
+            duration = 5.0  # seconds
+            samplerate = getattr(self.core, "sample_rate", 44100)
+
+            pink_noise = self.generate_pink_noise(duration, samplerate)
+
+            self.status_label.configure(text="Playing pink noise for level test...")
+            self.update_idletasks()
+
+            # Play and record using your core's function
+            rec = self.core._play_and_record(pink_noise, both=True, settle=0.05, rec_dur=duration)
+
+            if rec is None:
+                self.status_label.configure(text="Recording failed.")
+                return
+
+            rms = np.sqrt(np.mean(rec[:, 0] ** 2))
+            dbfs = 20 * np.log10(rms + 1e-12)
+            self.current_level_label.configure(text=f"{dbfs:.2f} dBFS")
+            self.status_label.configure(text="Level test complete.")
+
+        except Exception as e:
+            self.status_label.configure(text=f"Error: {str(e)}")
+
+    def generate_pink_noise(self, duration, samplerate):
+        n = int(duration * samplerate)
+        white = np.random.randn(n)
+        b = [0.02109238, 0.07113478, 0.68873558]
+        a = [1, -1.73472577, 0.7660066]
+        pink = np.zeros(n)
+        for i in range(3, n):
+            pink[i] = b[0] * white[i] + b[1] * white[i - 1] + b[2] * white[i - 2] - a[1] * pink[i - 1] - a[2] * pink[i - 2]
+        pink /= np.max(np.abs(pink)) + 1e-12
+        return pink.astype(np.float32)
