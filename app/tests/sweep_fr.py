@@ -6,7 +6,9 @@ from ..core.audio import AudioCore
 from ..core.utils import ensure_dir
 from .base import TestResult
 
-def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None, save_squiglink=False):
+from tkinter import messagebox
+
+def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None, save_squiglink=False, mono_mode=False):
     log("[SWEEP FR] Keep mic steady near driver.")
     sig, t = core.generate_log_chirp(f0=f0, f1=f1, duration=duration, amp=0.5)
 
@@ -22,59 +24,116 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
     mags_r = []
     delays_l = []
     delays_r = []
-    for i in range(int(repeats)):
-        log(f"[SWEEP FR] Sweep {i+1}/{repeats}")
-        rec = _play_and_record(core, sig, both=True, settle=0.05, rec_dur=duration+0.5)
 
-        # **FIX:** Check if recording returned None and handle it gracefully
-        if rec is None:
-            log("[ERROR] Audio recording failed. Check input device selection and ensure microphone permissions are granted in System Settings.")
-            # If any sweeps have already completed, return their results. Otherwise, return None.
-            if not mags_l and not mags_r:
-                return None
-            else:
-                break # Exit the loop and process the sweeps that did succeed
+    if mono_mode:
+        # LEFT sweeps
+        for i in range(int(repeats)):
+            messagebox.showinfo("Mono Sweep", f"Plug mic into LEFT side and click OK for sweep {i+1}/{repeats}.")
+            rec = _play_and_record(core, sig, left_only=True, right_only=False, both=False, settle=0.05, rec_dur=duration+0.5)
+            if rec is None:
+                log("[ERROR] Audio recording failed (LEFT). Check input device selection and ensure microphone permissions are granted in System Settings.")
+                if not mags_l:
+                    return None
+                else:
+                    break
+            rec_l = rec
+            delay_ms_l, _ = AudioCore.find_delay_ms(rec_l, sig_ref, core.input_sample_rate)
+            delays_l.append(delay_ms_l)
+            delay_s_l = 0.0 if delay_ms_l is None else delay_ms_l/1000.0
+            shift_l = int(round(delay_s_l * core.input_sample_rate))
+            rec_aligned_l = rec_l[shift_l: shift_l + len(sig_ref)] if shift_l >= 0 else rec_l[:len(sig_ref)]
+            if len(rec_aligned_l) < len(sig_ref):
+                rec_aligned_l = np.pad(rec_aligned_l, (0, len(sig_ref)-len(rec_aligned_l)))
+            env_l = np.abs(signal.hilbert(rec_aligned_l))
+            env_l = env_l / (np.max(env_l)+1e-12)
+            T = duration
+            freqs_inst = f0 * (f1/f0) ** (t_ref / T)
+            mag_l = np.zeros_like(grid)
+            for j, f in enumerate(grid):
+                idx = np.argmin(np.abs(freqs_inst - f))
+                mag_l[j] = env_l[idx]
+            mags_l.append(mag_l)
 
-        rec_l = rec[:, 0]
-        rec_r = rec[:, 1]
+        # RIGHT sweeps
+        for i in range(int(repeats)):
+            messagebox.showinfo("Mono Sweep", f"Plug mic into RIGHT side and click OK for sweep {i+1}/{repeats}.")
+            rec = _play_and_record(core, sig, left_only=False, right_only=True, both=False, settle=0.05, rec_dur=duration+0.5)
+            if rec is None:
+                log("[ERROR] Audio recording failed (RIGHT). Check input device selection and ensure microphone permissions are granted in System Settings.")
+                if not mags_r:
+                    return None
+                else:
+                    break
+            rec_r = rec
+            delay_ms_r, _ = AudioCore.find_delay_ms(rec_r, sig_ref, core.input_sample_rate)
+            delays_r.append(delay_ms_r)
+            delay_s_r = 0.0 if delay_ms_r is None else delay_ms_r/1000.0
+            shift_r = int(round(delay_s_r * core.input_sample_rate))
+            rec_aligned_r = rec_r[shift_r: shift_r + len(sig_ref)] if shift_r >= 0 else rec_r[:len(sig_ref)]
+            if len(rec_aligned_r) < len(sig_ref):
+                rec_aligned_r = np.pad(rec_aligned_r, (0, len(sig_ref)-len(rec_aligned_r)))
+            env_r = np.abs(signal.hilbert(rec_aligned_r))
+            env_r = env_r / (np.max(env_r)+1e-12)
+            T = duration
+            freqs_inst = f0 * (f1/f0) ** (t_ref / T)
+            mag_r = np.zeros_like(grid)
+            for j, f in enumerate(grid):
+                idx = np.argmin(np.abs(freqs_inst - f))
+                mag_r[j] = env_r[idx]
+            mags_r.append(mag_r)
 
-        # Time alignment
-        delay_ms_l, _ = AudioCore.find_delay_ms(rec_l, sig_ref, core.input_sample_rate)
-        delay_ms_r, _ = AudioCore.find_delay_ms(rec_r, sig_ref, core.input_sample_rate)
-        delays_l.append(delay_ms_l)
-        delays_r.append(delay_ms_r)
+    else:
+        for i in range(int(repeats)):
+            log(f"[SWEEP FR] Sweep {i+1}/{repeats}")
+            rec = _play_and_record(core, sig, both=True, settle=0.05, rec_dur=duration+0.5)
 
-        delay_s_l = 0.0 if delay_ms_l is None else delay_ms_l/1000.0
-        delay_s_r = 0.0 if delay_ms_r is None else delay_ms_r/1000.0
-        shift_l = int(round(delay_s_l * core.input_sample_rate))
-        shift_r = int(round(delay_s_r * core.input_sample_rate))
-        
-        # Trim/Pad to match reference signal length
-        rec_aligned_l = rec_l[shift_l: shift_l + len(sig_ref)] if shift_l >= 0 else rec_l[:len(sig_ref)]
-        rec_aligned_r = rec_r[shift_r: shift_r + len(sig_ref)] if shift_r >= 0 else rec_r[:len(sig_ref)]
-        if len(rec_aligned_l) < len(sig_ref):
-            rec_aligned_l = np.pad(rec_aligned_l, (0, len(sig_ref)-len(rec_aligned_l)))
-        if len(rec_aligned_r) < len(sig_ref):
-            rec_aligned_r = np.pad(rec_aligned_r, (0, len(sig_ref)-len(rec_aligned_r)))
+            if rec is None:
+                log("[ERROR] Audio recording failed. Check input device selection and ensure microphone permissions are granted in System Settings.")
+                if not mags_l and not mags_r:
+                    return None
+                else:
+                    break # Exit the loop and process the sweeps that did succeed
 
-        # Envelope detection for FR
-        env_l = np.abs(signal.hilbert(rec_aligned_l))
-        env_r = np.abs(signal.hilbert(rec_aligned_r))
-        env_l = env_l / (np.max(env_l)+1e-12)
-        env_r = env_r / (np.max(env_r)+1e-12)
+            rec_l = rec[:, 0]
+            rec_r = rec[:, 1]
 
-        T = duration
-        # Instantaneous frequency calculation (linear in log space)
-        freqs_inst = f0 * (f1/f0) ** (t_ref / T) 
-        mag_l = np.zeros_like(grid)
-        mag_r = np.zeros_like(grid)
-        for j, f in enumerate(grid):
-            # Find the time index closest to this frequency
-            idx = np.argmin(np.abs(freqs_inst - f))
-            mag_l[j] = env_l[idx]
-            mag_r[j] = env_r[idx]
-        mags_l.append(mag_l)
-        mags_r.append(mag_r)
+            # Time alignment
+            delay_ms_l, _ = AudioCore.find_delay_ms(rec_l, sig_ref, core.input_sample_rate)
+            delay_ms_r, _ = AudioCore.find_delay_ms(rec_r, sig_ref, core.input_sample_rate)
+            delays_l.append(delay_ms_l)
+            delays_r.append(delay_ms_r)
+
+            delay_s_l = 0.0 if delay_ms_l is None else delay_ms_l/1000.0
+            delay_s_r = 0.0 if delay_ms_r is None else delay_ms_r/1000.0
+            shift_l = int(round(delay_s_l * core.input_sample_rate))
+            shift_r = int(round(delay_s_r * core.input_sample_rate))
+            
+            # Trim/Pad to match reference signal length
+            rec_aligned_l = rec_l[shift_l: shift_l + len(sig_ref)] if shift_l >= 0 else rec_l[:len(sig_ref)]
+            rec_aligned_r = rec_r[shift_r: shift_r + len(sig_ref)] if shift_r >= 0 else rec_r[:len(sig_ref)]
+            if len(rec_aligned_l) < len(sig_ref):
+                rec_aligned_l = np.pad(rec_aligned_l, (0, len(sig_ref)-len(rec_aligned_l)))
+            if len(rec_aligned_r) < len(sig_ref):
+                rec_aligned_r = np.pad(rec_aligned_r, (0, len(sig_ref)-len(rec_aligned_r)))
+
+            # Envelope detection for FR
+            env_l = np.abs(signal.hilbert(rec_aligned_l))
+            env_r = np.abs(signal.hilbert(rec_aligned_r))
+            env_l = env_l / (np.max(env_l)+1e-12)
+            env_r = env_r / (np.max(env_r)+1e-12)
+
+            T = duration
+            # Instantaneous frequency calculation (linear in log space)
+            freqs_inst = f0 * (f1/f0) ** (t_ref / T) 
+            mag_l = np.zeros_like(grid)
+            mag_r = np.zeros_like(grid)
+            for j, f in enumerate(grid):
+                # Find the time index closest to this frequency
+                idx = np.argmin(np.abs(freqs_inst - f))
+                mag_l[j] = env_l[idx]
+                mag_r[j] = env_r[idx]
+            mags_l.append(mag_l)
+            mags_r.append(mag_r)
 
     # **FIX:** Ensure there's data to process before continuing
     if not mags_l and not mags_r:
@@ -265,12 +324,15 @@ def _play_and_record(core, mono_signal, left_only=False, right_only=False, both=
     rec = {"audio": None}
     def worker():
         ch = 2 if both else 1
-        # NOTE: core.record_audio must be robust to exceptions from PyAudio
         rec["audio"] = core.record_audio(rec_dur, channels=ch) 
     t = threading.Thread(target=worker, daemon=True); t.start()
     time.sleep(0.05 + settle)
     if both:
         core.play_stereo(mono_signal, mono_signal)
+    elif left_only:
+        core.play_stereo(mono_signal, np.zeros_like(mono_signal))
+    elif right_only:
+        core.play_stereo(np.zeros_like(mono_signal), mono_signal)
     else:
         core.play_mono(mono_signal)
     t.join(); return rec["audio"]
