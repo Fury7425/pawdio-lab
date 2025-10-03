@@ -1,4 +1,4 @@
-import os, json, customtkinter as ctk
+import os, json, customtkinter as ctk, traceback # Added traceback
 from ...tests import sweep_fr
 from ...core.utils import ensure_dir
 from ...config import save_config
@@ -87,18 +87,32 @@ class SweepFRPage(ctk.CTkFrame):
             save_config(self.cfg)
 
     def on_run(self):
+        """Runs the frequency sweep test with error handling."""
         out_dir = self.output_dir_var.get() or os.getcwd()
-        r = sweep_fr.run(
-            self.core,
-            self.log,
-            f0=float(self.var_f0.get()),
-            f1=float(self.var_f1.get()),
-            duration=float(self.var_dur.get()),
-            repeats=int(self.var_rep.get()),
-            save_plot_dir=out_dir if self.save_plots_var.get() else None,
-            save_squiglink=self.save_squiglink_var.get()
-        )
-        self._push(r)
+        self.log(f"[SWEEP FR] Starting run with f0={self.var_f0.get()}, f1={self.var_f1.get()}, repeats={self.var_rep.get()}")
+
+        try:
+            r = sweep_fr.run(
+                self.core,
+                self.log,
+                f0=float(self.var_f0.get()),
+                f1=float(self.var_f1.get()),
+                duration=float(self.var_dur.get()),
+                repeats=int(self.var_rep.get()),
+                save_plot_dir=out_dir if self.save_plots_var.get() else None,
+                save_squiglink=self.save_squiglink_var.get()
+            )
+            # Only process result if the run function completed without error
+            self._push(r)
+            self.log("[SWEEP FR] Run successful.")
+        except Exception as e:
+            # Catch the error, log the error message, and show the traceback in the UI
+            error_msg = f"[ERROR] Sweep failed: {e}. Check audio devices and macOS Microphone permissions."
+            self.log(error_msg)
+            self.box.insert("end", f"{error_msg}\n")
+            self.box.insert("end", f"--- TRACEBACK ---\n{traceback.format_exc()}\n-----------------\n\n")
+            self.box.see("end")
+
 
     def _push(self, res):
         self.results.append(res.to_dict())
@@ -107,6 +121,7 @@ class SweepFRPage(ctk.CTkFrame):
 
     def export_last(self):
         if not self.results:
+            self.log("[WARNING] No results to export")
             return
         out_dir = self.output_dir_var.get() or os.getcwd()
         ensure_dir(out_dir)
@@ -120,6 +135,7 @@ class SweepFRPage(ctk.CTkFrame):
 
     def export_all(self):
         if not self.results:
+            self.log("[WARNING] No results to export")
             return
         out_dir = self.output_dir_var.get() or os.getcwd()
         ensure_dir(out_dir)
@@ -130,7 +146,7 @@ class SweepFRPage(ctk.CTkFrame):
         with open(path, "w", encoding="utf-8") as f:
             json.dump(self.results, f, indent=2, ensure_ascii=False)
         self.log(f"[EXPORT] all -> {path}")
-    
+        
     def export_last_squiglink(self):
         """Export the last sweep result to Squiglink-compatible format"""
         if not self.results:
@@ -182,7 +198,7 @@ class SweepFRPage(ctk.CTkFrame):
             self.log(f"[EXPORT] Right channel -> {right_path}")
         
         # Export average if available
-        if avg_db:
+        if avg_db and len(avg_db) == len(freqs): # Added length check
             avg_path = os.path.join(out_dir, f"squiglink_avg_{ts}.txt")
             with open(avg_path, 'w') as f:
                 f.write("# PawdioLab Frequency Response - Average (L+R)\n")
