@@ -1,4 +1,3 @@
-
 import os, datetime, numpy as np, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -7,7 +6,7 @@ from ..core.audio import AudioCore
 from ..core.utils import ensure_dir
 from .base import TestResult
 
-def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None):
+def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None, save_squiglink=False):
     log("[SWEEP FR] Keep mic steady near driver.")
     sig, t = core.generate_log_chirp(f0=f0, f1=f1, duration=duration, amp=0.5)
 
@@ -79,6 +78,7 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None)
         ensure_dir(save_plot_dir)
         ts = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
+        # Save all the plots as before
         out_left_avg = os.path.join(save_plot_dir, f"sweep_fr_left_avg_{ts}.png")
         plt.figure(figsize=(9,5))
         plt.semilogx(grid, mag_db_left_avg)
@@ -140,6 +140,15 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None)
         plt.tight_layout(); plt.savefig(out_avg_all); plt.close()
         files["plot_avg_all"] = out_avg_all
 
+        # Save Squiglink format files if requested
+        if save_squiglink:
+            squiglink_files = save_squiglink_format(
+                save_plot_dir, ts, grid, 
+                mag_db_left_avg, mag_db_right_avg, mag_db_avg_all
+            )
+            files.update(squiglink_files)
+            log(f"[SAVE] Squiglink files saved")
+
     avg_delay_l = float(np.mean([d for d in delays_l if d is not None])) if delays_l else None
     avg_delay_r = float(np.mean([d for d in delays_r if d is not None])) if delays_r else None
     res = TestResult(
@@ -167,6 +176,53 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None)
     else:
         log("[SWEEP FR] Done")
     return res
+
+def save_squiglink_format(output_dir, timestamp, freqs, left_db, right_db, avg_db):
+    """Save frequency response data in Squiglink-compatible text format.
+    
+    Squiglink format is a simple two-column text file:
+    - Column 1: Frequency in Hz
+    - Column 2: Amplitude in dB
+    """
+    files = {}
+    
+    # Save left channel
+    left_path = os.path.join(output_dir, f"squiglink_left_{timestamp}.txt")
+    with open(left_path, 'w') as f:
+        f.write("# PawdioLab Frequency Response - Left Channel\n")
+        f.write("# Frequency(Hz)\tAmplitude(dB)\n")
+        for freq, amp in zip(freqs, left_db):
+            f.write(f"{freq:.2f}\t{amp:.3f}\n")
+    files["squiglink_left"] = left_path
+    
+    # Save right channel
+    right_path = os.path.join(output_dir, f"squiglink_right_{timestamp}.txt")
+    with open(right_path, 'w') as f:
+        f.write("# PawdioLab Frequency Response - Right Channel\n")
+        f.write("# Frequency(Hz)\tAmplitude(dB)\n")
+        for freq, amp in zip(freqs, right_db):
+            f.write(f"{freq:.2f}\t{amp:.3f}\n")
+    files["squiglink_right"] = right_path
+    
+    # Save average of both channels
+    avg_path = os.path.join(output_dir, f"squiglink_avg_{timestamp}.txt")
+    with open(avg_path, 'w') as f:
+        f.write("# PawdioLab Frequency Response - Average (L+R)\n")
+        f.write("# Frequency(Hz)\tAmplitude(dB)\n")
+        for freq, amp in zip(freqs, avg_db):
+            f.write(f"{freq:.2f}\t{amp:.3f}\n")
+    files["squiglink_avg"] = avg_path
+    
+    # Save both channels in one file for comparison
+    both_path = os.path.join(output_dir, f"squiglink_both_{timestamp}.txt")
+    with open(both_path, 'w') as f:
+        f.write("# PawdioLab Frequency Response - Both Channels\n")
+        f.write("# Frequency(Hz)\tLeft(dB)\tRight(dB)\n")
+        for freq, l_amp, r_amp in zip(freqs, left_db, right_db):
+            f.write(f"{freq:.2f}\t{l_amp:.3f}\t{r_amp:.3f}\n")
+    files["squiglink_both"] = both_path
+    
+    return files
 
 def _play_and_record(core, mono_signal, left_only=False, right_only=False, both=False, settle=0.05, rec_dur=None):
     import threading, time, numpy as np
