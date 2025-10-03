@@ -60,6 +60,12 @@ class SweepFRPage(ctk.CTkFrame):
             row=3, column=1, columnspan=2, padx=8, pady=(8, 4), sticky="w"
         )
 
+        # Mono mode switch (only affects sweep_fr)
+        self.mono_mode_var = ctk.BooleanVar(value=False)
+        ctk.CTkSwitch(run_card, text="Mono Test (one side at a time)", variable=self.mono_mode_var).grid(
+            row=3, column=3, padx=8, pady=(8, 4), sticky="w"
+        )
+
         ctk.CTkLabel(run_card, text="Output Folder").grid(row=4, column=0, padx=8, pady=(8, 2), sticky="w")
         self.output_dir_var = ctk.StringVar(value=self.cfg["last_settings"].get("output_dir", os.getcwd()))
         row = ctk.CTkFrame(run_card)
@@ -151,12 +157,14 @@ class SweepFRPage(ctk.CTkFrame):
             outdir = self.output_dir_var.get()
             ensure_dir(outdir)
 
+            mono_mode = self.mono_mode_var.get()  # <-- passes mono mode to sweep_fr
+
             self.log("Running sweep...")
-            # FIX: Use sweep_fr.run and correct argument names
             res = sweep_fr.run(
                 self.core, self.log, f0, f1, dur, reps,
                 save_plot_dir=outdir,
-                save_squiglink=self.save_squiglink_var.get()
+                save_squiglink=self.save_squiglink_var.get(),
+                mono_mode=mono_mode
             )
             self.results.append(res)
             self.box.insert("end", f"{res}\n")
@@ -181,7 +189,6 @@ class SweepFRPage(ctk.CTkFrame):
         if self.results:
             res = self.results[-1]
             with open("last_sweep_squiglink.txt", "w") as f:
-                # This expects res to be a dict with freq:val pairs
                 if "data" in res and "freqs" in res["data"] and "mag_db_avg_all" in res["data"]:
                     for freq, val in zip(res["data"]["freqs"], res["data"]["mag_db_avg_all"]):
                         f.write(f"{freq}\t{val}\n")
@@ -197,16 +204,12 @@ class SweepFRPage(ctk.CTkFrame):
         else:
             self.monitoring = True
             self.monitor_button.configure(text="Stop Monitoring")
-            # Monitoring disabled if core doesn't have recorder
             self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
             self.monitor_thread.start()
 
     def _monitor_loop(self):
-        # Dummy monitoring: just updates fake levels (replace with real input if available)
         while self.monitoring:
             try:
-                # If you want real level monitoring, implement code here to get input audio level
-                # For now, simulate a read:
                 self.current_level += np.random.normal(0, 0.5)
                 self.current_level = max(-96.0, min(self.current_level, 0.0))
                 if self.current_level > self.peak_level:
