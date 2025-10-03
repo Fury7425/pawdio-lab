@@ -26,6 +26,15 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
         log(f"[SWEEP FR] Sweep {i+1}/{repeats}")
         rec = _play_and_record(core, sig, both=True, settle=0.05, rec_dur=duration+0.5)
 
+        # **FIX:** Check if recording returned None and handle it gracefully
+        if rec is None:
+            log("[ERROR] Audio recording failed. Check input device selection and ensure microphone permissions are granted in System Settings.")
+            # If any sweeps have already completed, return their results. Otherwise, return None.
+            if not mags_l and not mags_r:
+                return None
+            else:
+                break # Exit the loop and process the sweeps that did succeed
+
         rec_l = rec[:, 0]
         rec_r = rec[:, 1]
 
@@ -67,18 +76,33 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
         mags_l.append(mag_l)
         mags_r.append(mag_r)
 
+    # **FIX:** Ensure there's data to process before continuing
+    if not mags_l and not mags_r:
+        log("[SWEEP FR] No successful sweeps were recorded. Aborting.")
+        return None
+
     mags_l = np.array(mags_l)
     mags_r = np.array(mags_r)
     
     # Calculate averages and convert to dB
-    avg_mag_l = np.mean(mags_l, axis=0)
-    avg_mag_r = np.mean(mags_r, axis=0)
-    avg_mag_all = np.mean(np.concatenate([mags_l, mags_r], axis=0), axis=0)
+    avg_mag_l = np.mean(mags_l, axis=0) if mags_l.size > 0 else np.zeros_like(grid)
+    avg_mag_r = np.mean(mags_r, axis=0) if mags_r.size > 0 else np.zeros_like(grid)
+    
+    # Only concatenate if both have data
+    if mags_l.size > 0 and mags_r.size > 0:
+        all_mags = np.concatenate([mags_l, mags_r], axis=0)
+    elif mags_l.size > 0:
+        all_mags = mags_l
+    else:
+        all_mags = mags_r
+    
+    avg_mag_all = np.mean(all_mags, axis=0)
+
     mag_db_left_avg = 20*np.log10(np.maximum(avg_mag_l, 1e-6))
     mag_db_right_avg = 20*np.log10(np.maximum(avg_mag_r, 1e-6))
-    mag_db_left_all = 20*np.log10(np.maximum(mags_l, 1e-6))
-    mag_db_right_all = 20*np.log10(np.maximum(mags_r, 1e-6))
-    mag_db_all = 20*np.log10(np.maximum(np.concatenate([mags_l, mags_r], axis=0), 1e-6))
+    mag_db_left_all = 20*np.log10(np.maximum(mags_l, 1e-6)) if mags_l.size > 0 else []
+    mag_db_right_all = 20*np.log10(np.maximum(mags_r, 1e-6)) if mags_r.size > 0 else []
+    mag_db_all = 20*np.log10(np.maximum(all_mags, 1e-6))
     mag_db_avg_all = 20*np.log10(np.maximum(avg_mag_all, 1e-6))
 
     files = {}
@@ -97,8 +121,9 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
 
         out_left_all = os.path.join(save_plot_dir, f"sweep_fr_left_all_{ts}.png")
         plt.figure(figsize=(9,5))
-        for arr in mag_db_left_all:
-            plt.semilogx(grid, arr, alpha=0.4)
+        if len(mag_db_left_all) > 0:
+            for arr in mag_db_left_all:
+                plt.semilogx(grid, arr, alpha=0.4)
         plt.xlabel("Frequency (Hz)"); plt.ylabel("Relative Level (dB)"); plt.title("Left All Sweeps Frequency Response")
         plt.grid(True, which='both', ls=':', alpha=0.6)
         plt.tight_layout(); plt.savefig(out_left_all); plt.close()
@@ -114,8 +139,9 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
 
         out_right_all = os.path.join(save_plot_dir, f"sweep_fr_right_all_{ts}.png")
         plt.figure(figsize=(9,5))
-        for arr in mag_db_right_all:
-            plt.semilogx(grid, arr, alpha=0.4)
+        if len(mag_db_right_all) > 0:
+            for arr in mag_db_right_all:
+                plt.semilogx(grid, arr, alpha=0.4)
         plt.xlabel("Frequency (Hz)"); plt.ylabel("Relative Level (dB)"); plt.title("Right All Sweeps Frequency Response")
         plt.grid(True, which='both', ls=':', alpha=0.6)
         plt.tight_layout(); plt.savefig(out_right_all); plt.close()
@@ -167,9 +193,9 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
         data={
             "freqs": grid.tolist(),
             "left_mag_db_avg": mag_db_left_avg.tolist(),
-            "left_mag_db_all": mag_db_left_all.tolist(),
+            "left_mag_db_all": mag_db_left_all.tolist() if isinstance(mag_db_left_all, np.ndarray) else mag_db_left_all,
             "right_mag_db_avg": mag_db_right_avg.tolist(),
-            "right_mag_db_all": mag_db_right_all.tolist(),
+            "right_mag_db_all": mag_db_right_all.tolist() if isinstance(mag_db_right_all, np.ndarray) else mag_db_right_all,
             "mag_db_all": mag_db_all.tolist(),
             "mag_db_avg_all": mag_db_avg_all.tolist(),
         },
