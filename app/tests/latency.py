@@ -1,4 +1,3 @@
-
 import os, time, threading, datetime, numpy as np, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -120,3 +119,66 @@ class DelayRunner:
         plt.plot(corr_time, correlation); plt.axvline(x=avg_delay_ms, linestyle="--", label=f"Avg: {avg_delay_ms:.1f} ms"); plt.legend()
         plt.xlabel("Delay (ms)"); plt.ylabel("corr")
         plt.tight_layout(); plt.savefig(filepath); plt.close()
+    
+    @staticmethod
+    def save_bar(bars_data, filepath):
+        """Save a bar chart of delay measurements for each sound type.
+        
+        Parameters
+        ----------
+        bars_data : dict
+            Dictionary with sound names as keys and lists of delay values as values
+        filepath : str
+            Path to save the bar chart
+            
+        Returns
+        -------
+        bool
+            True if successful, False otherwise
+        """
+        try:
+            if not bars_data:
+                return False
+                
+            # Prepare data for plotting
+            labels = []
+            means = []
+            stds = []
+            
+            for name, delays in bars_data.items():
+                if delays:
+                    labels.append(name)
+                    means.append(np.mean(delays))
+                    stds.append(np.std(delays))
+            
+            if not labels:
+                return False
+            
+            # Create bar chart
+            fig, ax = plt.subplots(figsize=(10, 6))
+            x = np.arange(len(labels))
+            bars = ax.bar(x, means, yerr=stds, capsize=5, alpha=0.7, 
+                          color='steelblue', edgecolor='darkblue', linewidth=1.5)
+            
+            # Customize the plot
+            ax.set_xlabel('Sound Type', fontsize=12)
+            ax.set_ylabel('Delay (ms)', fontsize=12)
+            ax.set_title('Average Delay by Sound Type', fontsize=14, fontweight='bold')
+            ax.set_xticks(x)
+            ax.set_xticklabels(labels, rotation=45, ha='right')
+            ax.grid(True, axis='y', alpha=0.3, linestyle='--')
+            
+            # Add value labels on bars
+            for bar, mean, std in zip(bars, means, stds):
+                height = bar.get_height()
+                ax.text(bar.get_x() + bar.get_width()/2., height,
+                       f'{mean:.1f}±{std:.1f}',
+                       ha='center', va='bottom', fontsize=9)
+            
+            plt.tight_layout()
+            plt.savefig(filepath, dpi=100)
+            plt.close()
+            return True
+            
+        except Exception:
+            return False
