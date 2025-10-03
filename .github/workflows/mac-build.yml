@@ -26,7 +26,7 @@ jobs:
     - name: Install PortAudio (required for PyAudio/audio core)
       run: |
         brew update
-        brew install portaudio create-dmg  # install create-dmg as well
+        brew install portaudio create-dmg
 
     - name: Install dependencies
       run: pip install -r requirements.txt
@@ -50,15 +50,17 @@ jobs:
 
     - name: Create DMG installer
       run: |
+        mkdir -p dmg_src
+        cp -R "dist_upload/Pawdio Lab.app" dmg_src/
+
         create-dmg \
           --volname "Pawdio Lab Installer" \
-          --volicon "app/icon.icns" \  # optional: set app icon if you have one
           --window-pos 200 120 \
           --window-size 600 400 \
           --icon-size 100 \
           --app-drop-link 425 150 \
           "Pawdio Lab.dmg" \
-          "dist_upload/Pawdio Lab.app"
+          "dmg_src"
 
         mv "Pawdio Lab.dmg" dist_upload/
 
