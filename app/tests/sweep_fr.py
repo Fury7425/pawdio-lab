@@ -29,6 +29,7 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
         rec_l = rec[:, 0]
         rec_r = rec[:, 1]
 
+        # Time alignment
         delay_ms_l, _ = AudioCore.find_delay_ms(rec_l, sig_ref, core.input_sample_rate)
         delay_ms_r, _ = AudioCore.find_delay_ms(rec_r, sig_ref, core.input_sample_rate)
         delays_l.append(delay_ms_l)
@@ -38,6 +39,8 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
         delay_s_r = 0.0 if delay_ms_r is None else delay_ms_r/1000.0
         shift_l = int(round(delay_s_l * core.input_sample_rate))
         shift_r = int(round(delay_s_r * core.input_sample_rate))
+        
+        # Trim/Pad to match reference signal length
         rec_aligned_l = rec_l[shift_l: shift_l + len(sig_ref)] if shift_l >= 0 else rec_l[:len(sig_ref)]
         rec_aligned_r = rec_r[shift_r: shift_r + len(sig_ref)] if shift_r >= 0 else rec_r[:len(sig_ref)]
         if len(rec_aligned_l) < len(sig_ref):
@@ -45,16 +48,19 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
         if len(rec_aligned_r) < len(sig_ref):
             rec_aligned_r = np.pad(rec_aligned_r, (0, len(sig_ref)-len(rec_aligned_r)))
 
+        # Envelope detection for FR
         env_l = np.abs(signal.hilbert(rec_aligned_l))
         env_r = np.abs(signal.hilbert(rec_aligned_r))
         env_l = env_l / (np.max(env_l)+1e-12)
         env_r = env_r / (np.max(env_r)+1e-12)
 
         T = duration
-        freqs_inst = f0 * (f1/f0) ** (t_ref / T)
+        # Instantaneous frequency calculation (linear in log space)
+        freqs_inst = f0 * (f1/f0) ** (t_ref / T) 
         mag_l = np.zeros_like(grid)
         mag_r = np.zeros_like(grid)
         for j, f in enumerate(grid):
+            # Find the time index closest to this frequency
             idx = np.argmin(np.abs(freqs_inst - f))
             mag_l[j] = env_l[idx]
             mag_r[j] = env_r[idx]
@@ -63,6 +69,8 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
 
     mags_l = np.array(mags_l)
     mags_r = np.array(mags_r)
+    
+    # Calculate averages and convert to dB
     avg_mag_l = np.mean(mags_l, axis=0)
     avg_mag_r = np.mean(mags_r, axis=0)
     avg_mag_all = np.mean(np.concatenate([mags_l, mags_r], axis=0), axis=0)
@@ -149,8 +157,9 @@ def run(core, log, f0=20, f1=20000, duration=6.0, repeats=1, save_plot_dir=None,
             files.update(squiglink_files)
             log(f"[SAVE] Squiglink files saved")
 
-    avg_delay_l = float(np.mean([d for d in delays_l if d is not None])) if delays_l else None
-    avg_delay_r = float(np.mean([d for d in delays_r if d is not None])) if delays_r else None
+    avg_delay_l = float(np.mean([d for d in delays_l if d is not None])) if delays_l and any(d is not None for d in delays_l) else None
+    avg_delay_r = float(np.mean([d for d in delays_r if d is not None])) if delays_r and any(d is not None for d in delays_r) else None
+    
     res = TestResult(
         "sweep_fr",
         params={"f0": f0, "f1": f1, "duration": duration, "repeats": repeats},
@@ -230,7 +239,8 @@ def _play_and_record(core, mono_signal, left_only=False, right_only=False, both=
     rec = {"audio": None}
     def worker():
         ch = 2 if both else 1
-        rec["audio"] = core.record_audio(rec_dur, channels=ch)
+        # NOTE: core.record_audio must be robust to exceptions from PyAudio
+        rec["audio"] = core.record_audio(rec_dur, channels=ch) 
     t = threading.Thread(target=worker, daemon=True); t.start()
     time.sleep(0.05 + settle)
     if both:
