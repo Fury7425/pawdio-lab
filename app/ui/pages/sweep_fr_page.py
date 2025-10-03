@@ -4,6 +4,7 @@ import time
 import numpy as np
 from ...tests import sweep_fr
 from ...core.utils import ensure_dir, dbfs
+from ...tests.sweep_fr import _play_and_record  # <-- import for level test
 
 class SweepFRPage(ctk.CTkFrame):
     def __init__(self, master, core, cfg, log_fn):
@@ -256,8 +257,8 @@ class SweepFRPage(ctk.CTkFrame):
             self.status_label.configure(text="Playing pink noise for level test...")
             self.update_idletasks()
 
-            # Play and record using your core's function
-            rec = self.core._play_and_record(pink_noise, both=True, settle=0.05, rec_dur=duration)
+            # Play and record using sweep_fr._play_and_record
+            rec = _play_and_record(self.core, pink_noise, both=True, settle=0.05, rec_dur=duration)
 
             if rec is None:
                 self.status_label.configure(text="Recording failed.")
