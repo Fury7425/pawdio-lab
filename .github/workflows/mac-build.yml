@@ -19,20 +19,16 @@ jobs:
       uses: actions/setup-python@v5
       with:
         python-version: '3.11'
-        # Setting architecture to arm64 helps if building for Apple Silicon,
-        # but macos-latest uses x64 by default unless specified. Using standard.
 
     - name: Upgrade pip
       run: python -m pip install --upgrade pip
 
     - name: Install PortAudio (required for PyAudio/audio core)
-      # Ensure PyAudio can be built and linked correctly.
       run: |
         brew update
-        brew install portaudio
+        brew install portaudio create-dmg  # install create-dmg as well
 
     - name: Install dependencies
-      # Assuming requirements.txt contains: customtkinter, numpy, scipy, matplotlib, pyaudio (or relevant audio library)
       run: pip install -r requirements.txt
 
     - name: Install build tools
@@ -40,8 +36,6 @@ jobs:
 
     - name: Build macOS .app bundle
       run: |
-        # Use --collect-all for custom-tkinter and other dependencies
-        # Add hidden imports for common dependencies PyInstaller misses, especially for GUI and plotting.
         pyinstaller app/main.py \
           --name "Pawdio Lab" \
           --windowed \
@@ -51,11 +45,24 @@ jobs:
           --hidden-import "matplotlib.backends.backend_tkagg" \
           --hidden-import "tkinter"
 
-        # Move the built application to the desired upload directory
         mkdir -p dist_upload
         mv "dist/Pawdio Lab.app" dist_upload/
 
-    - name: Upload .app bundle
+    - name: Create DMG installer
+      run: |
+        create-dmg \
+          --volname "Pawdio Lab Installer" \
+          --volicon "app/icon.icns" \  # optional: set app icon if you have one
+          --window-pos 200 120 \
+          --window-size 600 400 \
+          --icon-size 100 \
+          --app-drop-link 425 150 \
+          "Pawdio Lab.dmg" \
+          "dist_upload/Pawdio Lab.app"
+
+        mv "Pawdio Lab.dmg" dist_upload/
+
+    - name: Upload .app and .dmg
       uses: actions/upload-artifact@v4
       with:
         name: Pawdio-Lab-macOS
