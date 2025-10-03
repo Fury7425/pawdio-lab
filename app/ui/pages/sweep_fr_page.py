@@ -4,7 +4,7 @@ import time
 import numpy as np
 from ...tests import sweep_fr
 from ...core.utils import ensure_dir, dbfs
-from ...tests.sweep_fr import _play_and_record  # <-- import for level test
+import sounddevice as sd  # You need this for playback
 
 class SweepFRPage(ctk.CTkFrame):
     def __init__(self, master, core, cfg, log_fn):
@@ -16,6 +16,10 @@ class SweepFRPage(ctk.CTkFrame):
         self.monitoring = False
         self.monitor_thread = None
 
+        self.pink_noise_playing = False
+        self.pink_noise_thread = None
+        self.pink_noise_stream = None
+
         self.grid_columnconfigure((0,1), weight=1)
         self.grid_rowconfigure(2, weight=1)
 
@@ -25,7 +29,7 @@ class SweepFRPage(ctk.CTkFrame):
             font=ctk.CTkFont(size=18, weight="bold")
         ).grid(row=0, column=0, columnspan=2, padx=18, pady=(18, 4), sticky="w")
 
-        # Sweep configuration card
+        # Sweep configuration card (unchanged)
         run_card = ctk.CTkFrame(self)
         run_card.grid(row=1, column=0, columnspan=2, padx=18, pady=12, sticky="ew")
         run_card.grid_columnconfigure(3, weight=1)
@@ -127,16 +131,12 @@ class SweepFRPage(ctk.CTkFrame):
 
         control_frame = ctk.CTkFrame(level_card)
         control_frame.grid(row=4, column=0, columnspan=3, padx=12, pady=(0, 12), sticky="ew")
-        self.monitor_button = ctk.CTkButton(control_frame, text="Start Monitoring", command=self.toggle_monitoring, width=140)
-        self.monitor_button.pack(side="left", padx=6)
-        ctk.CTkButton(control_frame, text="Reset Peak", command=self.reset_peak, width=100).pack(side="left", padx=6)
+        self.pink_noise_button = ctk.CTkButton(control_frame, text="Play Pink Noise", command=self.toggle_pink_noise, width=140)
+        self.pink_noise_button.pack(side="left", padx=6)
+        self.reset_peak_button = ctk.CTkButton(control_frame, text="Reset Peak", command=self.reset_peak, width=100)
+        self.reset_peak_button.pack(side="left", padx=6)
         self.clip_warning = ctk.CTkLabel(control_frame, text="", text_color="red", font=ctk.CTkFont(size=12, weight="bold"))
         self.clip_warning.pack(side="right", padx=12)
-
-        # --- Level Test Button ---
-        self.level_test_button = ctk.CTkButton(control_frame, text="Start Level Test", command=self.run_level_test, width=140)
-        self.level_test_button.pack(side="left", padx=6)
-        # --- End Level Test Button ---
 
         return level_card
 
@@ -246,31 +246,55 @@ class SweepFRPage(ctk.CTkFrame):
         self.peak_level = -96.0
         self.clip_count = 0
 
-    # ====== LEVEL TEST METHOD ======
-    def run_level_test(self):
-        try:
-            duration = 5.0  # seconds
-            samplerate = getattr(self.core, "sample_rate", 44100)
+    # ===== Pink Noise Playback/Monitoring =====
+    def toggle_pink_noise(self):
+        if self.pink_noise_playing:
+            self.pink_noise_playing = False
+            self.pink_noise_button.configure(text="Play Pink Noise")
+            if self.pink_noise_stream:
+                self.pink_noise_stream.stop()
+                self.pink_noise_stream.close()
+                self.pink_noise_stream = None
+            self.status_label.configure(text="Pink noise stopped.")
+        else:
+            self.pink_noise_playing = True
+            self.pink_noise_button.configure(text="Stop Pink Noise")
+            self.status_label.configure(text="Playing pink noise...")
+            self.start_pink_noise_thread()
 
-            pink_noise = self.generate_pink_noise(duration, samplerate)
+    def start_pink_noise_thread(self):
+        if self.pink_noise_thread and self.pink_noise_thread.is_alive():
+            return
+        self.pink_noise_thread = threading.Thread(target=self.pink_noise_loop, daemon=True)
+        self.pink_noise_thread.start()
 
-            self.status_label.configure(text="Playing pink noise for level test...")
-            self.update_idletasks()
-
-            # Play and record using sweep_fr._play_and_record
-            rec = _play_and_record(self.core, pink_noise, both=True, settle=0.05, rec_dur=duration)
-
-            if rec is None:
-                self.status_label.configure(text="Recording failed.")
-                return
-
-            rms = np.sqrt(np.mean(rec[:, 0] ** 2))
+    def pink_noise_loop(self):
+        samplerate = getattr(self.core, "sample_rate", 44100)
+        blocksize = 1024
+        # Create a stream that calls a callback to continuously fill with pink noise
+        def callback(outdata, frames, time_info, status):
+            pink = self.generate_pink_noise(frames / samplerate, samplerate)
+            outdata[:] = pink.reshape(-1, 1)
+            # Real-time measurement (simulate level from pink noise itself)
+            rms = np.sqrt(np.mean(pink ** 2))
             dbfs = 20 * np.log10(rms + 1e-12)
-            self.current_level_label.configure(text=f"{dbfs:.2f} dBFS")
-            self.status_label.configure(text="Level test complete.")
+            self.current_level = dbfs
+            if dbfs > self.peak_level:
+                self.peak_level = dbfs
+            if dbfs >= -3.0:
+                self.clip_count += 1
 
-        except Exception as e:
-            self.status_label.configure(text=f"Error: {str(e)}")
+        self.pink_noise_stream = sd.OutputStream(
+            samplerate=samplerate,
+            channels=1,
+            blocksize=blocksize,
+            callback=callback
+        )
+        self.pink_noise_stream.start()
+        # Run until stopped
+        while self.pink_noise_playing:
+            time.sleep(0.1)
+        # Stream will be stopped/closed by toggle_pink_noise
 
     def generate_pink_noise(self, duration, samplerate):
         n = int(duration * samplerate)
