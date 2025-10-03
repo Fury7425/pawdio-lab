@@ -46,7 +46,7 @@ steps:
       --name "Pawdio Lab" \
       --windowed \
       --clean \
-      --collect-all custom_tkinter \
+      --collect-all customtkinter \
       --hidden-import "customtkinter" \
       --hidden-import "matplotlib.backends.backend_tkagg" \
       --hidden-import "tkinter" 
