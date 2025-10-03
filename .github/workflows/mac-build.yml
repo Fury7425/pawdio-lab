@@ -1,63 +1,62 @@
 name: macOS App Build (Enhanced)
 
 on:
-push:
-branches: [ main ]
-pull_request:
-branches: [ main ]
-workflow_dispatch: # Allows manual running
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch: # Allows manual running
 
 jobs:
-build-macos:
-runs-on: macos-latest
+  build-macos:
+    runs-on: macos-latest
 
-steps:
-- name: Checkout repository
-  uses: actions/checkout@v4
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
 
-- name: Set up Python
-  uses: actions/setup-python@v5
-  with:
-    python-version: '3.11'
-    # Setting architecture to arm64 helps if building for Apple Silicon, 
-    # but macos-latest uses x64 by default unless specified. Using standard.
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+        # Setting architecture to arm64 helps if building for Apple Silicon,
+        # but macos-latest uses x64 by default unless specified. Using standard.
 
-- name: Upgrade pip
-  run: python -m pip install --upgrade pip
+    - name: Upgrade pip
+      run: python -m pip install --upgrade pip
 
-- name: Install PortAudio (required for PyAudio/audio core)
-  # Ensure PyAudio can be built and linked correctly.
-  run: |
-    brew update
-    brew install portaudio
+    - name: Install PortAudio (required for PyAudio/audio core)
+      # Ensure PyAudio can be built and linked correctly.
+      run: |
+        brew update
+        brew install portaudio
 
-- name: Install dependencies
-  # Assuming requirements.txt contains: customtkinter, numpy, scipy, matplotlib, pyaudio (or relevant audio library)
-  run: pip install -r requirements.txt
+    - name: Install dependencies
+      # Assuming requirements.txt contains: customtkinter, numpy, scipy, matplotlib, pyaudio (or relevant audio library)
+      run: pip install -r requirements.txt
 
-- name: Install build tools
-  run: pip install pyinstaller
+    - name: Install build tools
+      run: pip install pyinstaller
 
-- name: Build macOS .app bundle
-  run: |
-    # Use --collect-all for custom-tkinter and other dependencies
-    # Add hidden imports for common dependencies PyInstaller misses, especially for GUI and plotting.
-    pyinstaller app/main.py \
-      --name "Pawdio Lab" \
-      --windowed \
-      --clean \
-      --collect-all customtkinter \
-      --hidden-import "customtkinter" \
-      --hidden-import "matplotlib.backends.backend_tkagg" \
-      --hidden-import "tkinter" 
-      
-    # Move the built application to the desired upload directory
-    mkdir -p dist_upload
-    mv "dist/Pawdio Lab.app" dist_upload/
+    - name: Build macOS .app bundle
+      run: |
+        # Use --collect-all for custom-tkinter and other dependencies
+        # Add hidden imports for common dependencies PyInstaller misses, especially for GUI and plotting.
+        pyinstaller app/main.py \
+          --name "Pawdio Lab" \
+          --windowed \
+          --clean \
+          --collect-all customtkinter \
+          --hidden-import "customtkinter" \
+          --hidden-import "matplotlib.backends.backend_tkagg" \
+          --hidden-import "tkinter"
 
-- name: Upload .app bundle
-  uses: actions/upload-artifact@v4
-  with:
-    name: Pawdio-Lab-macOS
-    path: dist_upload/*
+        # Move the built application to the desired upload directory
+        mkdir -p dist_upload
+        mv "dist/Pawdio Lab.app" dist_upload/
 
+    - name: Upload .app bundle
+      uses: actions/upload-artifact@v4
+      with:
+        name: Pawdio-Lab-macOS
+        path: dist_upload/*
