@@ -1,10 +1,13 @@
 import os, json, customtkinter as ctk, traceback
 import threading
 import time
+import importlib
 import numpy as np
 from ...tests import sweep_fr
 from ...core.utils import ensure_dir, dbfs
-import sounddevice as sd  # You need this for playback
+
+_sounddevice_spec = importlib.util.find_spec("sounddevice")
+sounddevice = importlib.import_module("sounddevice") if _sounddevice_spec else None
 
 class SweepFRPage(ctk.CTkFrame):
     def __init__(self, master, core, cfg, log_fn):
@@ -136,6 +139,8 @@ class SweepFRPage(ctk.CTkFrame):
         self.monitor_button.pack(side="left", padx=6)
         self.pink_noise_button = ctk.CTkButton(control_frame, text="Play Pink Noise", command=self.toggle_pink_noise, width=140)
         self.pink_noise_button.pack(side="left", padx=6)
+        if sounddevice is None:
+            self.pink_noise_button.configure(state="disabled")
         self.reset_peak_button = ctk.CTkButton(control_frame, text="Reset Peak", command=self.reset_peak, width=100)
         self.reset_peak_button.pack(side="left", padx=6)
         self.clip_warning = ctk.CTkLabel(control_frame, text="", text_color="red", font=ctk.CTkFont(size=12, weight="bold"))
@@ -324,6 +329,11 @@ class SweepFRPage(ctk.CTkFrame):
 
     # ===== Pink Noise Playback/Monitoring =====
     def toggle_pink_noise(self):
+        if sounddevice is None:
+            self.status_label.configure(text="Pink noise unavailable (sounddevice missing).")
+            self.log("Pink noise playback requires the optional sounddevice module.")
+            return
+
         if self.pink_noise_playing:
             self.pink_noise_playing = False
             self.pink_noise_button.configure(text="Play Pink Noise")
@@ -361,7 +371,10 @@ class SweepFRPage(ctk.CTkFrame):
                 if dbfs >= -3.0:
                     self.clip_count += 1
 
-        self.pink_noise_stream = sd.OutputStream(
+        if sounddevice is None:
+            return
+
+        self.pink_noise_stream = sounddevice.OutputStream(
             samplerate=samplerate,
             channels=1,
             blocksize=blocksize,
