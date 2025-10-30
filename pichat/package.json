@@ -1,0 +1,46 @@
+{
+  "name": "pichat",
+  "private": true,
+  "version": "1.0.0",
+  "description": "PiChat privacy-first decentralized messenger",
+  "license": "Apache-2.0",
+  "scripts": {
+    "bootstrap": "yarn install",
+    "lint": "yarn workspaces foreach --parallel run lint",
+    "typecheck": "yarn workspaces foreach --parallel run typecheck",
+    "test": "yarn workspaces foreach --parallel run test",
+    "e2e": "yarn workspace @pichat/mobile run e2e",
+    "mobile:android": "yarn workspace @pichat/mobile run android"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "devDependencies": {
+    "@testing-library/react-native": "^12.4.1",
+    "@types/jest": "^29.5.12",
+    "@typescript-eslint/eslint-plugin": "^7.8.0",
+    "@typescript-eslint/parser": "^7.8.0",
+    "eslint": "^8.57.0",
+    "eslint-config-prettier": "^9.1.0",
+    "eslint-plugin-react": "^7.34.1",
+    "eslint-plugin-react-hooks": "^4.6.0",
+    "eslint-plugin-react-native": "^4.1.0",
+    "husky": "^9.0.11",
+    "jest": "^29.7.0",
+    "lint-staged": "^15.2.5",
+    "prettier": "^3.2.5",
+    "react": "^18.2.0",
+    "react-native": "^0.74.0",
+    "react-test-renderer": "^18.2.0",
+    "typescript": "^5.4.5"
+  },
+  "lint-staged": {
+    "*.{ts,tsx,js,jsx}": [
+      "eslint --fix"
+    ],
+    "*.{json,md}": [
+      "prettier --write"
+    ]
+  }
+}

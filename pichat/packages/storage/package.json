@@ -1,0 +1,17 @@
+{
+  "name": "@pichat/storage",
+  "version": "1.0.0",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "license": "Apache-2.0",
+  "dependencies": {
+    "@pichat/types": "1.0.0",
+    "@pichat/utils": "1.0.0",
+    "realm": "^12.7.0"
+  },
+  "scripts": {
+    "lint": "eslint 'src/**/*.{ts,tsx}'",
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "jest --config ../../jest.config.js --runTestsByPath packages/storage/__tests__/storage.test.ts"
+  }
+}

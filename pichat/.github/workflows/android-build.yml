@@ -1,0 +1,60 @@
+name: Android Release (PiChat)
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+    env:
+      JAVA_TOOL_OPTIONS: -Xmx3g
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'yarn'
+      - run: yarn install --frozen-lockfile
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - run: yes | sdkmanager --licenses
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+
+      - name: Decode keystore
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > keystore.jks
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Configure signing
+        run: |
+          mkdir -p apps/mobile/android
+          cat >> apps/mobile/android/gradle.properties <<EOF2
+          MYAPP_UPLOAD_STORE_FILE=../keystore.jks
+          MYAPP_UPLOAD_KEY_ALIAS=${{ secrets.ANDROID_KEY_ALIAS }}
+          MYAPP_UPLOAD_STORE_PASSWORD=${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          MYAPP_UPLOAD_KEY_PASSWORD=${{ secrets.ANDROID_KEY_PASSWORD }}
+          EOF2
+
+      - name: Build release
+        working-directory: apps/mobile/android
+        run: |
+          ./gradlew clean
+          ./gradlew bundleRelease assembleRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: pichat-android-release
+          path: |
+            apps/mobile/android/app/build/outputs/apk/release/*.apk
+            apps/mobile/android/app/build/outputs/bundle/release/*.aab

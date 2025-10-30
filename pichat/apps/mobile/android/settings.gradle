@@ -1,0 +1,2 @@
+rootProject.name = 'PiChat'
+include ':app'

@@ -1,0 +1,81 @@
+{
+  "version": "1.0.0",
+  "tokens": {
+    "color": {
+      "bg": {
+        "page": { "dark": "#0B0C0F" },
+        "surface": { "default": "#12141A" }
+      },
+      "text": {
+        "primary": "#E6E8F0",
+        "secondary": "#A7B0C0",
+        "inverse": "#0B0C0F"
+      },
+      "brand": {
+        "primary": "#7C5CFF"
+      },
+      "accent": {
+        "success": "#2ECC71",
+        "warning": "#F4C542",
+        "error": "#FF5C5C"
+      },
+      "border": {
+        "muted": "#2A2F3A"
+      }
+    },
+    "typography": {
+      "font": {
+        "family": "Inter",
+        "sizes": {
+          "display": 28,
+          "title": 20,
+          "body": 16,
+          "caption": 14,
+          "micro": 12
+        },
+        "lineHeight": {
+          "display": 36,
+          "title": 28,
+          "body": 24,
+          "caption": 20,
+          "micro": 16
+        }
+      }
+    },
+    "spacing": {
+      "scale": [0, 4, 8, 12, 16, 20, 24, 28, 32]
+    },
+    "radii": {
+      "sm": 8,
+      "md": 12,
+      "lg": 20,
+      "xl": 28
+    },
+    "shadow": {
+      "elevation": {
+        "default": {
+          "x": 0,
+          "y": 4,
+          "blur": 12,
+          "spread": 0,
+          "color": "rgba(0,0,0,0.2)"
+        }
+      }
+    },
+    "animation": {
+      "durations": {
+        "fast": 150,
+        "normal": 250,
+        "snappy": 300,
+        "gentle": 400
+      },
+      "easing": {
+        "standard": [0.2, 0.8, 0.2, 1]
+      }
+    },
+    "iconography": {
+      "set": "Lucide",
+      "defaultSize": 24
+    }
+  }
+}
