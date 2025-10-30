@@ -15,6 +15,7 @@ class SweepFRPage(ctk.CTkFrame):
         self.results = []
         self.monitoring = False
         self.monitor_thread = None
+        self.monitor_stream = None
 
         self.pink_noise_playing = False
         self.pink_noise_thread = None
@@ -131,6 +132,8 @@ class SweepFRPage(ctk.CTkFrame):
 
         control_frame = ctk.CTkFrame(level_card)
         control_frame.grid(row=4, column=0, columnspan=3, padx=12, pady=(0, 12), sticky="ew")
+        self.monitor_button = ctk.CTkButton(control_frame, text="Start Monitoring", command=self.toggle_monitoring, width=140)
+        self.monitor_button.pack(side="left", padx=6)
         self.pink_noise_button = ctk.CTkButton(control_frame, text="Play Pink Noise", command=self.toggle_pink_noise, width=140)
         self.pink_noise_button.pack(side="left", padx=6)
         self.reset_peak_button = ctk.CTkButton(control_frame, text="Reset Peak", command=self.reset_peak, width=100)
@@ -207,26 +210,99 @@ class SweepFRPage(ctk.CTkFrame):
         if self.monitoring:
             self.monitoring = False
             self.monitor_button.configure(text="Start Monitoring")
+            self.status_label.configure(text="Monitoring stopped.")
+            if self.monitor_stream is not None:
+                try:
+                    self.monitor_stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    self.monitor_stream.close()
+                except Exception:
+                    pass
+                self.monitor_stream = None
         else:
             self.monitoring = True
             self.monitor_button.configure(text="Stop Monitoring")
+            self.status_label.configure(text="Monitoring input...")
+            if self.monitor_thread and self.monitor_thread.is_alive():
+                return
             self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
             self.monitor_thread.start()
 
     def _monitor_loop(self):
-        while self.monitoring:
-            try:
-                self.current_level += np.random.normal(0, 0.5)
-                self.current_level = max(-96.0, min(self.current_level, 0.0))
-                if self.current_level > self.peak_level:
-                    self.peak_level = self.current_level
-                if self.current_level >= -3.0:
+        chunk = int(getattr(self.core, "chunk_size", 1024))
+        samplerate = int(getattr(self.core, "input_sample_rate", getattr(self.core, "sample_rate", 44100)))
+        fmt = self.core.audio.get_format_from_width(2)
+        stream = None
+        channels_in_use = 1
+        error = False
+        try:
+            for ch in (1, 2):
+                try:
+                    stream = self.core.audio.open(
+                        format=fmt,
+                        channels=ch,
+                        rate=samplerate,
+                        input=True,
+                        frames_per_buffer=chunk,
+                        input_device_index=self.core.input_device_index,
+                    )
+                    channels_in_use = ch
+                    break
+                except Exception:
+                    stream = None
+                    continue
+            if stream is None:
+                raise RuntimeError("Unable to open input stream for monitoring")
+            self.monitor_stream = stream
+            while self.monitoring:
+                data = stream.read(chunk, exception_on_overflow=False)
+                if not data:
+                    continue
+                audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+                if channels_in_use > 1:
+                    try:
+                        audio = audio.reshape(-1, channels_in_use).mean(axis=1)
+                    except ValueError:
+                        audio = audio.reshape(-1)
+                if audio.size == 0:
+                    continue
+                rms_level = dbfs(audio)
+                peak_level = 20 * np.log10(max(np.max(np.abs(audio)), 1e-12))
+                rms_level = max(-96.0, min(rms_level, 0.0))
+                peak_level = max(-96.0, min(peak_level, 0.0))
+                self.current_level = rms_level
+                if peak_level > self.peak_level:
+                    self.peak_level = peak_level
+                if peak_level >= -1.0:
                     self.clip_count += 1
-                time.sleep(0.05)
-            except Exception as e:
-                self.log("Error in monitoring: " + str(e))
-                traceback.print_exc()
-                break
+        except Exception as e:
+            if self.monitoring:
+                error = True
+                self.after(0, lambda err=e: self._handle_monitor_error(err))
+        finally:
+            if stream is not None:
+                try:
+                    stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    stream.close()
+                except Exception:
+                    pass
+            self.monitor_stream = None
+            self.monitor_thread = None
+            self.monitoring = False
+            if not error:
+                self.after(0, lambda: self.status_label.configure(text="Monitoring stopped."))
+            self.after(0, lambda: self.monitor_button.configure(text="Start Monitoring"))
+
+    def _handle_monitor_error(self, err):
+        self.log(f"Error in monitoring: {err}")
+        traceback.print_exc()
+        self.status_label.configure(text="Monitor error. Check input device.")
+        self.monitor_button.configure(text="Start Monitoring")
 
     def _update_meter_display(self):
         self.level_canvas.delete("all")
@@ -278,11 +354,12 @@ class SweepFRPage(ctk.CTkFrame):
             # Real-time measurement (simulate level from pink noise itself)
             rms = np.sqrt(np.mean(pink ** 2))
             dbfs = 20 * np.log10(rms + 1e-12)
-            self.current_level = dbfs
-            if dbfs > self.peak_level:
-                self.peak_level = dbfs
-            if dbfs >= -3.0:
-                self.clip_count += 1
+            if not self.monitoring:
+                self.current_level = dbfs
+                if dbfs > self.peak_level:
+                    self.peak_level = dbfs
+                if dbfs >= -3.0:
+                    self.clip_count += 1
 
         self.pink_noise_stream = sd.OutputStream(
             samplerate=samplerate,
