@@ -2,9 +2,9 @@ import os, datetime, numpy as np, matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from scipy import signal
-from ..core.audio import AudioCore
-from ..core.utils import ensure_dir
-from .base import TestResult
+from app.core.audio import AudioCore
+from app.core.utils import ensure_dir
+from ..base import TestResult
 
 from tkinter import messagebox
 

@@ -4,7 +4,8 @@ import time
 import importlib
 import numpy as np
 from ...tests import sweep_fr
-from ...core.utils import ensure_dir, dbfs
+from ...core.utils import ensure_dir
+from ...tests.sweep_fr import InputMonitorController, LevelState
 
 _sounddevice_spec = importlib.util.find_spec("sounddevice")
 sounddevice = importlib.import_module("sounddevice") if _sounddevice_spec else None
@@ -16,9 +17,17 @@ class SweepFRPage(ctk.CTkFrame):
         self.cfg = cfg
         self.log = log_fn
         self.results = []
-        self.monitoring = False
-        self.monitor_thread = None
-        self.monitor_stream = None
+        self.level_state = LevelState()
+        self.monitor_controller = InputMonitorController(
+            self.core,
+            self.level_state,
+            ui_dispatch=self._dispatch_to_ui,
+            on_start=self._on_monitor_started,
+            on_stop=self._on_monitor_stopped,
+            on_error=self._handle_monitor_error,
+            log_fn=self.log,
+        )
+        self._monitor_error = False
 
         self.pink_noise_playing = False
         self.pink_noise_thread = None
@@ -91,10 +100,6 @@ class SweepFRPage(ctk.CTkFrame):
         self._build_level_monitor().grid(row=2, column=0, padx=18, pady=12, sticky="nsew")
         self._build_results().grid(row=2, column=1, padx=18, pady=12, sticky="nsew")
 
-        # Initialize level tracking (no recorder used!)
-        self.current_level = -96.0
-        self.peak_level = -96.0
-        self.clip_count = 0
         self.after(100, self._update_meter_display)
 
     def _choose_outdir(self):
@@ -212,120 +217,74 @@ class SweepFRPage(ctk.CTkFrame):
 
     # ===== Monitoring System =====
     def toggle_monitoring(self):
-        if self.monitoring:
-            self.monitoring = False
-            self.monitor_button.configure(text="Start Monitoring")
-            self.status_label.configure(text="Monitoring stopped.")
-            if self.monitor_stream is not None:
-                try:
-                    self.monitor_stream.stop_stream()
-                except Exception:
-                    pass
-                try:
-                    self.monitor_stream.close()
-                except Exception:
-                    pass
-                self.monitor_stream = None
+        if self.monitor_controller.is_running:
+            self._stop_monitoring()
         else:
-            self.monitoring = True
-            self.monitor_button.configure(text="Stop Monitoring")
-            self.status_label.configure(text="Monitoring input...")
-            if self.monitor_thread and self.monitor_thread.is_alive():
-                return
-            self.monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
-            self.monitor_thread.start()
+            self._start_monitoring()
 
-    def _monitor_loop(self):
-        chunk = int(getattr(self.core, "chunk_size", 1024))
-        samplerate = int(getattr(self.core, "input_sample_rate", getattr(self.core, "sample_rate", 44100)))
-        fmt = self.core.audio.get_format_from_width(2)
-        stream = None
-        channels_in_use = 1
-        error = False
+    def _start_monitoring(self):
+        if self.monitor_controller.is_running:
+            return
+        self.monitor_button.configure(state="disabled")
+        self.status_label.configure(text="Starting monitor...")
+        self._monitor_error = False
         try:
-            for ch in (1, 2):
-                try:
-                    stream = self.core.audio.open(
-                        format=fmt,
-                        channels=ch,
-                        rate=samplerate,
-                        input=True,
-                        frames_per_buffer=chunk,
-                        input_device_index=self.core.input_device_index,
-                    )
-                    channels_in_use = ch
-                    break
-                except Exception:
-                    stream = None
-                    continue
-            if stream is None:
-                raise RuntimeError("Unable to open input stream for monitoring")
-            self.monitor_stream = stream
-            while self.monitoring:
-                data = stream.read(chunk, exception_on_overflow=False)
-                if not data:
-                    continue
-                audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-                if channels_in_use > 1:
-                    try:
-                        audio = audio.reshape(-1, channels_in_use).mean(axis=1)
-                    except ValueError:
-                        audio = audio.reshape(-1)
-                if audio.size == 0:
-                    continue
-                rms_level = dbfs(audio)
-                peak_level = 20 * np.log10(max(np.max(np.abs(audio)), 1e-12))
-                rms_level = max(-96.0, min(rms_level, 0.0))
-                peak_level = max(-96.0, min(peak_level, 0.0))
-                self.current_level = rms_level
-                if peak_level > self.peak_level:
-                    self.peak_level = peak_level
-                if peak_level >= -1.0:
-                    self.clip_count += 1
-        except Exception as e:
-            if self.monitoring:
-                error = True
-                self.after(0, lambda err=e: self._handle_monitor_error(err))
-        finally:
-            if stream is not None:
-                try:
-                    stream.stop_stream()
-                except Exception:
-                    pass
-                try:
-                    stream.close()
-                except Exception:
-                    pass
-            self.monitor_stream = None
-            self.monitor_thread = None
-            self.monitoring = False
-            if not error:
-                self.after(0, lambda: self.status_label.configure(text="Monitoring stopped."))
-            self.after(0, lambda: self.monitor_button.configure(text="Start Monitoring"))
+            self.monitor_controller.start()
+        except Exception as err:  # pragma: no cover - defensive
+            self._handle_monitor_error(err)
+            self.monitor_button.configure(state="normal")
+
+    def _stop_monitoring(self):
+        if not self.monitor_controller.is_running:
+            self._on_monitor_stopped()
+            return
+        self.monitor_button.configure(state="disabled")
+        self.status_label.configure(text="Stopping monitor...")
+
+        def _stop() -> None:
+            self.monitor_controller.stop()
+
+        threading.Thread(target=_stop, daemon=True).start()
+
+    def _on_monitor_started(self):
+        self._monitor_error = False
+        self.monitor_button.configure(text="Stop Monitoring", state="normal")
+        self.status_label.configure(text="Monitoring input...")
+
+    def _on_monitor_stopped(self):
+        self.monitor_button.configure(text="Start Monitoring", state="normal")
+        if not self._monitor_error:
+            self.status_label.configure(text="Monitoring stopped.")
 
     def _handle_monitor_error(self, err):
+        self._monitor_error = True
         self.log(f"Error in monitoring: {err}")
         traceback.print_exc()
         self.status_label.configure(text="Monitor error. Check input device.")
-        self.monitor_button.configure(text="Start Monitoring")
+        self.monitor_button.configure(text="Start Monitoring", state="normal")
+
+    def _dispatch_to_ui(self, callback):
+        if callback is None:
+            return
+        self.after(0, callback)
 
     def _update_meter_display(self):
         self.level_canvas.delete("all")
-        bar_w = max(0, (self.current_level + 96) / 96 * self.level_canvas.winfo_width())
-        color = "green" if self.current_level < -3 else "red"
+        current_level, peak_level, clip_count = self.level_state.snapshot()
+        bar_w = max(0, (current_level + 96) / 96 * self.level_canvas.winfo_width())
+        color = "green" if current_level < -3 else "red"
         self.level_canvas.create_rectangle(0, 0, bar_w, 60, fill=color, width=0)
-        self.current_level_label.configure(text=f"{self.current_level:.1f} dBFS")
-        self.peak_level_label.configure(text=f"{self.peak_level:.1f} dBFS")
-        self.spl_label.configure(text=f"{self.current_level+94:.1f} dB SPL")
-        if self.clip_count > 0:
-            self.clip_warning.configure(text=f"Clipping! ({self.clip_count})")
+        self.current_level_label.configure(text=f"{current_level:.1f} dBFS")
+        self.peak_level_label.configure(text=f"{peak_level:.1f} dBFS")
+        self.spl_label.configure(text=f"{current_level+94:.1f} dB SPL")
+        if clip_count > 0:
+            self.clip_warning.configure(text=f"Clipping! ({clip_count})")
         else:
             self.clip_warning.configure(text="")
         self.after(100, self._update_meter_display)
 
     def reset_peak(self):
-        self.peak_level = -96.0
-        self.clip_count = 0
+        self.level_state.reset_peak()
 
     # ===== Pink Noise Playback/Monitoring =====
     def toggle_pink_noise(self):
@@ -364,12 +323,10 @@ class SweepFRPage(ctk.CTkFrame):
             # Real-time measurement (simulate level from pink noise itself)
             rms = np.sqrt(np.mean(pink ** 2))
             dbfs = 20 * np.log10(rms + 1e-12)
-            if not self.monitoring:
-                self.current_level = dbfs
-                if dbfs > self.peak_level:
-                    self.peak_level = dbfs
-                if dbfs >= -3.0:
-                    self.clip_count += 1
+            if not self.monitor_controller.is_running:
+                peak = 20 * np.log10(np.max(np.abs(pink)) + 1e-12)
+                clip = peak >= -3.0
+                self.level_state.record_sample(dbfs, peak, clip)
 
         if sounddevice is None:
             return
