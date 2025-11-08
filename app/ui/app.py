@@ -8,14 +8,17 @@ from .pages.sweep_fr_page import SweepFRPage
 from .pages.experimental_page import ExperimentalPage
 from .pages.devices_page import DevicesPage
 from .pages.results_page import ResultsPage
+from pathlib import Path
 
 APP_TITLE = "PawdioLab"
+APP_ICON = Path(__file__).with_name("assets") / "pawdiolab.ico"
 
 class MainApp(ctk.CTk):
     def __init__(self):
         self.cfg = load_config()
         apply_theme(self.cfg["ui"])
         super().__init__()
+        self.iconbitmap(str(APP_ICON))
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
