@@ -51,7 +51,7 @@ class MainApp(ctk.CTk):
             icon_path = _resolve_icon_path()
             if icon_path is not None:
                 try:
-                    self.iconbitmap(str(icon_path))
+                    self.iconbitmap(default=str(icon_path))
                 except TclError:
                     pass
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
