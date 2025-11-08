@@ -4,6 +4,7 @@ from pathlib import Path
 from tkinter import TclError
 
 import customtkinter as ctk
+from PIL import Image, ImageTk
 
 from .theme import apply_theme
 from ..config import load_config, save_config
@@ -21,13 +22,7 @@ class MainApp(ctk.CTk):
         self.cfg = load_config()
         apply_theme(self.cfg["ui"])
         super().__init__()
-        if sys.platform.startswith("win"):
-            icon_path = Path(__file__).resolve().parent / "assets" / "pawdiolab.ico"
-            if icon_path.is_file():
-                try:
-                    self.iconbitmap(default=str(icon_path))
-                except TclError:
-                    pass
+        self._apply_app_icon()
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
@@ -87,3 +82,49 @@ class MainApp(ctk.CTk):
 
     def _log_sink(self, msg):
         pass
+
+    def _apply_app_icon(self):
+        icon_path = Path(__file__).resolve().parent / "assets" / "pawdiolab.ico"
+        if not icon_path.is_file():
+            return
+
+        if sys.platform.startswith("win"):
+            try:
+                self.iconbitmap(default=str(icon_path))
+            except TclError:
+                pass
+
+        try:
+            with Image.open(icon_path) as ico:
+                largest_frame = self._largest_ico_frame(ico)
+        except Exception:
+            return
+
+        try:
+            largest_frame = largest_frame.convert("RGBA")
+            self._iconphoto_ref = ImageTk.PhotoImage(largest_frame)
+            self.iconphoto(True, self._iconphoto_ref)
+        except TclError:
+            self._iconphoto_ref = None
+
+    @staticmethod
+    def _largest_ico_frame(ico_image):
+        try:
+            frame_count = ico_image.n_frames
+        except AttributeError:
+            frame_count = 1
+
+        largest = None
+        for frame_index in range(frame_count):
+            try:
+                ico_image.seek(frame_index)
+            except EOFError:
+                break
+            frame = ico_image.copy()
+            if largest is None or frame.size > largest.size:
+                largest = frame
+
+        if largest is None:
+            largest = ico_image.copy()
+
+        return largest
