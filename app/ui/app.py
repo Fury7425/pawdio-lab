@@ -1,5 +1,11 @@
 
+import logging
+import sys
+from pathlib import Path
+from typing import Optional
+
 import customtkinter as ctk
+
 from .theme import apply_theme
 from ..config import load_config, save_config
 from ..core.audio import AudioCore
@@ -8,17 +14,47 @@ from .pages.sweep_fr_page import SweepFRPage
 from .pages.experimental_page import ExperimentalPage
 from .pages.devices_page import DevicesPage
 from .pages.results_page import ResultsPage
-from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 APP_TITLE = "PawdioLab"
-APP_ICON = Path(__file__).with_name("assets") / "pawdiolab.ico"
+
+
+def _resolve_icon() -> Optional[Path]:
+    """Return the path to the application icon, if available."""
+
+    candidates = [Path(__file__).with_name("assets") / "pawdiolab.ico"]
+
+    if hasattr(sys, "_MEIPASS"):
+        meipass = Path(sys._MEIPASS)
+        candidates.extend(
+            [
+                meipass / "app" / "ui" / "assets" / "pawdiolab.ico",
+                meipass / "pawdiolab.ico",
+            ]
+        )
+
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+
+    return None
+
+
+APP_ICON = _resolve_icon()
+if APP_ICON is None:
+    logger.info("Application icon not found; using default window icon")
 
 class MainApp(ctk.CTk):
     def __init__(self):
         self.cfg = load_config()
         apply_theme(self.cfg["ui"])
         super().__init__()
-        self.iconbitmap(str(APP_ICON))
+        if APP_ICON is not None:
+            try:
+                self.iconbitmap(str(APP_ICON))
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to load application icon from %s", APP_ICON)
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
