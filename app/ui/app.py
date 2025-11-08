@@ -1,5 +1,8 @@
 
+from pathlib import Path
+
 import customtkinter as ctk
+
 from .theme import apply_theme
 from ..config import load_config, save_config
 from ..core.audio import AudioCore
@@ -10,12 +13,15 @@ from .pages.devices_page import DevicesPage
 from .pages.results_page import ResultsPage
 
 APP_TITLE = "PawdioLab"
+APP_ICON_PATH = Path(__file__).resolve().parent / "assets" / "pawdiolab.ico"
 
 class MainApp(ctk.CTk):
     def __init__(self):
         self.cfg = load_config()
         apply_theme(self.cfg["ui"])
         super().__init__()
+        if APP_ICON_PATH.exists():
+            self.iconbitmap(default=str(APP_ICON_PATH))
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
