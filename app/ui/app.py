@@ -1,4 +1,3 @@
-
 import sys
 from pathlib import Path
 from tkinter import TclError
@@ -48,15 +47,7 @@ class MainApp(ctk.CTk):
 
         self.pages = {}
         self.pages["latency"] = LatencyPage(self.main, self.core, self.cfg, self._log)
-        self.pages["sweep_fr"] = SweepFRPage(self.main, self.core, self.cfg, self._log)
-        self.pages["devices"] = DevicesPage(self.main, self.core, self.cfg, self._log, on_toggle_experimental=self._toggle_experimental)
-        self.pages["results"] = ResultsPage(self.main, self._log_sink)
-        if self.cfg["ui"].get("labs_enabled", True):
-            self._add_experimental_page()
-
-        self._show("latency")
-
-    def _add_experimental_page(self):
+@@ -53,25 +60,71 @@ class MainApp(ctk.CTk):
         self.pages["experimental"] = ExperimentalPage(self.main, self.core, self.cfg, self._log)
         if self.btn_experimental is None:
             self.btn_experimental = ctk.CTkButton(self.sidebar, text="Experimental Tests", command=lambda: self._show("experimental"))
