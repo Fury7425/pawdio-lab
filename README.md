@@ -1,6 +1,6 @@
 # PawdioLab
 
-PawdioLab is a simple desktop toolkit for measuring and visualising audio latency and frequency response(for now). The application is built with Chatgpt and myself. I uses [CustomTkinter](https://github.com/TomSchimansky/CustomTkinter) and wraps PyAudio utilities to generate test signals, record them and summarise the measure offsets as well as measures the frequency response.
+PawdioLab is a simple desktop toolkit for measuring and visualising audio latency and frequency response(for now). The application is built with Chatgpt and myself. I uses CustomTkinter and wraps PyAudio utilities to generate test signals, record them and summarise the measure offsets as well as measures the frequency response.
 
 ## Features
 
