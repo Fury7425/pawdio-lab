@@ -1,4 +1,5 @@
 
+import sys
 from pathlib import Path
 
 import customtkinter as ctk
@@ -20,7 +21,7 @@ class MainApp(ctk.CTk):
         self.cfg = load_config()
         apply_theme(self.cfg["ui"])
         super().__init__()
-        if APP_ICON_PATH.exists():
+        if sys.platform.startswith("win") and APP_ICON_PATH.exists():
             self.iconbitmap(default=str(APP_ICON_PATH))
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
