@@ -1,6 +1,7 @@
 
 import sys
 from pathlib import Path
+from tkinter import TclError
 
 import customtkinter as ctk
 
@@ -14,15 +15,45 @@ from .pages.devices_page import DevicesPage
 from .pages.results_page import ResultsPage
 
 APP_TITLE = "PawdioLab"
-APP_ICON_PATH = Path(__file__).resolve().parent / "assets" / "pawdiolab.ico"
+
+
+def _candidate_icon_paths():
+    base_dir = Path(__file__).resolve().parent
+    yield base_dir / "assets" / "pawdiolab.ico"
+
+    if getattr(sys, "frozen", False):
+        # When packaged (e.g. via PyInstaller) the assets may live alongside
+        # the executable or inside the temporary extraction directory.
+        meipass = getattr(sys, "_MEIPASS", None)
+        frozen_roots = []
+        if meipass:
+            frozen_roots.append(Path(meipass))
+        frozen_roots.append(Path(sys.executable).resolve().parent)
+        for root in frozen_roots:
+            if not root:
+                continue
+            yield root / "pawdiolab.ico"
+            yield root / "app" / "ui" / "assets" / "pawdiolab.ico"
+
+
+def _resolve_icon_path():
+    for path in _candidate_icon_paths():
+        if path.is_file():
+            return path
+    return None
 
 class MainApp(ctk.CTk):
     def __init__(self):
         self.cfg = load_config()
         apply_theme(self.cfg["ui"])
         super().__init__()
-        if sys.platform.startswith("win") and APP_ICON_PATH.exists():
-            self.iconbitmap(default=str(APP_ICON_PATH))
+        if sys.platform.startswith("win"):
+            icon_path = _resolve_icon_path()
+            if icon_path is not None:
+                try:
+                    self.iconbitmap(str(icon_path))
+                except TclError:
+                    pass
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
