@@ -95,12 +95,16 @@ def _refresh_widget_tree(widget: tk.Misc) -> None:
     if not hasattr(widget, "configure"):
         return
 
+    supported_options = _configurable_options(widget)
+
     theme_key = widget.__class__.__name__
     theme_values = ctk.ThemeManager.theme.get(theme_key, {})
     for option, value in theme_values.items():
         if option in {"macOS", "Windows", "Linux"}:
             continue
         if "color" not in option:
+            continue
+        if option not in supported_options:
             continue
         try:
             widget.configure(**{option: value})
@@ -115,6 +119,27 @@ def _refresh_widget_tree(widget: tk.Misc) -> None:
     for child in child_containers:
         if isinstance(child, tk.Misc):
             _refresh_widget_tree(child)
+
+
+def _configurable_options(widget: tk.Misc) -> set[str]:
+    """Return the configuration option names accepted by the widget."""
+
+    try:
+        config = widget.configure()
+    except Exception:  # pragma: no cover - defensive guard
+        return set()
+
+    if isinstance(config, dict):
+        return set(config.keys())
+
+    options: set[str] = set()
+    if isinstance(config, (tuple, list)):
+        for item in config:
+            if isinstance(item, (tuple, list)) and item:
+                key = item[0]
+                if isinstance(key, str):
+                    options.add(key)
+    return options
 
 
 def available_accents() -> Dict[str, str]:
