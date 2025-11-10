@@ -1,9 +1,8 @@
 import logging
 import sys
 from pathlib import Path
-from typing import Optional
 
-import tkinter as tk  # for PhotoImage on non-Windows
+import tkinter as tk  # for PhotoImage on mac/linux
 import customtkinter as ctk
 
 from .theme import apply_theme
@@ -20,38 +19,40 @@ logger = logging.getLogger(__name__)
 APP_TITLE = "PawdioLab"
 
 
-def _resolve_icon_candidates() -> list[Path]:
-    """
-    Collect all plausible icon paths (ico/png/icns) from source layout and PyInstaller bundle.
-    Returns only ones that actually exist.
-    """
-    candidates: list[Path] = []
+def _icon_search_paths() -> list[Path]:
+    """Return all paths where an icon might live, in order."""
+    paths: list[Path] = []
 
-    # normal source layout: app/ui/assets/...
-    assets_dir = Path(__file__).with_name("assets")
-    candidates.append(assets_dir / "pawdiolab.ico")
-    candidates.append(assets_dir / "pawdiolab.png")
-    candidates.append(assets_dir / "pawdiolab.icns")
+    this_file = Path(__file__).resolve()
+    ui_dir = this_file.parent               # app/ui
+    assets_dir = ui_dir / "assets"          # app/ui/assets
+
+    # source layout
+    paths.append(assets_dir / "pawdiolab.ico")
+    paths.append(assets_dir / "pawdiolab.png")
+    paths.append(assets_dir / "pawdiolab.icns")
+
+    # project root relative guesses (if someone runs from repo root)
+    root_guess = ui_dir.parent.parent       # repo root (app/.. -> repo)
+    paths.append(root_guess / "app" / "ui" / "assets" / "pawdiolab.ico")
+    paths.append(root_guess / "app" / "ui" / "assets" / "pawdiolab.png")
 
     # PyInstaller bundle
     if hasattr(sys, "_MEIPASS"):
-        meipass = Path(sys._MEIPASS)
-        candidates.extend(
-            [
-                meipass / "app" / "ui" / "assets" / "pawdiolab.ico",
-                meipass / "app" / "ui" / "assets" / "pawdiolab.png",
-                meipass / "app" / "ui" / "assets" / "pawdiolab.icns",
-                meipass / "pawdiolab.ico",
-                meipass / "pawdiolab.png",
-                meipass / "pawdiolab.icns",
-            ]
-        )
+        base = Path(sys._MEIPASS)
+        # try to mimic the source layout inside bundle
+        paths.append(base / "app" / "ui" / "assets" / "pawdiolab.ico")
+        paths.append(base / "app" / "ui" / "assets" / "pawdiolab.png")
+        # or directly in the bundle root
+        paths.append(base / "pawdiolab.ico")
+        paths.append(base / "pawdiolab.png")
 
-    return [c for c in candidates if c.is_file()]
+    # keep only existing
+    return [p for p in paths if p.is_file()]
 
 
-ICON_CANDIDATES = _resolve_icon_candidates()
-if not ICON_CANDIDATES:
+ICON_PATHS = _icon_search_paths()
+if not ICON_PATHS:
     logger.info("Application icon not found; using default window icon")
 
 
@@ -62,7 +63,7 @@ class MainApp(ctk.CTk):
 
         super().__init__()
 
-        # set icon cross-platform
+        # set icon (cross-platform)
         self._set_window_icon()
 
         self.title(APP_TITLE)
@@ -94,9 +95,7 @@ class MainApp(ctk.CTk):
         self.btn_sweep.grid(row=3, column=0, padx=16, pady=6, sticky="ew")
 
         self.btn_devices = ctk.CTkButton(
-            self.sidebar,
-            text="Devices / Settings",
-            command=lambda: self._show("devices"),
+            self.sidebar, text="Devices / Settings", command=lambda: self._show("devices")
         )
         self.btn_devices.grid(row=4, column=0, padx=16, pady=6, sticky="ew")
 
@@ -146,47 +145,33 @@ class MainApp(ctk.CTk):
 
         self._show("latency")
 
-    # ------------------------------------------------------------------
-    # icon helper
-    # ------------------------------------------------------------------
     def _set_window_icon(self):
-        if not ICON_CANDIDATES:
+        if not ICON_PATHS:
             return
 
-        # Windows prefers .ico
+        # Windows: try .ico first
         if sys.platform.startswith("win"):
-            ico = next((p for p in ICON_CANDIDATES if p.suffix.lower() == ".ico"), None)
+            ico = next((p for p in ICON_PATHS if p.suffix.lower() == ".ico"), None)
             if ico:
                 try:
                     self.iconbitmap(str(ico))
                     return
                 except Exception:
-                    logger.warning("Failed to set .ico icon on Windows from %s", ico)
+                    logger.warning("Failed to set Windows icon from %s", ico)
 
-        # mac / linux: use iconphoto with png/gif if possible
-        png_or_gif = next(
-            (p for p in ICON_CANDIDATES if p.suffix.lower() in (".png", ".gif")), None
+        # Others: try png/gif
+        img_path = next(
+            (p for p in ICON_PATHS if p.suffix.lower() in (".png", ".gif")), None
         )
-        icns = next((p for p in ICON_CANDIDATES if p.suffix.lower() == ".icns"), None)
-
-        try:
-            if png_or_gif and png_or_gif.is_file():
-                img = tk.PhotoImage(file=str(png_or_gif))
+        if img_path:
+            try:
+                img = tk.PhotoImage(file=str(img_path))
                 self.iconphoto(True, img)
-                # keep reference so it doesn't get GC'd
-                self._icon_img = img
-            elif icns and icns.is_file():
-                # some Tk builds accept icns via iconbitmap
-                try:
-                    self.iconbitmap(str(icns))
-                except Exception:
-                    pass
-        except Exception as e:
-            logger.warning("Failed to set icon via iconphoto/iconbitmap: %s", e)
+                self._icon_img = img  # keep reference
+            except Exception as e:
+                logger.warning("Failed to set icon via PhotoImage: %s", e)
 
-    # ------------------------------------------------------------------
-    # page helpers
-    # ------------------------------------------------------------------
+    # rest of your original methods ------------------------
     def _add_experimental_page(self):
         self.pages["experimental"] = ExperimentalPage(
             self.main, self.core, self.cfg, self._log
