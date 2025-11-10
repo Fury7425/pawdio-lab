@@ -57,6 +57,7 @@ class MainApp(ctk.CTk):
         apply_theme(self.cfg["ui"])
         super().__init__()
         self._icon_image = None
+        self._icon_handles = ()
         self._apply_window_icon()
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
@@ -123,11 +124,8 @@ class MainApp(ctk.CTk):
             return
 
         if sys.platform.startswith("win"):
-            try:
-                self.iconbitmap(str(APP_ICON))
+            if self._apply_windows_icon(APP_ICON):
                 return
-            except Exception:  # noqa: BLE001
-                logger.warning("Failed to load application icon via iconbitmap from %s", APP_ICON)
 
         if Image is None or ImageTk is None:
             logger.info("Pillow is not available; cannot apply application icon image")
@@ -139,3 +137,43 @@ class MainApp(ctk.CTk):
             self.iconphoto(True, self._icon_image)
         except Exception:  # noqa: BLE001
             logger.warning("Failed to load application icon via iconphoto from %s", APP_ICON)
+
+    def _apply_windows_icon(self, icon_path: Path) -> bool:
+        """Apply the window icon using Win32 APIs for reliable display on Windows."""
+
+        try:
+            import ctypes
+            from ctypes import wintypes
+        except Exception:  # noqa: BLE001
+            logger.warning("ctypes is not available; cannot load Windows icon")
+            return False
+
+        load_image = ctypes.windll.user32.LoadImageW
+        send_message = ctypes.windll.user32.SendMessageW
+
+        # Constants sourced from WinUser.h
+        image_icon = 1
+        lr_loadfromfile = 0x0010
+        lr_defaultsize = 0x0040
+        wm_seticon = 0x0080
+
+        icon_path_str = str(icon_path.resolve())
+        try:
+            hicon_big = load_image(None, icon_path_str, image_icon, 0, 0, lr_loadfromfile | lr_defaultsize)
+            hicon_small = load_image(None, icon_path_str, image_icon, 16, 16, lr_loadfromfile)
+        except Exception:  # noqa: BLE001
+            logger.exception("Failed to load Windows icon image from %s", icon_path)
+            return False
+
+        if not hicon_big and not hicon_small:
+            logger.warning("Win32 LoadImageW returned no icon handles for %s", icon_path)
+            return False
+
+        hwnd = self.winfo_id()
+        if hicon_big:
+            send_message(hwnd, wm_seticon, wintypes.WPARAM(1), wintypes.LPARAM(hicon_big))
+        if hicon_small:
+            send_message(hwnd, wm_seticon, wintypes.WPARAM(0), wintypes.LPARAM(hicon_small))
+
+        self._icon_handles = tuple(h for h in (hicon_big, hicon_small) if h)
+        return True
