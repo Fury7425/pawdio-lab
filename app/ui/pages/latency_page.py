@@ -126,19 +126,7 @@ class LatencyPage(ctk.CTkScrollableFrame):
         self.summary_box = ctk.CTkTextbox(summary_frame, wrap="word", height=160)
         self.summary_box.grid(row=3, column=0, columnspan=3, sticky="nsew", padx=18, pady=(0, 16))
 
-        plot_frame = self._section(row=3, title="Latency Plot")
-        plot_frame.grid_columnconfigure(0, weight=1)
-        self.plot_holder = ctk.CTkFrame(plot_frame, corner_radius=12, border_width=1, height=240)
-        self.plot_holder.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 16))
-        self.plot_holder.grid_propagate(False)
-        ctk.CTkLabel(
-            self.plot_holder,
-            text="Plots will open in a separate Matplotlib window when available.",
-            justify="left",
-            wraplength=520,
-        ).pack(fill="both", expand=True, padx=16, pady=16)
-
-        cal_frame = self._section(row=4, title="Calibration")
+        cal_frame = self._section(row=3, title="Calibration")
         cal_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         self.cal_vars = {}

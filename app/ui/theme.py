@@ -5,6 +5,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Dict
 
+import tkinter as tk
+
 import customtkinter as ctk
 
 THEME_DIR = Path(__file__).resolve().parent / "themes"
@@ -69,7 +71,7 @@ def save_theme_config(theme: ThemeConfig, path: Path | None = None) -> None:
         json.dump(asdict(theme), fh, indent=2)
 
 
-def apply_theme(theme: ThemeConfig) -> None:
+def apply_theme(theme: ThemeConfig, root: tk.Misc | None = None) -> None:
     """Apply theme values to CustomTkinter."""
 
     appearance = _normalise_appearance(theme.appearance_mode)
@@ -82,6 +84,37 @@ def apply_theme(theme: ThemeConfig) -> None:
         ctk.set_default_color_theme("dark-blue")
 
     ctk.set_appearance_mode(appearance)
+
+    if root is not None:
+        _refresh_widget_tree(root)
+
+
+def _refresh_widget_tree(widget: tk.Misc) -> None:
+    """Recursively refresh widget colors from the active theme."""
+
+    if not hasattr(widget, "configure"):
+        return
+
+    theme_key = widget.__class__.__name__
+    theme_values = ctk.ThemeManager.theme.get(theme_key, {})
+    for option, value in theme_values.items():
+        if option in {"macOS", "Windows", "Linux"}:
+            continue
+        if "color" not in option:
+            continue
+        try:
+            widget.configure(**{option: value})
+        except (tk.TclError, AttributeError, TypeError):
+            continue
+
+    # CTkScrollableFrame nests content inside ``scrollable_frame``
+    child_containers = list(widget.winfo_children())
+    if hasattr(widget, "scrollable_frame"):
+        child_containers.append(widget.scrollable_frame)
+
+    for child in child_containers:
+        if isinstance(child, tk.Misc):
+            _refresh_widget_tree(child)
 
 
 def available_accents() -> Dict[str, str]:

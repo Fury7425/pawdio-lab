@@ -88,12 +88,14 @@ class MainApp(ctk.CTk):
         self.minsize(1060, 720)
 
         # layout
-        self.grid_columnconfigure(1, weight=1)
+        self.grid_columnconfigure(0, weight=1, minsize=260)
+        self.grid_columnconfigure(1, weight=5)
         self.grid_rowconfigure(0, weight=1)
 
-        self.sidebar = ctk.CTkFrame(self, corner_radius=0, width=230)
-        self.sidebar.grid(row=0, column=0, sticky="nsw")
+        self.sidebar = ctk.CTkFrame(self, corner_radius=0, width=260)
+        self.sidebar.grid(row=0, column=0, sticky="nswe")
         self.sidebar.grid_rowconfigure(10, weight=1)
+        self.sidebar.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(
             self.sidebar,
@@ -163,13 +165,14 @@ class MainApp(ctk.CTk):
             self._add_experimental_page()
 
         self._show("latency")
+        apply_theme(self.theme, self)
 
     def _apply_new_theme(self, theme: ThemeConfig) -> None:
         if theme == self.theme:
             return
 
         self.theme = theme
-        apply_theme(theme)
+        apply_theme(theme, self)
         save_theme_config(theme)
         self.cfg.setdefault("ui", {})
         self.cfg["ui"]["appearance_mode"] = theme.appearance_mode
