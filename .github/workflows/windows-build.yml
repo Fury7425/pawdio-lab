@@ -1,6 +1,5 @@
 name: Build Windows EXE (PyInstaller)
 
-
 on:
   push:
     branches: [main, master]
@@ -37,7 +36,15 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller --onefile --noconsole --name "Pawdio-Lab" -p app app/main.py
+          pyinstaller `
+            --onefile `
+            --noconsole `
+            --name "Pawdio-Lab" `
+            --icon "app/ui/assets/pawdiolab.ico" `
+            --add-data 'app/ui/assets/pawdiolab.ico;app/ui/assets' `
+            --add-data 'app/ui/assets/pawdiolab.png;app/ui/assets' `
+            -p app `
+            app/main.py
           dir dist
 
       - name: Compress executable
