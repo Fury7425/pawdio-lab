@@ -130,22 +130,7 @@ class SweepFRPage(ctk.CTkFrame):
         self.monitor_card = self._build_level_monitor()
         self.monitor_card.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 16))
         self.results_card = self._build_results()
-        self.results_card.grid(row=2, column=1, sticky="nsew", padx=24, pady=(0, 16))
-
-        export_frame = ctk.CTkFrame(self, fg_color="transparent")
-        export_frame.grid(row=3, column=0, columnspan=2, sticky="e", padx=24, pady=(0, 24))
-        ctk.CTkButton(export_frame, text="Export LAST (JSON)", command=self.export_last, **self.button_style).grid(
-            row=0, column=0, padx=(0, 12)
-        )
-        ctk.CTkButton(export_frame, text="Export ALL (JSON)", command=self.export_all, **self.button_style).grid(
-            row=0, column=1, padx=12
-        )
-        ctk.CTkButton(
-            export_frame,
-            text="Export LAST to Squiglink",
-            command=self.export_last_squiglink,
-            **self.button_style,
-        ).grid(row=0, column=2)
+        self.results_card.grid(row=2, column=1, sticky="nsew", padx=24, pady=(0, 24))
 
         self.after(100, self._update_meter_display)
 
@@ -235,7 +220,29 @@ class SweepFRPage(ctk.CTkFrame):
             row=0, column=0, sticky="w", padx=18, pady=(16, 10)
         )
         self.box = ctk.CTkTextbox(res)
-        self.box.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 16))
+        self.box.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 12))
+
+        button_row = ctk.CTkFrame(res, fg_color="transparent")
+        button_row.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 18))
+        button_row.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(
+            button_row,
+            text="Export LAST (JSON)",
+            command=self.export_last,
+            **self.button_style,
+        ).grid(row=0, column=1, padx=(0, 12))
+        ctk.CTkButton(
+            button_row,
+            text="Export ALL (JSON)",
+            command=self.export_all,
+            **self.button_style,
+        ).grid(row=0, column=2, padx=12)
+        ctk.CTkButton(
+            button_row,
+            text="Export LAST to Squiglink",
+            command=self.export_last_squiglink,
+            **self.button_style,
+        ).grid(row=0, column=3)
         return res
 
     def on_run(self):
