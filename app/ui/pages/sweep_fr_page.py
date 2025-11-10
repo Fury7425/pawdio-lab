@@ -5,7 +5,7 @@ import importlib
 import numpy as np
 from ...tests import sweep_fr
 from ...core.utils import ensure_dir
-from ...tests.sweep_fr import InputMonitorController, LevelState
+from ...tests.sweep_fr import InputMonitorController, LevelState, PinkNoiseGenerator
 
 _sounddevice_spec = importlib.util.find_spec("sounddevice")
 sounddevice = importlib.import_module("sounddevice") if _sounddevice_spec else None
@@ -33,6 +33,7 @@ class SweepFRPage(ctk.CTkFrame):
         self.pink_noise_playing = False
         self.pink_noise_thread = None
         self.pink_noise_stream = None
+        self.pink_noise_generator = PinkNoiseGenerator(gain=0.25)
 
         self.page_title_font = ctk.CTkFont(size=20, weight="bold")
         self.section_font = ctk.CTkFont(size=14, weight="bold")
@@ -378,11 +379,13 @@ class SweepFRPage(ctk.CTkFrame):
                 self.pink_noise_stream.stop()
                 self.pink_noise_stream.close()
                 self.pink_noise_stream = None
+            self.pink_noise_generator.reset()
             self.status_label.configure(text="Pink noise stopped.")
         else:
             self.pink_noise_playing = True
             self.pink_noise_button.configure(text="Stop Pink Noise")
             self.status_label.configure(text="Playing pink noise...")
+            self.pink_noise_generator.reset()
             self.start_pink_noise_thread()
 
     def start_pink_noise_thread(self):
@@ -396,7 +399,7 @@ class SweepFRPage(ctk.CTkFrame):
         blocksize = 1024
         # Create a stream that calls a callback to continuously fill with pink noise
         def callback(outdata, frames, time_info, status):
-            pink = self.generate_pink_noise(frames / samplerate, samplerate)
+            pink = self.pink_noise_generator.generate(frames, samplerate)
             outdata[:] = pink.reshape(-1, 1)
             # Real-time measurement (simulate level from pink noise itself)
             rms = np.sqrt(np.mean(pink ** 2))
@@ -420,14 +423,3 @@ class SweepFRPage(ctk.CTkFrame):
         while self.pink_noise_playing:
             time.sleep(0.1)
         # Stream will be stopped/closed by toggle_pink_noise
-
-    def generate_pink_noise(self, duration, samplerate):
-        n = int(duration * samplerate)
-        white = np.random.randn(n)
-        b = [0.02109238, 0.07113478, 0.68873558]
-        a = [1, -1.73472577, 0.7660066]
-        pink = np.zeros(n)
-        for i in range(3, n):
-            pink[i] = b[0] * white[i] + b[1] * white[i - 1] + b[2] * white[i - 2] - a[1] * pink[i - 1] - a[2] * pink[i - 2]
-        pink /= np.max(np.abs(pink)) + 1e-12
-        return pink.astype(np.float32)
