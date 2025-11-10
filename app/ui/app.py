@@ -6,6 +6,12 @@ from typing import Optional
 
 import customtkinter as ctk
 
+try:
+    from PIL import Image, ImageTk
+except Exception:  # noqa: BLE001
+    Image = None
+    ImageTk = None
+
 from .theme import apply_theme
 from ..config import load_config, save_config
 from ..core.audio import AudioCore
@@ -50,11 +56,8 @@ class MainApp(ctk.CTk):
         self.cfg = load_config()
         apply_theme(self.cfg["ui"])
         super().__init__()
-        if APP_ICON is not None:
-            try:
-                self.iconbitmap(str(APP_ICON))
-            except Exception:  # noqa: BLE001
-                logger.warning("Failed to load application icon from %s", APP_ICON)
+        self._icon_image = None
+        self._apply_window_icon()
         self.title(APP_TITLE); self.geometry("1200x800"); self.minsize(1060, 720)
 
         self.grid_columnconfigure(1, weight=1); self.grid_rowconfigure(0, weight=1)
@@ -114,3 +117,25 @@ class MainApp(ctk.CTk):
 
     def _log_sink(self, msg):
         pass
+
+    def _apply_window_icon(self) -> None:
+        if APP_ICON is None:
+            return
+
+        if sys.platform.startswith("win"):
+            try:
+                self.iconbitmap(str(APP_ICON))
+                return
+            except Exception:  # noqa: BLE001
+                logger.warning("Failed to load application icon via iconbitmap from %s", APP_ICON)
+
+        if Image is None or ImageTk is None:
+            logger.info("Pillow is not available; cannot apply application icon image")
+            return
+
+        try:
+            with Image.open(APP_ICON) as icon_image:
+                self._icon_image = ImageTk.PhotoImage(icon_image)
+            self.iconphoto(True, self._icon_image)
+        except Exception:  # noqa: BLE001
+            logger.warning("Failed to load application icon via iconphoto from %s", APP_ICON)
