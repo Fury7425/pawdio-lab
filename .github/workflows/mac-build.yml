@@ -5,7 +5,7 @@ on:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-  workflow_dispatch: # Allows manual running
+  workflow_dispatch:
 
 jobs:
   build-macos:
@@ -34,12 +34,43 @@ jobs:
     - name: Install build tools
       run: pip install pyinstaller
 
+    # Build .icns from your 192x192 PNG at app/ui/assets/pawdiolab.png
+    - name: Generate .icns from PNG
+      run: |
+        ICON_PNG="app/ui/assets/pawdiolab.png"
+        ICONSET_DIR="app/ui/assets/pawdiolab.iconset"
+        ICNS_OUT="app/ui/assets/pawdiolab.icns"
+
+        if [ ! -f "$ICON_PNG" ]; then
+          echo "Icon PNG not found at $ICON_PNG"
+          exit 1
+        fi
+
+        mkdir -p "$ICONSET_DIR"
+
+        # good downsizes from 192x192
+        sips -z 16 16     "$ICON_PNG" --out "$ICONSET_DIR/icon_16x16.png"
+        sips -z 32 32     "$ICON_PNG" --out "$ICONSET_DIR/icon_16x16@2x.png"
+        sips -z 32 32     "$ICON_PNG" --out "$ICONSET_DIR/icon_32x32.png"
+        sips -z 64 64     "$ICON_PNG" --out "$ICONSET_DIR/icon_32x32@2x.png"
+        sips -z 128 128   "$ICON_PNG" --out "$ICONSET_DIR/icon_128x128.png"
+        sips -z 256 256   "$ICON_PNG" --out "$ICONSET_DIR/icon_128x128@2x.png"
+
+        # upscaled but ok
+        sips -z 256 256   "$ICON_PNG" --out "$ICONSET_DIR/icon_256x256.png"
+        sips -z 512 512   "$ICON_PNG" --out "$ICONSET_DIR/icon_256x256@2x.png"
+
+        iconutil -c icns "$ICONSET_DIR" -o "$ICNS_OUT"
+
     - name: Build macOS .app bundle
       run: |
         pyinstaller app/main.py \
           --name "Pawdio Lab" \
           --windowed \
           --clean \
+          --icon app/ui/assets/pawdiolab.icns \
+          --add-data "app/ui/assets/pawdiolab.icns:app/ui/assets" \
+          --add-data "app/ui/assets/pawdiolab.png:app/ui/assets" \
           --collect-all customtkinter \
           --hidden-import "customtkinter" \
           --hidden-import "matplotlib.backends.backend_tkagg" \
