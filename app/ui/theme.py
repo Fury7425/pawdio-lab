@@ -97,8 +97,14 @@ def _refresh_widget_tree(widget: tk.Misc) -> None:
 
     supported_options = _configurable_options(widget)
 
-    theme_key = widget.__class__.__name__
-    theme_values = ctk.ThemeManager.theme.get(theme_key, {})
+    theme_values: dict[str, object] = {}
+    for cls in widget.__class__.__mro__:
+        name = getattr(cls, "__name__", None)
+        if not name:
+            continue
+        if name in ctk.ThemeManager.theme:
+            theme_values = ctk.ThemeManager.theme.get(name, {})
+            break
     for option, value in theme_values.items():
         if option in {"macOS", "Windows", "Linux"}:
             continue
