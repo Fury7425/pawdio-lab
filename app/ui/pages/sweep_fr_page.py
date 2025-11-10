@@ -10,6 +10,7 @@ from ...tests.sweep_fr import InputMonitorController, LevelState
 _sounddevice_spec = importlib.util.find_spec("sounddevice")
 sounddevice = importlib.import_module("sounddevice") if _sounddevice_spec else None
 
+
 class SweepFRPage(ctk.CTkFrame):
     def __init__(self, master, core, cfg, log_fn):
         super().__init__(master, corner_radius=0)
@@ -33,74 +34,125 @@ class SweepFRPage(ctk.CTkFrame):
         self.pink_noise_thread = None
         self.pink_noise_stream = None
 
-        self.grid_columnconfigure((0,1), weight=1)
+        self.page_title_font = ctk.CTkFont(size=20, weight="bold")
+        self.section_font = ctk.CTkFont(size=14, weight="bold")
+        self.button_style = {"height": 36, "corner_radius": 8}
+
+        self.grid_columnconfigure((0, 1), weight=1)
         self.grid_rowconfigure(2, weight=1)
 
-        # Title
         ctk.CTkLabel(
-            self, text="Sweep Frequency Response",
-            font=ctk.CTkFont(size=18, weight="bold")
-        ).grid(row=0, column=0, columnspan=2, padx=18, pady=(18, 4), sticky="w")
+            self,
+            text="Sweep Frequency Response",
+            font=self.page_title_font,
+        ).grid(row=0, column=0, columnspan=2, padx=24, pady=(24, 12), sticky="w")
 
-        # Sweep configuration card (unchanged)
-        run_card = ctk.CTkFrame(self)
-        run_card.grid(row=1, column=0, columnspan=2, padx=18, pady=12, sticky="ew")
-        run_card.grid_columnconfigure(3, weight=1)
+        settings = ctk.CTkFrame(self)
+        settings.grid(row=1, column=0, columnspan=2, sticky="ew", padx=24, pady=(12, 16))
+        settings.grid_columnconfigure((1, 3, 5, 7), weight=1)
+        ctk.CTkLabel(settings, text="Sweep Settings", font=self.section_font).grid(
+            row=0, column=0, columnspan=8, sticky="w", padx=18, pady=(16, 10)
+        )
 
         self.var_f0 = ctk.StringVar(value="20")
         self.var_f1 = ctk.StringVar(value="20000")
         self.var_dur = ctk.StringVar(value="6.0")
         self.var_rep = ctk.IntVar(value=1)
 
-        ctk.CTkLabel(run_card, text="Start Freq (Hz)").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
-        ctk.CTkEntry(run_card, textvariable=self.var_f0, width=90).grid(row=0, column=1, sticky="w", padx=8, pady=(8, 4))
-        ctk.CTkLabel(run_card, text="End Freq (Hz)").grid(row=0, column=2, sticky="w", padx=8, pady=(8, 4))
-        ctk.CTkEntry(run_card, textvariable=self.var_f1, width=90).grid(row=0, column=3, sticky="w", padx=8, pady=(8, 4))
+        ctk.CTkLabel(settings, text="Start Freq (Hz)").grid(
+            row=1, column=0, sticky="w", padx=(18, 8), pady=(0, 6)
+        )
+        ctk.CTkEntry(settings, textvariable=self.var_f0).grid(
+            row=1, column=1, sticky="ew", padx=(0, 18), pady=(0, 6)
+        )
 
-        ctk.CTkLabel(run_card, text="Duration (s)").grid(row=1, column=0, sticky="w", padx=8)
-        ctk.CTkEntry(run_card, textvariable=self.var_dur, width=90).grid(row=1, column=1, sticky="w", padx=8)
+        ctk.CTkLabel(settings, text="End Freq (Hz)").grid(
+            row=1, column=2, sticky="w", padx=(18, 8), pady=(0, 6)
+        )
+        ctk.CTkEntry(settings, textvariable=self.var_f1).grid(
+            row=1, column=3, sticky="ew", padx=(0, 18), pady=(0, 6)
+        )
 
-        ctk.CTkLabel(run_card, text="Repeats").grid(row=2, column=0, sticky="w", padx=8)
-        rep_slider = ctk.CTkSlider(run_card, from_=1, to=20, number_of_steps=19)
-        rep_slider.set(self.var_rep.get())
-        rep_slider.grid(row=2, column=1, sticky="ew", padx=8)
-        rep_lab = ctk.CTkLabel(run_card, text=str(self.var_rep.get()))
-        rep_lab.grid(row=2, column=2, padx=8, sticky="w")
-        rep_slider.configure(command=lambda v: (self.var_rep.set(int(v)), rep_lab.configure(text=str(int(v)))))
+        ctk.CTkLabel(settings, text="Duration (s)").grid(
+            row=1, column=4, sticky="w", padx=(18, 8), pady=(0, 6)
+        )
+        ctk.CTkEntry(settings, textvariable=self.var_dur).grid(
+            row=1, column=5, sticky="ew", padx=(0, 18), pady=(0, 6)
+        )
 
+        ctk.CTkLabel(settings, text="Repeats").grid(
+            row=1, column=6, sticky="w", padx=(18, 8), pady=(0, 6)
+        )
+        repeats_cell = ctk.CTkFrame(settings, fg_color="transparent")
+        repeats_cell.grid(row=1, column=7, sticky="ew", padx=(0, 18), pady=(0, 6))
+        repeats_cell.grid_columnconfigure(0, weight=1)
+        self.rep_slider = ctk.CTkSlider(repeats_cell, from_=1, to=20, number_of_steps=19)
+        self.rep_slider.set(self.var_rep.get())
+        self.rep_slider.grid(row=0, column=0, sticky="ew")
+        self.rep_label = ctk.CTkLabel(repeats_cell, text=str(self.var_rep.get()))
+        self.rep_label.grid(row=0, column=1, sticky="e", padx=(8, 0))
+        self.rep_slider.configure(command=self._on_repeat_slider)
+
+        options_row = ctk.CTkFrame(settings, fg_color="transparent")
+        options_row.grid(row=2, column=0, columnspan=8, sticky="ew", padx=18, pady=(6, 12))
+        options_row.grid_columnconfigure((0, 1, 2), weight=1)
         self.save_plots_var = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(run_card, text="Save plots", variable=self.save_plots_var).grid(
-            row=3, column=0, padx=8, pady=(8, 4), sticky="w"
-        )
-
         self.save_squiglink_var = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(run_card, text="Save Squiglink format (.txt)", variable=self.save_squiglink_var).grid(
-            row=3, column=1, columnspan=2, padx=8, pady=(8, 4), sticky="w"
-        )
-
-        # Mono mode switch (only affects sweep_fr)
         self.mono_mode_var = ctk.BooleanVar(value=False)
-        ctk.CTkSwitch(run_card, text="Mono Test (one side at a time)", variable=self.mono_mode_var).grid(
-            row=3, column=3, padx=8, pady=(8, 4), sticky="w"
+        ctk.CTkSwitch(options_row, text="Save plots", variable=self.save_plots_var).grid(
+            row=0, column=0, sticky="w", pady=4
+        )
+        ctk.CTkSwitch(
+            options_row,
+            text="Save Squiglink format (.txt)",
+            variable=self.save_squiglink_var,
+        ).grid(row=0, column=1, sticky="w", pady=4)
+        ctk.CTkSwitch(
+            options_row,
+            text="Mono Test (one side at a time)",
+            variable=self.mono_mode_var,
+        ).grid(row=0, column=2, sticky="w", pady=4)
+
+        ctk.CTkLabel(settings, text="Output Folder").grid(
+            row=3, column=0, sticky="w", padx=(18, 8), pady=(0, 6)
+        )
+        self.output_dir_var = ctk.StringVar(value=self.cfg["last_settings"].get("output_dir", os.getcwd()))
+        output_row = ctk.CTkFrame(settings, fg_color="transparent")
+        output_row.grid(row=3, column=1, columnspan=6, sticky="ew", padx=(0, 18), pady=(0, 12))
+        output_row.grid_columnconfigure(0, weight=1)
+        self.output_entry = ctk.CTkEntry(output_row, textvariable=self.output_dir_var)
+        self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(output_row, text="Browse", command=self._choose_outdir, width=90).grid(row=0, column=1)
+        ctk.CTkButton(settings, text="Run Sweep", command=self.on_run, **self.button_style).grid(
+            row=3, column=7, sticky="e", padx=(0, 18), pady=(0, 12)
         )
 
-        ctk.CTkLabel(run_card, text="Output Folder").grid(row=4, column=0, padx=8, pady=(8, 2), sticky="w")
-        self.output_dir_var = ctk.StringVar(value=self.cfg["last_settings"].get("output_dir", os.getcwd()))
-        row = ctk.CTkFrame(run_card)
-        row.grid(row=4, column=1, columnspan=3, padx=8, pady=(4, 8), sticky="ew")
-        row.grid_columnconfigure(0, weight=1)
-        self.output_entry = ctk.CTkEntry(row, textvariable=self.output_dir_var)
-        self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
-        ctk.CTkButton(row, text="Browse", command=self._choose_outdir, width=90).grid(row=0, column=1)
+        self.monitor_card = self._build_level_monitor()
+        self.monitor_card.grid(row=2, column=0, sticky="nsew", padx=24, pady=(0, 16))
+        self.results_card = self._build_results()
+        self.results_card.grid(row=2, column=1, sticky="nsew", padx=24, pady=(0, 16))
 
-        # Run Sweep button inside config card
-        ctk.CTkButton(run_card, text="Run Sweep", command=self.on_run).grid(row=5, column=0, padx=8, pady=(4, 8), sticky="w")
-
-        # Bottom area split into 2 columns
-        self._build_level_monitor().grid(row=2, column=0, padx=18, pady=12, sticky="nsew")
-        self._build_results().grid(row=2, column=1, padx=18, pady=12, sticky="nsew")
+        export_frame = ctk.CTkFrame(self, fg_color="transparent")
+        export_frame.grid(row=3, column=0, columnspan=2, sticky="e", padx=24, pady=(0, 24))
+        ctk.CTkButton(export_frame, text="Export LAST (JSON)", command=self.export_last, **self.button_style).grid(
+            row=0, column=0, padx=(0, 12)
+        )
+        ctk.CTkButton(export_frame, text="Export ALL (JSON)", command=self.export_all, **self.button_style).grid(
+            row=0, column=1, padx=12
+        )
+        ctk.CTkButton(
+            export_frame,
+            text="Export LAST to Squiglink",
+            command=self.export_last_squiglink,
+            **self.button_style,
+        ).grid(row=0, column=2)
 
         self.after(100, self._update_meter_display)
+
+    def _on_repeat_slider(self, value: float) -> None:
+        count = int(value)
+        self.var_rep.set(count)
+        self.rep_label.configure(text=str(count))
 
     def _choose_outdir(self):
         from tkinter import filedialog
@@ -109,24 +161,24 @@ class SweepFRPage(ctk.CTkFrame):
             self.output_dir_var.set(d)
 
     def _build_level_monitor(self):
-        level_card = ctk.CTkFrame(self, corner_radius=10)
-        level_card.grid_columnconfigure(1, weight=1)
+        level_card = ctk.CTkFrame(self, corner_radius=12)
+        level_card.grid_columnconfigure(0, weight=1)
 
-        ctk.CTkLabel(level_card, text="Input Level Monitor", font=ctk.CTkFont(size=14, weight="bold")).grid(
-            row=0, column=0, columnspan=3, padx=12, pady=(12, 4), sticky="w"
+        ctk.CTkLabel(level_card, text="Input Level Monitor", font=self.section_font).grid(
+            row=0, column=0, columnspan=4, sticky="w", padx=18, pady=(16, 10)
         )
         self.status_label = ctk.CTkLabel(level_card, text="Ready to measure...", font=ctk.CTkFont(size=12))
-        self.status_label.grid(row=1, column=0, columnspan=3, padx=12, pady=4, sticky="w")
+        self.status_label.grid(row=1, column=0, columnspan=4, sticky="w", padx=18, pady=(0, 8))
 
-        meter_frame = ctk.CTkFrame(level_card, height=80)
-        meter_frame.grid(row=2, column=0, columnspan=3, padx=12, pady=8, sticky="ew")
+        meter_frame = ctk.CTkFrame(level_card, corner_radius=12, height=110)
+        meter_frame.grid(row=2, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12))
         meter_frame.grid_columnconfigure(0, weight=1)
         meter_frame.grid_propagate(False)
-        self.level_canvas = ctk.CTkCanvas(meter_frame, height=60, bg="#2b2b2b", highlightthickness=0)
-        self.level_canvas.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
+        self.level_canvas = ctk.CTkCanvas(meter_frame, height=70, bg="#1f1f22", highlightthickness=0)
+        self.level_canvas.grid(row=0, column=0, sticky="ew", padx=12, pady=12)
 
-        readout_frame = ctk.CTkFrame(level_card)
-        readout_frame.grid(row=3, column=0, columnspan=3, padx=12, pady=(0, 8), sticky="ew")
+        readout_frame = ctk.CTkFrame(level_card, fg_color="transparent")
+        readout_frame.grid(row=3, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12))
         readout_frame.grid_columnconfigure((0, 1, 2), weight=1)
         ctk.CTkLabel(readout_frame, text="Current Level:").grid(row=0, column=0, padx=8, pady=4, sticky="w")
         self.current_level_label = ctk.CTkLabel(readout_frame, text="-- dBFS", font=ctk.CTkFont(size=16, weight="bold"))
@@ -138,33 +190,52 @@ class SweepFRPage(ctk.CTkFrame):
         self.spl_label = ctk.CTkLabel(readout_frame, text="-- dB SPL", font=ctk.CTkFont(size=16, weight="bold"))
         self.spl_label.grid(row=1, column=2, padx=8, pady=4, sticky="e")
 
-        control_frame = ctk.CTkFrame(level_card)
-        control_frame.grid(row=4, column=0, columnspan=3, padx=12, pady=(0, 12), sticky="ew")
-        self.monitor_button = ctk.CTkButton(control_frame, text="Start Monitoring", command=self.toggle_monitoring, width=140)
-        self.monitor_button.pack(side="left", padx=6)
-        self.pink_noise_button = ctk.CTkButton(control_frame, text="Play Pink Noise", command=self.toggle_pink_noise, width=140)
-        self.pink_noise_button.pack(side="left", padx=6)
+        control_frame = ctk.CTkFrame(level_card, fg_color="transparent")
+        control_frame.grid(row=4, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 18))
+        control_frame.grid_columnconfigure((0, 1, 2), weight=0)
+        control_frame.grid_columnconfigure(3, weight=1)
+        self.monitor_button = ctk.CTkButton(
+            control_frame,
+            text="Start Monitoring",
+            command=self.toggle_monitoring,
+            **self.button_style,
+        )
+        self.monitor_button.grid(row=0, column=0, padx=(0, 12))
+        self.pink_noise_button = ctk.CTkButton(
+            control_frame,
+            text="Play Pink Noise",
+            command=self.toggle_pink_noise,
+            **self.button_style,
+        )
+        self.pink_noise_button.grid(row=0, column=1, padx=12)
         if sounddevice is None:
             self.pink_noise_button.configure(state="disabled")
-        self.reset_peak_button = ctk.CTkButton(control_frame, text="Reset Peak", command=self.reset_peak, width=100)
-        self.reset_peak_button.pack(side="left", padx=6)
-        self.clip_warning = ctk.CTkLabel(control_frame, text="", text_color="red", font=ctk.CTkFont(size=12, weight="bold"))
-        self.clip_warning.pack(side="right", padx=12)
+        self.reset_peak_button = ctk.CTkButton(
+            control_frame,
+            text="Reset Peak",
+            command=self.reset_peak,
+            **self.button_style,
+        )
+        self.reset_peak_button.grid(row=0, column=2, padx=12)
+        self.clip_warning = ctk.CTkLabel(
+            control_frame,
+            text="",
+            text_color="red",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        )
+        self.clip_warning.grid(row=0, column=3, sticky="e")
 
         return level_card
 
     def _build_results(self):
-        res = ctk.CTkFrame(self)
+        res = ctk.CTkFrame(self, corner_radius=12)
         res.grid_rowconfigure(1, weight=1)
         res.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(res, text="Sweep FR Results").grid(row=0, column=0, sticky="w", padx=8, pady=(8, 4))
+        ctk.CTkLabel(res, text="Sweep FR Results", font=self.section_font).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(16, 10)
+        )
         self.box = ctk.CTkTextbox(res)
-        self.box.grid(row=1, column=0, sticky="nsew", padx=8, pady=8)
-        row2 = ctk.CTkFrame(res)
-        row2.grid(row=2, column=0, sticky="ew", padx=8, pady=(0, 8))
-        ctk.CTkButton(row2, text="Export LAST (JSON)", command=self.export_last).pack(side="left", padx=4)
-        ctk.CTkButton(row2, text="Export ALL (JSON)", command=self.export_all).pack(side="left", padx=4)
-        ctk.CTkButton(row2, text="Export LAST to Squiglink", command=self.export_last_squiglink).pack(side="left", padx=4)
+        self.box.grid(row=1, column=0, sticky="nsew", padx=18, pady=(0, 16))
         return res
 
     def on_run(self):

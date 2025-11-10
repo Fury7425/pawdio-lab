@@ -5,7 +5,13 @@ from pathlib import Path
 import tkinter as tk  # for PhotoImage on mac/linux
 import customtkinter as ctk
 
-from .theme import apply_theme
+from .theme import (
+    ThemeConfig,
+    apply_theme,
+    load_theme_config,
+    save_theme_config,
+    theme_from_legacy,
+)
 from ..config import load_config, save_config
 from ..core.audio import AudioCore
 from .pages.latency_page import LatencyPage
@@ -58,8 +64,19 @@ if not ICON_PATHS:
 
 class MainApp(ctk.CTk):
     def __init__(self):
+        self.theme = load_theme_config()
         self.cfg = load_config()
-        apply_theme(self.cfg["ui"])
+
+        legacy_theme = theme_from_legacy(self.cfg.get("ui"))
+        if self.theme == ThemeConfig() and legacy_theme != ThemeConfig():
+            self.theme = legacy_theme
+            save_theme_config(self.theme)
+
+        apply_theme(self.theme)
+        self.cfg.setdefault("ui", {})
+        self.cfg["ui"]["appearance_mode"] = self.theme.appearance_mode
+        self.cfg["ui"]["accent"] = self.theme.accent
+        self.cfg["ui"]["color_theme"] = self.theme.accent
 
         super().__init__()
 
@@ -137,6 +154,8 @@ class MainApp(ctk.CTk):
             self.cfg,
             self._log,
             on_toggle_experimental=self._toggle_experimental,
+            theme_config=self.theme,
+            on_theme_change=self._apply_new_theme,
         )
         self.pages["results"] = ResultsPage(self.main, self._log_sink)
 
@@ -144,6 +163,19 @@ class MainApp(ctk.CTk):
             self._add_experimental_page()
 
         self._show("latency")
+
+    def _apply_new_theme(self, theme: ThemeConfig) -> None:
+        if theme == self.theme:
+            return
+
+        self.theme = theme
+        apply_theme(theme)
+        save_theme_config(theme)
+        self.cfg.setdefault("ui", {})
+        self.cfg["ui"]["appearance_mode"] = theme.appearance_mode
+        self.cfg["ui"]["accent"] = theme.accent
+        self.cfg["ui"]["color_theme"] = theme.accent
+        save_config(self.cfg)
 
     def _set_window_icon(self):
         if not ICON_PATHS:

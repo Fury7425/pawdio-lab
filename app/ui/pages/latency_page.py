@@ -1,94 +1,231 @@
+import datetime
+import os
 
-import os, datetime, numpy as np, customtkinter as ctk
+import customtkinter as ctk
+import numpy as np
+
 from ...tests.latency import DelayRunner, SOUND_PRESETS
 from ...core.utils import ensure_dir
 from ...config import save_config
 
+
 class LatencyPage(ctk.CTkScrollableFrame):
     def __init__(self, master, core, cfg, log_fn):
         super().__init__(master, corner_radius=0)
-        self.core = core; self.cfg = cfg; self.log = log_fn
+        self.core = core
+        self.cfg = cfg
+        self.log = log_fn
         self.runner = DelayRunner(self.cfg, self.log)
 
-        self.grid_columnconfigure(1, weight=1)
+        self.page_title_font = ctk.CTkFont(size=20, weight="bold")
+        self.section_font = ctk.CTkFont(size=14, weight="bold")
+        self.metric_font = ctk.CTkFont(size=24, weight="bold")
+        self.button_style = {"height": 36, "corner_radius": 8}
 
-        ctk.CTkLabel(self, text="Latency", font=ctk.CTkFont(size=18, weight="bold")).grid(row=0, column=0, columnspan=2, padx=18, pady=(18,4), sticky="w")
+        self.grid_columnconfigure(0, weight=1)
 
-        run_card = ctk.CTkFrame(self, corner_radius=10)
-        run_card.grid(row=1, column=0, columnspan=2, padx=18, pady=12, sticky="ew")
-        run_card.grid_columnconfigure(3, weight=1)
+        ctk.CTkLabel(
+            self,
+            text="Latency",
+            font=self.page_title_font,
+        ).grid(row=0, column=0, padx=24, pady=(24, 12), sticky="w")
 
-        ctk.CTkLabel(run_card, text="Run Delay Tests").grid(row=0, column=0, padx=12, pady=(12,6), sticky="w")
+        run_frame = self._section(row=1, title="Run Delay Tests")
+        run_frame.grid_columnconfigure((0, 1, 2, 3), weight=1)
+
         self.preset_vars = {}
-        for i, p in enumerate(SOUND_PRESETS):
-            var = ctk.BooleanVar(value=(p["key"]!="impulse"))
-            self.preset_vars[p["key"]] = var
-            ctk.CTkSwitch(run_card, text=p["name"], variable=var).grid(row=1+i//3, column=i%3, padx=12, pady=6, sticky="w")
+        preset_container = ctk.CTkFrame(run_frame, fg_color="transparent")
+        preset_container.grid(row=1, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12))
+        preset_container.grid_columnconfigure((0, 1, 2), weight=1)
+        for i, preset in enumerate(SOUND_PRESETS):
+            var = ctk.BooleanVar(value=(preset["key"] != "impulse"))
+            self.preset_vars[preset["key"]] = var
+            ctk.CTkSwitch(
+                preset_container,
+                text=preset["name"],
+                variable=var,
+            ).grid(row=i // 3, column=i % 3, padx=8, pady=6, sticky="w")
 
+        slider_row = ctk.CTkFrame(run_frame, fg_color="transparent")
+        slider_row.grid(row=2, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12))
+        slider_row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(slider_row, text="Repeats").grid(row=0, column=0, sticky="w", padx=(0, 12))
         self.repeats_var = ctk.IntVar(value=self.cfg["last_settings"]["repeats"])
-        ctk.CTkLabel(run_card, text="Repeats").grid(row=3, column=0, padx=12, pady=(8,2), sticky="w")
-        self.repeats_slider = ctk.CTkSlider(run_card, from_=1, to=20, number_of_steps=19)
-        self.repeats_slider.set(self.repeats_var.get()); self.repeats_slider.grid(row=3, column=1, padx=12, pady=(8,2), sticky="ew")
-        self.repeats_label = ctk.CTkLabel(run_card, text=str(self.repeats_var.get())); self.repeats_label.grid(row=3, column=2, padx=12, pady=(8,2), sticky="w")
-        self.repeats_slider.configure(command=lambda v: self.repeats_label.configure(text=str(int(v))))
+        self.repeats_slider = ctk.CTkSlider(slider_row, from_=1, to=20, number_of_steps=19)
+        self.repeats_slider.set(self.repeats_var.get())
+        self.repeats_slider.grid(row=0, column=1, sticky="ew")
+        self.repeats_label = ctk.CTkLabel(slider_row, text=str(self.repeats_var.get()))
+        self.repeats_label.grid(row=0, column=2, sticky="e")
+        self.repeats_slider.configure(command=self._on_repeats_change)
 
-        self.save_plots_var = ctk.BooleanVar(value=True); self.save_bar_var = ctk.BooleanVar(value=True)
-        ctk.CTkSwitch(run_card, text="Save per-sound plot", variable=self.save_plots_var).grid(row=4, column=0, padx=12, pady=4, sticky="w")
-        ctk.CTkSwitch(run_card, text="Save overall bar chart", variable=self.save_bar_var).grid(row=4, column=1, padx=12, pady=4, sticky="w")
+        options_row = ctk.CTkFrame(run_frame, fg_color="transparent")
+        options_row.grid(row=3, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 12))
+        options_row.grid_columnconfigure((0, 1), weight=1)
+        self.save_plots_var = ctk.BooleanVar(value=True)
+        self.save_bar_var = ctk.BooleanVar(value=True)
+        ctk.CTkSwitch(
+            options_row,
+            text="Save per-sound plot",
+            variable=self.save_plots_var,
+        ).grid(row=0, column=0, sticky="w", pady=4)
+        ctk.CTkSwitch(
+            options_row,
+            text="Save overall bar chart",
+            variable=self.save_bar_var,
+        ).grid(row=0, column=1, sticky="w", pady=4)
 
-        ctk.CTkLabel(run_card, text="Output Folder").grid(row=5, column=0, padx=12, pady=(8,2), sticky="w")
         self.output_dir_var = ctk.StringVar(value=self.cfg["last_settings"].get("output_dir", os.getcwd()))
-        row = ctk.CTkFrame(run_card); row.grid(row=5, column=1, columnspan=2, padx=12, pady=(4,8), sticky="ew"); row.grid_columnconfigure(0, weight=1)
-        self.output_entry = ctk.CTkEntry(row, textvariable=self.output_dir_var); self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0,8))
-        ctk.CTkButton(row, text="Browse", command=self._choose_outdir, width=90).grid(row=0, column=1)
+        ctk.CTkLabel(run_frame, text="Output Folder").grid(
+            row=4, column=0, sticky="w", padx=(18, 8), pady=(0, 6)
+        )
+        output_row = ctk.CTkFrame(run_frame, fg_color="transparent")
+        output_row.grid(row=4, column=1, columnspan=3, sticky="ew", padx=(0, 18), pady=(0, 12))
+        output_row.grid_columnconfigure(0, weight=1)
+        self.output_entry = ctk.CTkEntry(output_row, textvariable=self.output_dir_var)
+        self.output_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        ctk.CTkButton(output_row, text="Browse", command=self._choose_outdir, width=90).grid(row=0, column=1)
 
-        btns = ctk.CTkFrame(run_card); btns.grid(row=6, column=0, columnspan=3, padx=12, pady=(0,10), sticky="ew")
-        ctk.CTkButton(btns, text="Run Selected", command=self.on_run_selected).pack(side="left", padx=6)
-        ctk.CTkButton(btns, text="Run ALL", command=self.on_run_all).pack(side="left", padx=6)
-        ctk.CTkButton(btns, text="Save Text Report", command=self.on_save_report).pack(side="right", padx=6)
+        button_row = ctk.CTkFrame(run_frame, fg_color="transparent")
+        button_row.grid(row=5, column=0, columnspan=4, sticky="ew", padx=18, pady=(0, 16))
+        button_row.grid_columnconfigure((0, 1), weight=0)
+        button_row.grid_columnconfigure(2, weight=1)
+        ctk.CTkButton(
+            button_row,
+            text="Run Selected",
+            command=self.on_run_selected,
+            **self.button_style,
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(
+            button_row,
+            text="Run ALL",
+            command=self.on_run_all,
+            **self.button_style,
+        ).grid(row=0, column=1, sticky="w", padx=12)
+        ctk.CTkButton(
+            button_row,
+            text="Save Text Report",
+            command=self.on_save_report,
+            **self.button_style,
+        ).grid(row=0, column=2, sticky="e")
 
-        kpis = ctk.CTkFrame(self); kpis.grid(row=2, column=0, columnspan=2, padx=18, pady=(0,12), sticky="ew")
-        for i in range(3): kpis.grid_columnconfigure(i, weight=1)
-        self.kpi_avg = self._kpi(kpis, "Average (ms)", "--", 0)
-        self.kpi_std = self._kpi(kpis, "Std Dev (ms)", "--", 1)
-        self.kpi_last = self._kpi(kpis, "Last (ms)", "--", 2)
+        summary_frame = self._section(row=2, title="Results Summary")
+        summary_frame.grid_columnconfigure((0, 1, 2), weight=1)
+        summary_frame.grid_rowconfigure(3, weight=1)
+        metrics_row = ctk.CTkFrame(summary_frame, fg_color="transparent")
+        metrics_row.grid(row=1, column=0, columnspan=3, sticky="ew", padx=18, pady=(0, 12))
+        metrics_row.grid_columnconfigure((0, 1, 2), weight=1)
+        self.kpi_avg = self._kpi(metrics_row, "Average (ms)", "--", 0)
+        self.kpi_std = self._kpi(metrics_row, "Std Dev (ms)", "--", 1)
+        self.kpi_last = self._kpi(metrics_row, "Last (ms)", "--", 2)
 
-        self.summary_box = ctk.CTkTextbox(self, wrap="word", height=160)
-        self.summary_box.grid(row=3, column=0, columnspan=2, padx=18, pady=(0,12), sticky="nsew")
+        ctk.CTkLabel(
+            summary_frame,
+            text="Detailed Breakdown",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).grid(row=2, column=0, columnspan=3, sticky="w", padx=18, pady=(0, 6))
+        self.summary_box = ctk.CTkTextbox(summary_frame, wrap="word", height=160)
+        self.summary_box.grid(row=3, column=0, columnspan=3, sticky="nsew", padx=18, pady=(0, 16))
 
-        cal_card = ctk.CTkFrame(self, corner_radius=10)
-        cal_card.grid(row=4, column=0, columnspan=2, padx=18, pady=12, sticky="ew")
-        ctk.CTkLabel(cal_card, text="Calibration", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, columnspan=2, padx=12, pady=(12,4), sticky="w")
+        plot_frame = self._section(row=3, title="Latency Plot")
+        plot_frame.grid_columnconfigure(0, weight=1)
+        self.plot_holder = ctk.CTkFrame(plot_frame, corner_radius=12, border_width=1, height=240)
+        self.plot_holder.grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 16))
+        self.plot_holder.grid_propagate(False)
+        ctk.CTkLabel(
+            self.plot_holder,
+            text="Plots will open in a separate Matplotlib window when available.",
+            justify="left",
+            wraplength=520,
+        ).pack(fill="both", expand=True, padx=16, pady=16)
+
+        cal_frame = self._section(row=4, title="Calibration")
+        cal_frame.grid_columnconfigure((0, 1, 2), weight=1)
 
         self.cal_vars = {}
-        for i, p in enumerate(SOUND_PRESETS):
-            var = ctk.BooleanVar(value=True); self.cal_vars[p["key"]] = var
-            ctk.CTkSwitch(cal_card, text=p["name"], variable=var).grid(row=1+i//3, column=i%3, padx=12, pady=6, sticky="w")
+        cal_container = ctk.CTkFrame(cal_frame, fg_color="transparent")
+        cal_container.grid(row=1, column=0, columnspan=3, sticky="ew", padx=18, pady=(0, 12))
+        cal_container.grid_columnconfigure((0, 1, 2), weight=1)
+        for i, preset in enumerate(SOUND_PRESETS):
+            var = ctk.BooleanVar(value=True)
+            self.cal_vars[preset["key"]] = var
+            ctk.CTkSwitch(
+                cal_container,
+                text=preset["name"],
+                variable=var,
+            ).grid(row=i // 3, column=i % 3, padx=8, pady=6, sticky="w")
 
+        cal_slider_row = ctk.CTkFrame(cal_frame, fg_color="transparent")
+        cal_slider_row.grid(row=2, column=0, columnspan=3, sticky="ew", padx=18, pady=(0, 12))
+        cal_slider_row.grid_columnconfigure(1, weight=1)
+        ctk.CTkLabel(cal_slider_row, text="Repeats").grid(row=0, column=0, sticky="w", padx=(0, 12))
         self.cal_repeats_var = ctk.IntVar(value=5)
-        ctk.CTkLabel(cal_card, text="Repeats").grid(row=3, column=0, padx=12, pady=(8,2), sticky="w")
-        slider = ctk.CTkSlider(cal_card, from_=1, to=20, number_of_steps=19)
-        slider.set(self.cal_repeats_var.get()); slider.grid(row=3, column=1, padx=12, pady=(8,2), sticky="ew")
-        reps_lab = ctk.CTkLabel(cal_card, text=str(self.cal_repeats_var.get())); reps_lab.grid(row=3, column=2, padx=12, pady=(8,2), sticky="w")
-        slider.configure(command=lambda v: reps_lab.configure(text=str(int(v))))
+        cal_slider = ctk.CTkSlider(cal_slider_row, from_=1, to=20, number_of_steps=19)
+        cal_slider.set(self.cal_repeats_var.get())
+        cal_slider.grid(row=0, column=1, sticky="ew")
+        self.cal_repeats_label = ctk.CTkLabel(cal_slider_row, text=str(self.cal_repeats_var.get()))
+        self.cal_repeats_label.grid(row=0, column=2, sticky="e")
+        cal_slider.configure(command=self._on_cal_repeats_change)
 
-        btns2 = ctk.CTkFrame(cal_card); btns2.grid(row=4, column=0, columnspan=3, padx=12, pady=(0,10), sticky="ew")
-        ctk.CTkButton(btns2, text="Calibrate Selected Presets", command=self.on_cal_selected).pack(side="left", padx=6)
-        ctk.CTkButton(btns2, text="Calibrate ALL Presets", command=self.on_cal_all).pack(side="left", padx=6)
-        ctk.CTkButton(btns2, text="Calibrate GLOBAL (Impulse)", command=self.on_cal_global).pack(side="left", padx=6)
+        cal_button_row = ctk.CTkFrame(cal_frame, fg_color="transparent")
+        cal_button_row.grid(row=3, column=0, columnspan=3, sticky="ew", padx=18, pady=(0, 12))
+        cal_button_row.grid_columnconfigure((0, 1, 2), weight=1)
+        ctk.CTkButton(
+            cal_button_row,
+            text="Calibrate Selected Presets",
+            command=self.on_cal_selected,
+            **self.button_style,
+        ).grid(row=0, column=0, sticky="w")
+        ctk.CTkButton(
+            cal_button_row,
+            text="Calibrate ALL Presets",
+            command=self.on_cal_all,
+            **self.button_style,
+        ).grid(row=0, column=1, sticky="w", padx=12)
+        ctk.CTkButton(
+            cal_button_row,
+            text="Calibrate GLOBAL (Impulse)",
+            command=self.on_cal_global,
+            **self.button_style,
+        ).grid(row=0, column=2, sticky="e")
 
-        self.baseline_box = ctk.CTkTextbox(self, wrap="word", height=140)
-        self.baseline_box.grid(row=5, column=0, columnspan=2, padx=18, pady=(0,18), sticky="ew")
+        ctk.CTkLabel(
+            cal_frame,
+            text="Calibration Offsets",
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).grid(row=4, column=0, columnspan=3, sticky="w", padx=18, pady=(4, 6))
+        self.baseline_box = ctk.CTkTextbox(cal_frame, wrap="word", height=140)
+        self.baseline_box.grid(row=5, column=0, columnspan=3, sticky="ew", padx=18, pady=(0, 16))
         self._refresh_baseline_box()
 
         self.worker = None
 
-    def _kpi(self, parent, title, value, col):
-        card = ctk.CTkFrame(parent, corner_radius=10); card.grid(row=0, column=col, padx=6, sticky="ew")
-        ctk.CTkLabel(card, text=title).pack(anchor="w", padx=12, pady=(10,0))
-        val = ctk.CTkLabel(card, text=value, font=ctk.CTkFont(size=22, weight="bold"))
-        val.pack(anchor="w", padx=12, pady=(4,12)); return val
+    def _section(self, row: int, title: str) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(self)
+        frame.grid(row=row, column=0, sticky="nsew", padx=24, pady=(0, 16))
+        frame.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(frame, text=title, font=self.section_font).grid(
+            row=0, column=0, sticky="w", padx=18, pady=(16, 10)
+        )
+        return frame
 
+    def _on_repeats_change(self, value: float) -> None:
+        count = int(value)
+        self.repeats_var.set(count)
+        self.repeats_label.configure(text=str(count))
+
+    def _on_cal_repeats_change(self, value: float) -> None:
+        count = int(value)
+        self.cal_repeats_var.set(count)
+        self.cal_repeats_label.configure(text=str(count))
+
+    def _kpi(self, parent, title, value, col):
+        card = ctk.CTkFrame(parent, corner_radius=12)
+        card.grid(row=0, column=col, padx=8, sticky="ew")
+        card.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(card, text=title).grid(row=0, column=0, sticky="w", padx=12, pady=(12, 4))
+        val = ctk.CTkLabel(card, text=value, font=self.metric_font)
+        val.grid(row=1, column=0, sticky="w", padx=12, pady=(0, 12))
+        return val
     def on_run_selected(self):
         presets = [p for p in SOUND_PRESETS if self.preset_vars[p["key"]].get()]
         if not presets: return
