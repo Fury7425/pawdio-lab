@@ -1,14 +1,11 @@
 import os, json, customtkinter as ctk, traceback
 import threading
 import time
-import importlib
+import contextlib
 import numpy as np
 from ...tests import sweep_fr
 from ...core.utils import ensure_dir
 from ...tests.sweep_fr import InputMonitorController, LevelState, PinkNoiseGenerator
-
-_sounddevice_spec = importlib.util.find_spec("sounddevice")
-sounddevice = importlib.import_module("sounddevice") if _sounddevice_spec else None
 
 
 class SweepFRPage(ctk.CTkFrame):
@@ -194,8 +191,6 @@ class SweepFRPage(ctk.CTkFrame):
             **self.button_style,
         )
         self.pink_noise_button.grid(row=0, column=1, padx=12)
-        if sounddevice is None:
-            self.pink_noise_button.configure(state="disabled")
         self.reset_peak_button = ctk.CTkButton(
             control_frame,
             text="Reset Peak",
@@ -367,17 +362,19 @@ class SweepFRPage(ctk.CTkFrame):
 
     # ===== Pink Noise Playback/Monitoring =====
     def toggle_pink_noise(self):
-        if sounddevice is None:
-            self.status_label.configure(text="Pink noise unavailable (sounddevice missing).")
-            self.log("Pink noise playback requires the optional sounddevice module.")
-            return
-
         if self.pink_noise_playing:
             self.pink_noise_playing = False
             self.pink_noise_button.configure(text="Play Pink Noise")
             if self.pink_noise_stream:
-                self.pink_noise_stream.stop()
-                self.pink_noise_stream.close()
+                try:
+                    if self.pink_noise_stream.is_active():
+                        self.pink_noise_stream.stop_stream()
+                except Exception:
+                    pass
+                try:
+                    self.pink_noise_stream.close()
+                except Exception:
+                    pass
                 self.pink_noise_stream = None
             self.pink_noise_generator.reset()
             self.status_label.configure(text="Pink noise stopped.")
@@ -396,30 +393,53 @@ class SweepFRPage(ctk.CTkFrame):
 
     def pink_noise_loop(self):
         samplerate = getattr(self.core, "sample_rate", 44100)
-        blocksize = 1024
-        # Create a stream that calls a callback to continuously fill with pink noise
-        def callback(outdata, frames, time_info, status):
-            pink = self.pink_noise_generator.generate(frames, samplerate)
-            outdata[:] = pink.reshape(-1, 1)
-            # Real-time measurement (simulate level from pink noise itself)
-            rms = np.sqrt(np.mean(pink ** 2))
-            dbfs = 20 * np.log10(rms + 1e-12)
-            if not self.monitor_controller.is_running:
-                peak = 20 * np.log10(np.max(np.abs(pink)) + 1e-12)
-                clip = peak >= -3.0
-                self.level_state.record_sample(dbfs, peak, clip)
-
-        if sounddevice is None:
+        blocksize = int(getattr(self.core, "chunk_size", 1024)) or 1024
+        pa = getattr(self.core, "audio", None)
+        if pa is None:
+            self.log("Pink noise playback unavailable (no PyAudio instance).")
+            self._dispatch_to_ui(lambda: self.status_label.configure(text="Pink noise unavailable."))
+            self._dispatch_to_ui(lambda: self.pink_noise_button.configure(text="Play Pink Noise"))
+            self.pink_noise_playing = False
             return
 
-        self.pink_noise_stream = sounddevice.OutputStream(
-            samplerate=samplerate,
-            channels=1,
-            blocksize=blocksize,
-            callback=callback
-        )
-        self.pink_noise_stream.start()
-        # Run until stopped
-        while self.pink_noise_playing:
-            time.sleep(0.1)
-        # Stream will be stopped/closed by toggle_pink_noise
+        stream = None
+        try:
+            stream = pa.open(
+                format=pa.get_format_from_width(2),
+                channels=1,
+                rate=int(samplerate),
+                output=True,
+                output_device_index=self.core.output_device_index,
+                frames_per_buffer=blocksize,
+            )
+            self.pink_noise_stream = stream
+
+            while self.pink_noise_playing:
+                pink = self.pink_noise_generator.generate(blocksize, samplerate)
+                rms = np.sqrt(np.mean(pink ** 2))
+                dbfs = 20 * np.log10(rms + 1e-12)
+                if not self.monitor_controller.is_running:
+                    peak = 20 * np.log10(np.max(np.abs(pink)) + 1e-12)
+                    clip = peak >= -3.0
+                    self.level_state.record_sample(dbfs, peak, clip)
+
+                audio = np.clip(pink, -1.0, 1.0)
+                try:
+                    stream.write((audio * 32767.0).astype(np.int16).tobytes())
+                except Exception:
+                    break
+                time.sleep(0.001)
+        except Exception as exc:
+            self.log(f"Pink noise error: {exc}")
+            traceback.print_exc()
+            self._dispatch_to_ui(lambda: self.status_label.configure(text="Pink noise error."))
+        finally:
+            self.pink_noise_playing = False
+            self._dispatch_to_ui(lambda: self.pink_noise_button.configure(text="Play Pink Noise"))
+            self._dispatch_to_ui(lambda: self.status_label.configure(text="Pink noise stopped."))
+            with contextlib.suppress(Exception):
+                if stream is not None:
+                    if stream.is_active():
+                        stream.stop_stream()
+                    stream.close()
+            self.pink_noise_stream = None
