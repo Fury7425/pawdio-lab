@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import sys
 import threading
 from dataclasses import dataclass, field
 from typing import Callable, Optional
@@ -52,6 +53,119 @@ class LevelState:
             return self.current_level, self.peak_level, self.clip_count
 
 
+class _PyAudioBackend:
+    """PyAudio-backed input stream handling (primarily for Windows/Linux)."""
+
+    def __init__(self, core, log_fn: Callable[[str], None]) -> None:
+        self.core = core
+        self._log = log_fn
+
+    def open_stream(self, chunk: int, samplerate: int) -> tuple[object, int]:
+        fmt = self.core.audio.get_format_from_width(2)
+        last_exc: Optional[Exception] = None
+        for ch in (1, 2):
+            try:
+                stream = self.core.audio.open(
+                    format=fmt,
+                    channels=ch,
+                    rate=samplerate,
+                    input=True,
+                    frames_per_buffer=chunk,
+                    input_device_index=self.core.input_device_index,
+                )
+                return stream, ch
+            except Exception as exc:  # pragma: no cover - hardware dependent
+                last_exc = exc
+                continue
+        if last_exc is not None:
+            raise RuntimeError("Unable to open input stream for monitoring") from last_exc
+        raise RuntimeError("Unable to open input stream for monitoring")
+
+    def read(self, stream: object, chunk: int) -> np.ndarray:
+        data = stream.read(chunk, exception_on_overflow=False)
+        if not data:
+            return np.empty(0, dtype=np.float32)
+        return np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
+
+    @staticmethod
+    def stop_stream(stream: object) -> None:
+        try:
+            stream.stop_stream()
+        except Exception:
+            pass
+
+    @staticmethod
+    def close_stream(stream: object) -> None:
+        try:
+            if stream.is_active():
+                stream.stop_stream()
+        except Exception:
+            pass
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+
+class _CoreAudioBackend:
+    """CoreAudio input handling for macOS using the sounddevice bindings."""
+
+    def __init__(self, core, log_fn: Callable[[str], None]) -> None:
+        try:
+            import sounddevice as sd  # type: ignore
+        except Exception as exc:  # pragma: no cover - optional dependency
+            raise RuntimeError(f"sounddevice unavailable: {exc}") from exc
+
+        self.sd = sd
+        self.core = core
+        self._log = log_fn
+
+    def open_stream(self, chunk: int, samplerate: int) -> tuple[object, int]:
+        last_exc: Optional[Exception] = None
+        for ch in (1, 2):
+            try:
+                stream = self.sd.InputStream(
+                    device=self.core.input_device_index,
+                    channels=ch,
+                    samplerate=samplerate,
+                    blocksize=chunk,
+                    dtype="float32",
+                    latency="low",
+                )
+                stream.start()
+                return stream, ch
+            except Exception as exc:  # pragma: no cover - hardware dependent
+                last_exc = exc
+                continue
+        if last_exc is not None:
+            raise RuntimeError("Unable to open input stream for monitoring") from last_exc
+        raise RuntimeError("Unable to open input stream for monitoring")
+
+    def read(self, stream: object, chunk: int) -> np.ndarray:
+        data, overflowed = stream.read(chunk)
+        if overflowed:  # pragma: no cover - hardware dependent
+            self._log("Input monitor overflow detected; consider increasing buffer size.")
+        return np.asarray(data, dtype=np.float32)
+
+    @staticmethod
+    def stop_stream(stream: object) -> None:
+        try:
+            stream.stop()
+        except Exception:
+            pass
+
+    @staticmethod
+    def close_stream(stream: object) -> None:
+        try:
+            stream.stop()
+        except Exception:
+            pass
+        try:
+            stream.close()
+        except Exception:
+            pass
+
+
 class InputMonitorController:
     """Manage the lifetime of the input monitoring thread."""
 
@@ -78,6 +192,7 @@ class InputMonitorController:
         self._stop_event = threading.Event()
         self._stream_lock = threading.Lock()
         self._stream = None
+        self._backend = None
 
     @property
     def is_running(self) -> bool:
@@ -100,11 +215,9 @@ class InputMonitorController:
         self._stop_event.set()
         with self._stream_lock:
             stream = self._stream
-        if stream is not None:
-            try:
-                stream.stop_stream()
-            except Exception:
-                pass
+            backend = self._backend
+        if stream is not None and backend is not None:
+            backend.stop_stream(stream)
         thread.join(timeout=3.0)
 
     # Internal helpers -------------------------------------------------
@@ -120,51 +233,26 @@ class InputMonitorController:
     def _run(self) -> None:
         chunk = int(getattr(self.core, "chunk_size", 1024))
         samplerate = int(getattr(self.core, "input_sample_rate", getattr(self.core, "sample_rate", 44100)))
-        fmt = self.core.audio.get_format_from_width(2)
         channels_in_use = 1
         stream = None
-        last_exc: Optional[Exception] = None
+        backend = None
         try:
-            for ch in (1, 2):
-                try:
-                    stream = self.core.audio.open(
-                        format=fmt,
-                        channels=ch,
-                        rate=samplerate,
-                        input=True,
-                        frames_per_buffer=chunk,
-                        input_device_index=self.core.input_device_index,
-                    )
-                    channels_in_use = ch
-                    break
-                except Exception as exc:  # pragma: no cover - hardware dependent
-                    stream = None
-                    last_exc = exc
-                    continue
-            if stream is None:
-                if last_exc is not None:
-                    raise RuntimeError("Unable to open input stream for monitoring") from last_exc
-                raise RuntimeError("Unable to open input stream for monitoring")
+            backend = self._create_backend()
+            stream, channels_in_use = backend.open_stream(chunk, samplerate)
 
             with self._stream_lock:
                 self._stream = stream
+                self._backend = backend
             self._dispatch_ui(self._on_start)
 
             while not self._stop_event.is_set():
                 try:
-                    data = stream.read(chunk, exception_on_overflow=False)
-                except Exception as exc:
+                    audio = backend.read(stream, chunk)
+                except Exception as exc:  # pragma: no cover - hardware dependent
                     if self._stop_event.is_set():
                         break
                     raise exc
-                if not data:
-                    continue
-                audio = np.frombuffer(data, dtype=np.int16).astype(np.float32) / 32768.0
-                if channels_in_use > 1 and audio.size:
-                    try:
-                        audio = audio.reshape(-1, channels_in_use).mean(axis=1)
-                    except ValueError:
-                        audio = audio.reshape(-1)
+                audio = self._mixdown(audio, channels_in_use)
                 if audio.size == 0:
                     continue
                 rms_level = dbfs(audio)
@@ -178,16 +266,35 @@ class InputMonitorController:
             with self._stream_lock:
                 active_stream = self._stream
                 self._stream = None
-            if active_stream is not None:
-                try:
-                    if active_stream.is_active():
-                        active_stream.stop_stream()
-                except Exception:
-                    pass
-                try:
-                    active_stream.close()
-                except Exception:
-                    pass
+                active_backend = self._backend
+                self._backend = None
+            if active_backend is not None and active_stream is not None:
+                active_backend.close_stream(active_stream)
             self._dispatch_ui(self._on_stop)
             self._thread = None
             self._stop_event.clear()
+
+    def _create_backend(self):
+        if sys.platform == "darwin":  # Prefer CoreAudio on macOS
+            try:
+                return _CoreAudioBackend(self.core, self._log)
+            except Exception as exc:  # pragma: no cover - optional dependency
+                self._log(f"Falling back to PyAudio monitoring backend: {exc}")
+        return _PyAudioBackend(self.core, self._log)
+
+    @staticmethod
+    def _mixdown(audio: np.ndarray, channels: int) -> np.ndarray:
+        if audio.size == 0:
+            return audio.astype(np.float32)
+        audio = np.asarray(audio, dtype=np.float32)
+        if channels > 1:
+            if audio.ndim == 1:
+                try:
+                    audio = audio.reshape(-1, channels).mean(axis=1)
+                except ValueError:
+                    audio = audio.reshape(-1)
+            else:
+                audio = audio.mean(axis=1)
+        elif audio.ndim > 1:
+            audio = audio.reshape(-1)
+        return audio.astype(np.float32)
