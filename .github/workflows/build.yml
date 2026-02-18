@@ -27,6 +27,21 @@ jobs:
       with:
         toolchain: stable
 
+    - name: Ensure PostCSS config uses CommonJS (Unix)
+      if: runner.os != 'Windows'
+      run: |
+        if [ -f postcss.config.js ]; then
+          mv postcss.config.js postcss.config.cjs
+        fi
+
+    - name: Ensure PostCSS config uses CommonJS (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        if (Test-Path postcss.config.js) {
+          Rename-Item postcss.config.js -NewName postcss.config.cjs -Force
+        }
+
     - name: Install dependencies
       run: npm install
 
