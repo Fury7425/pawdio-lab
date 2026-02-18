@@ -36,7 +36,6 @@
         "entitlements": null,
         "exceptionDomain": "",
         "frameworks": [],
-        "providerBundleIdentifier": null,
         "signingIdentity": null
       },
       "resources": [],
@@ -44,8 +43,7 @@
       "targets": "all",
       "windows": {
         "certificateThumbprint": null,
-        "digestAlgorithm": "sha256",
-        "timestampServer": ""
+        "digestAlgorithm": "sha256"
       }
     },
     "security": {
