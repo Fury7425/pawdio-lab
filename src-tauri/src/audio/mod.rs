@@ -1379,6 +1379,18 @@ fn build_output_stream(
                 None,
             )?)
         }
+        SampleFormat::U8 => {
+            let signal_c = signal.clone();
+            let pos_c = position.clone();
+            Ok(device.build_output_stream(
+                config,
+                move |data: &mut [u8], _| {
+                    write_output_u8(data, channels, &signal_c, &pos_c, routing);
+                },
+                err_fn,
+                None,
+            )?)
+        }
         other => Err(AudioError::UnsupportedSampleFormat(format!("{other:?}"))),
     }
 }
@@ -1460,6 +1472,32 @@ fn write_output_u16(
     }
 }
 
+fn write_output_u8(
+    data: &mut [u8],
+    channels: usize,
+    signal: &[f32],
+    position: &AtomicUsize,
+    routing: OutputRouting,
+) {
+    for frame in data.chunks_mut(channels.max(1)) {
+        let idx = position.fetch_add(1, Ordering::SeqCst);
+        let mono = signal.get(idx).copied().unwrap_or(0.0).clamp(-1.0, 1.0);
+        let (left, right) = route_sample(mono, routing);
+        for (ch, sample) in frame.iter_mut().enumerate() {
+            let value = if ch == 0 {
+                left
+            } else if ch == 1 {
+                right
+            } else if ch % 2 == 0 {
+                left
+            } else {
+                right
+            };
+            *sample = ((value * 0.5 + 0.5) * u8::MAX as f32) as u8;
+        }
+    }
+}
+
 fn route_sample(sample: f32, routing: OutputRouting) -> (f32, f32) {
     match routing {
         OutputRouting::Both => (sample, sample),
@@ -1507,6 +1545,17 @@ fn build_input_stream(
                 config,
                 move |data: &[u16], _| {
                     read_input_u16(data, channels, &rec, target_frames);
+                },
+                err_fn,
+                None,
+            )?)
+        }
+        SampleFormat::U8 => {
+            let rec = recorded.clone();
+            Ok(device.build_input_stream(
+                config,
+                move |data: &[u8], _| {
+                    read_input_u8(data, channels, &rec, target_frames);
                 },
                 err_fn,
                 None,
@@ -1561,6 +1610,24 @@ fn read_input_u16(data: &[u16], channels: usize, recorded: &Arc<Mutex<Vec<f32>>>
             let sum: f32 = frame
                 .iter()
                 .map(|sample| (*sample as f32 / u16::MAX as f32) * 2.0 - 1.0)
+                .sum();
+            out.push(sum / frame.len().max(1) as f32);
+        }
+    }
+}
+
+fn read_input_u8(data: &[u8], channels: usize, recorded: &Arc<Mutex<Vec<f32>>>, target: usize) {
+    if let Ok(mut out) = recorded.lock() {
+        if out.len() >= target {
+            return;
+        }
+        for frame in data.chunks(channels.max(1)) {
+            if out.len() >= target {
+                break;
+            }
+            let sum: f32 = frame
+                .iter()
+                .map(|sample| (*sample as f32 / u8::MAX as f32) * 2.0 - 1.0)
                 .sum();
             out.push(sum / frame.len().max(1) as f32);
         }
