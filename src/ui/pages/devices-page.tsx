@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AudioSettings, DeviceInventory, fromSelectValue, toNumber, toSelectValue } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 
@@ -9,21 +9,66 @@ type DevicesPageProps = {
   onRefreshDevices: () => void;
 };
 
+const DEVICE_UI_STORAGE_KEY = "pawdio-lab-device-ui-v1";
+
+type DeviceUiPrefs = {
+  appearanceMode: string;
+  accentColor: string;
+  experimentalEnabled: boolean;
+  inputBitDepth: string;
+};
+
+function readDeviceUiPrefs(): DeviceUiPrefs | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(DEVICE_UI_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as DeviceUiPrefs;
+  } catch {
+    return null;
+  }
+}
+
 export function DevicesPage({
   inventory,
   settings,
   onCommitSettings,
   onRefreshDevices
 }: DevicesPageProps) {
+  const storedUiPrefs = useMemo(() => readDeviceUiPrefs(), []);
   const [draft, setDraft] = useState(settings);
-  const [appearanceMode, setAppearanceMode] = useState("Dark");
-  const [accentColor, setAccentColor] = useState("Blue");
-  const [experimentalEnabled, setExperimentalEnabled] = useState(true);
-  const [inputBitDepth, setInputBitDepth] = useState("Auto");
+  const [appearanceMode, setAppearanceMode] = useState(storedUiPrefs?.appearanceMode ?? "Dark");
+  const [accentColor, setAccentColor] = useState(storedUiPrefs?.accentColor ?? "Blue");
+  const [experimentalEnabled, setExperimentalEnabled] = useState(
+    storedUiPrefs?.experimentalEnabled ?? true
+  );
+  const [inputBitDepth, setInputBitDepth] = useState(storedUiPrefs?.inputBitDepth ?? "Auto");
 
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
+
+  useEffect(() => {
+    const snapshot: DeviceUiPrefs = {
+      appearanceMode,
+      accentColor,
+      experimentalEnabled,
+      inputBitDepth
+    };
+    try {
+      localStorage.setItem(DEVICE_UI_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // ignore storage write failures
+    }
+  }, [appearanceMode, accentColor, experimentalEnabled, inputBitDepth]);
 
   function commitDeviceSelection(next: AudioSettings) {
     setDraft(next);
