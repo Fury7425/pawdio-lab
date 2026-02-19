@@ -540,12 +540,13 @@ export function usePawdioLabController() {
         saveOverallBarChart: false
       };
       const report = await invokeLatencyRaw(request);
-      if (report.averageDelayMs !== null) {
+      const averageDelay = report.averageDelayMs;
+      if (averageDelay !== null) {
         setLatencyCalibration((prev) => ({
           ...prev,
-          globalOffsetMs: report.averageDelayMs
+          globalOffsetMs: averageDelay
         }));
-        appendLog(`[calibration] global offset = ${report.averageDelayMs.toFixed(2)} ms`);
+        appendLog(`[calibration] global offset = ${averageDelay.toFixed(2)} ms`);
       } else {
         appendLog("[calibration] global calibration failed");
       }
