@@ -25,6 +25,11 @@ export function DevicesPage({
     setDraft(settings);
   }, [settings]);
 
+  function commitDeviceSelection(next: AudioSettings) {
+    setDraft(next);
+    onCommitSettings(next);
+  }
+
   return (
     <div className="page-stack">
       <section className="page-card">
@@ -108,10 +113,10 @@ export function DevicesPage({
                 className="skin-select"
                 value={toSelectValue(draft.outputDeviceIndex)}
                 onChange={(event) =>
-                  setDraft((prev) => ({
-                    ...prev,
+                  commitDeviceSelection({
+                    ...draft,
                     outputDeviceIndex: fromSelectValue(event.target.value)
-                  }))
+                  })
                 }
               >
                 <option value="none">System Default</option>
@@ -136,10 +141,10 @@ export function DevicesPage({
               className="skin-select"
               value={toSelectValue(draft.inputDeviceIndex)}
               onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
+                commitDeviceSelection({
+                  ...draft,
                   inputDeviceIndex: fromSelectValue(event.target.value)
-                }))
+                })
               }
             >
               <option value="none">System Default</option>
