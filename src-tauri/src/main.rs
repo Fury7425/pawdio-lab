@@ -21,6 +21,8 @@ struct AppState {
     monitor_running: Arc<AtomicBool>,
     monitor_cancel: Arc<AtomicBool>,
     monitor_peak_reset: Arc<AtomicBool>,
+    pink_noise_running: Arc<AtomicBool>,
+    pink_noise_cancel: Arc<AtomicBool>,
 }
 
 #[derive(Debug, Serialize)]
@@ -58,6 +60,7 @@ async fn run_latency_test(
     request: LatencyTestRequest,
 ) -> Result<LatencyTestReport, String> {
     state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
 
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A latency test is already running.".to_string());
@@ -102,6 +105,7 @@ async fn run_sweep_fr_test(
     request: SweepFrRequest,
 ) -> Result<TestResultPayload, String> {
     state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
 
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A test is already running.".to_string());
@@ -179,12 +183,59 @@ fn reset_input_monitor_peak(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
+async fn start_pink_noise(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+) -> Result<(), String> {
+    if state.running.load(Ordering::SeqCst) {
+        return Err("Cannot start pink noise while a test is running.".to_string());
+    }
+    if state.pink_noise_running.swap(true, Ordering::SeqCst) {
+        return Ok(());
+    }
+
+    state.pink_noise_cancel.store(false, Ordering::SeqCst);
+
+    let settings = {
+        let engine = state.audio.lock().await;
+        engine.settings()
+    };
+    let cancel = state.pink_noise_cancel.clone();
+    let running_flag = state.pink_noise_running.clone();
+    let app_handle = app.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        if let Err(error) = AudioEngine::run_pink_noise(settings, cancel) {
+            let _ = app_handle.emit(
+                "test-progress",
+                TestProgressEvent {
+                    test: "pink_noise".to_string(),
+                    current: 0,
+                    total: 0,
+                    value: None,
+                    message: format!("pink noise error: {error}"),
+                },
+            );
+        }
+        running_flag.store(false, Ordering::SeqCst);
+    });
+
+    Ok(())
+}
+
+#[tauri::command]
+fn stop_pink_noise(state: State<'_, AppState>) {
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
 async fn run_thd_test(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: ThdRequest,
 ) -> Result<TestResultPayload, String> {
     state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
 
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A test is already running.".to_string());
@@ -217,6 +268,7 @@ async fn run_balance_test(
     request: BalanceRequest,
 ) -> Result<TestResultPayload, String> {
     state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
 
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A test is already running.".to_string());
@@ -248,6 +300,7 @@ async fn run_crosstalk_test(
     request: CrosstalkRequest,
 ) -> Result<TestResultPayload, String> {
     state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
 
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A test is already running.".to_string());
@@ -279,6 +332,7 @@ async fn run_isolation_test(
     request: IsolationRequest,
 ) -> Result<TestResultPayload, String> {
     state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
 
     if state.running.swap(true, Ordering::SeqCst) {
         return Err("A test is already running.".to_string());
@@ -308,6 +362,7 @@ async fn run_isolation_test(
 fn stop_test(state: State<'_, AppState>) {
     state.cancel.store(true, Ordering::SeqCst);
     state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
 }
 
 #[tauri::command]
@@ -330,6 +385,8 @@ fn main() {
         monitor_running: Arc::new(AtomicBool::new(false)),
         monitor_cancel: Arc::new(AtomicBool::new(false)),
         monitor_peak_reset: Arc::new(AtomicBool::new(false)),
+        pink_noise_running: Arc::new(AtomicBool::new(false)),
+        pink_noise_cancel: Arc::new(AtomicBool::new(false)),
     };
 
     tauri::Builder::default()
@@ -344,6 +401,8 @@ fn main() {
             start_input_monitor,
             stop_input_monitor,
             reset_input_monitor_peak,
+            start_pink_noise,
+            stop_pink_noise,
             run_thd_test,
             run_balance_test,
             run_crosstalk_test,
