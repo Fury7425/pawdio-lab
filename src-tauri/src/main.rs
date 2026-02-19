@@ -5,7 +5,11 @@ use std::sync::{
     Arc,
 };
 
-use audio::{AudioEngine, AudioSettings, DeviceInventory, LatencyTestReport, LatencyTestRequest};
+use audio::{
+    AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest, DeviceInventory,
+    IsolationRequest, LatencyTestReport, LatencyTestRequest, SweepFrRequest, TestResultPayload,
+    ThdRequest,
+};
 use serde::Serialize;
 use tauri::State;
 
@@ -77,6 +81,161 @@ async fn run_latency_test(
 }
 
 #[tauri::command]
+async fn run_sweep_fr_test(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: SweepFrRequest,
+) -> Result<TestResultPayload, String> {
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Err("A test is already running.".to_string());
+    }
+
+    state.cancel.store(false, Ordering::SeqCst);
+
+    let settings = {
+        let engine = state.audio.lock().await;
+        engine.settings()
+    };
+    let cancel = state.cancel.clone();
+    let app_handle = app.clone();
+
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        AudioEngine::run_sweep_fr_test(settings, request, cancel, app_handle)
+    });
+
+    let join_result = task.await;
+    state.running.store(false, Ordering::SeqCst);
+
+    match join_result {
+        Ok(inner) => inner.map_err(|error| error.to_string()),
+        Err(error) => Err(format!("Audio test task join error: {error}")),
+    }
+}
+
+#[tauri::command]
+async fn run_thd_test(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: ThdRequest,
+) -> Result<TestResultPayload, String> {
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Err("A test is already running.".to_string());
+    }
+
+    state.cancel.store(false, Ordering::SeqCst);
+
+    let settings = {
+        let engine = state.audio.lock().await;
+        engine.settings()
+    };
+    let cancel = state.cancel.clone();
+    let app_handle = app.clone();
+
+    let task =
+        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_thd_test(settings, request, cancel, app_handle));
+
+    let join_result = task.await;
+    state.running.store(false, Ordering::SeqCst);
+
+    match join_result {
+        Ok(inner) => inner.map_err(|error| error.to_string()),
+        Err(error) => Err(format!("Audio test task join error: {error}")),
+    }
+}
+
+#[tauri::command]
+async fn run_balance_test(
+    state: State<'_, AppState>,
+    request: BalanceRequest,
+) -> Result<TestResultPayload, String> {
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Err("A test is already running.".to_string());
+    }
+
+    state.cancel.store(false, Ordering::SeqCst);
+
+    let settings = {
+        let engine = state.audio.lock().await;
+        engine.settings()
+    };
+    let cancel = state.cancel.clone();
+
+    let task =
+        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_balance_test(settings, request, cancel));
+
+    let join_result = task.await;
+    state.running.store(false, Ordering::SeqCst);
+
+    match join_result {
+        Ok(inner) => inner.map_err(|error| error.to_string()),
+        Err(error) => Err(format!("Audio test task join error: {error}")),
+    }
+}
+
+#[tauri::command]
+async fn run_crosstalk_test(
+    state: State<'_, AppState>,
+    request: CrosstalkRequest,
+) -> Result<TestResultPayload, String> {
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Err("A test is already running.".to_string());
+    }
+
+    state.cancel.store(false, Ordering::SeqCst);
+
+    let settings = {
+        let engine = state.audio.lock().await;
+        engine.settings()
+    };
+    let cancel = state.cancel.clone();
+
+    let task =
+        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_crosstalk_test(settings, request, cancel));
+
+    let join_result = task.await;
+    state.running.store(false, Ordering::SeqCst);
+
+    match join_result {
+        Ok(inner) => inner.map_err(|error| error.to_string()),
+        Err(error) => Err(format!("Audio test task join error: {error}")),
+    }
+}
+
+#[tauri::command]
+async fn run_isolation_test(
+    state: State<'_, AppState>,
+    request: IsolationRequest,
+) -> Result<TestResultPayload, String> {
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Err("A test is already running.".to_string());
+    }
+
+    state.cancel.store(false, Ordering::SeqCst);
+
+    let settings = {
+        let engine = state.audio.lock().await;
+        engine.settings()
+    };
+    let cancel = state.cancel.clone();
+
+    let task =
+        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_isolation_test(settings, request, cancel));
+
+    let join_result = task.await;
+    state.running.store(false, Ordering::SeqCst);
+
+    match join_result {
+        Ok(inner) => inner.map_err(|error| error.to_string()),
+        Err(error) => Err(format!("Audio test task join error: {error}")),
+    }
+}
+
+#[tauri::command]
+fn stop_test(state: State<'_, AppState>) {
+    state.cancel.store(true, Ordering::SeqCst);
+}
+
+#[tauri::command]
 fn stop_latency_test(state: State<'_, AppState>) {
     state.cancel.store(true, Ordering::SeqCst);
 }
@@ -102,6 +261,12 @@ fn main() {
             get_audio_settings,
             set_audio_settings,
             run_latency_test,
+            run_sweep_fr_test,
+            run_thd_test,
+            run_balance_test,
+            run_crosstalk_test,
+            run_isolation_test,
+            stop_test,
             stop_latency_test,
             get_runtime_status
         ])
