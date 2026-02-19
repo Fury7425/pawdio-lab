@@ -18,6 +18,7 @@ export function PawdioLabApp() {
         <Sidebar
           activePage={controller.activePage}
           running={controller.running}
+          experimentalEnabled={controller.experimentalEnabled}
           onSelectPage={controller.setActivePage}
           onRefreshDevices={() => run(controller.loadState())}
           onStopTest={() => run(controller.stopTest())}
@@ -70,7 +71,7 @@ export function PawdioLabApp() {
             />
           )}
 
-          {controller.activePage === "experimental" && (
+          {controller.activePage === "experimental" && controller.experimentalEnabled && (
             <ExperimentalPage
               running={controller.running}
               balanceRequest={controller.balanceRequest}
@@ -94,6 +95,8 @@ export function PawdioLabApp() {
             <DevicesPage
               inventory={controller.inventory}
               settings={controller.settings}
+              experimentalEnabled={controller.experimentalEnabled}
+              onChangeExperimentalEnabled={controller.setExperimentalEnabled}
               onCommitSettings={(next) => run(controller.commitSettings(next))}
               onRefreshDevices={() => run(controller.loadState())}
             />

@@ -5,6 +5,8 @@ import { LabeledNumberInput } from "../components/labeled-input";
 type DevicesPageProps = {
   inventory: DeviceInventory | null;
   settings: AudioSettings;
+  experimentalEnabled: boolean;
+  onChangeExperimentalEnabled: (enabled: boolean) => void;
   onCommitSettings: (settings: AudioSettings) => void;
   onRefreshDevices: () => void;
 };
@@ -14,7 +16,6 @@ const DEVICE_UI_STORAGE_KEY = "pawdio-lab-device-ui-v1";
 type DeviceUiPrefs = {
   appearanceMode: string;
   accentColor: string;
-  experimentalEnabled: boolean;
   inputBitDepth: string;
 };
 
@@ -40,6 +41,8 @@ function readDeviceUiPrefs(): DeviceUiPrefs | null {
 export function DevicesPage({
   inventory,
   settings,
+  experimentalEnabled,
+  onChangeExperimentalEnabled,
   onCommitSettings,
   onRefreshDevices
 }: DevicesPageProps) {
@@ -47,9 +50,6 @@ export function DevicesPage({
   const [draft, setDraft] = useState(settings);
   const [appearanceMode, setAppearanceMode] = useState(storedUiPrefs?.appearanceMode ?? "Dark");
   const [accentColor, setAccentColor] = useState(storedUiPrefs?.accentColor ?? "Blue");
-  const [experimentalEnabled, setExperimentalEnabled] = useState(
-    storedUiPrefs?.experimentalEnabled ?? true
-  );
   const [inputBitDepth, setInputBitDepth] = useState(storedUiPrefs?.inputBitDepth ?? "Auto");
 
   useEffect(() => {
@@ -60,7 +60,6 @@ export function DevicesPage({
     const snapshot: DeviceUiPrefs = {
       appearanceMode,
       accentColor,
-      experimentalEnabled,
       inputBitDepth
     };
     try {
@@ -68,7 +67,7 @@ export function DevicesPage({
     } catch {
       // ignore storage write failures
     }
-  }, [appearanceMode, accentColor, experimentalEnabled, inputBitDepth]);
+  }, [appearanceMode, accentColor, inputBitDepth]);
 
   function commitDeviceSelection(next: AudioSettings) {
     setDraft(next);
@@ -250,7 +249,7 @@ export function DevicesPage({
             <input
               type="checkbox"
               checked={experimentalEnabled}
-              onChange={(event) => setExperimentalEnabled(event.target.checked)}
+              onChange={(event) => onChangeExperimentalEnabled(event.target.checked)}
             />
             Enable Experimental Tests
           </label>

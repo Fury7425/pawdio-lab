@@ -126,6 +126,8 @@ pub struct SweepFrRequest {
     pub save_squiglink: bool,
     #[serde(default)]
     pub mono_mode: bool,
+    #[serde(default)]
+    pub mono_side: Option<SweepMonoSide>,
 }
 
 impl Default for SweepFrRequest {
@@ -140,8 +142,17 @@ impl Default for SweepFrRequest {
             save_plots: true,
             save_squiglink: true,
             mono_mode: false,
+            mono_side: None,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum SweepMonoSide {
+    Left,
+    Right,
+    Both,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -618,6 +629,7 @@ impl AudioEngine {
         request.duration_secs = request.duration_secs.clamp(0.5, 20.0);
         request.amplitude = request.amplitude.clamp(0.05, 1.0);
         request.repeats = request.repeats.clamp(1, 16);
+        let mono_side = request.mono_side.unwrap_or(SweepMonoSide::Both);
 
         let grid = logspace(request.f0, request.f1, 200);
         let mut mags_l: Vec<Vec<f32>> = Vec::new();
@@ -644,21 +656,30 @@ impl AudioEngine {
             };
 
             let (rec_l, rec_r) = if request.mono_mode {
-                let captured_l = runtime.play_and_record_channels(
-                    chirp.clone(),
-                    OutputRouting::LeftOnly,
-                    request.duration_secs + 0.5,
-                )?;
-                let captured_r = runtime.play_and_record_channels(
-                    chirp.clone(),
-                    OutputRouting::RightOnly,
-                    request.duration_secs + 0.5,
-                )?;
-                let left = channel_or_mix(&captured_l, 0);
-                let right = if captured_r.len() > 1 {
-                    channel_or_mix(&captured_r, 1)
+                let left = if mono_side != SweepMonoSide::Right {
+                    let captured_l = runtime.play_and_record_channels(
+                        chirp.clone(),
+                        OutputRouting::LeftOnly,
+                        request.duration_secs + 0.5,
+                    )?;
+                    channel_or_mix(&captured_l, 0)
                 } else {
-                    channel_or_mix(&captured_r, 0)
+                    Vec::new()
+                };
+
+                let right = if mono_side != SweepMonoSide::Left {
+                    let captured_r = runtime.play_and_record_channels(
+                        chirp.clone(),
+                        OutputRouting::RightOnly,
+                        request.duration_secs + 0.5,
+                    )?;
+                    if captured_r.len() > 1 {
+                        channel_or_mix(&captured_r, 1)
+                    } else {
+                        channel_or_mix(&captured_r, 0)
+                    }
+                } else {
+                    Vec::new()
                 };
                 (left, right)
             } else {
@@ -676,17 +697,43 @@ impl AudioEngine {
                 (left, right)
             };
 
-            let delay_l = find_delay_ms(&rec_l, &ref_signal, runtime.input_rate);
-            let delay_r = find_delay_ms(&rec_r, &ref_signal, runtime.input_rate);
+            let delay_l = if rec_l.is_empty() {
+                None
+            } else {
+                find_delay_ms(&rec_l, &ref_signal, runtime.input_rate)
+            };
+            let delay_r = if rec_r.is_empty() {
+                None
+            } else {
+                find_delay_ms(&rec_r, &ref_signal, runtime.input_rate)
+            };
             delays_l.push(delay_l);
             delays_r.push(delay_r);
 
             let aligned_l = align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate);
             let aligned_r = align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate);
-            let mag_db_l = frequency_response_curve(&aligned_l, &ref_signal, runtime.input_rate, &grid);
-            let mag_db_r = frequency_response_curve(&aligned_r, &ref_signal, runtime.input_rate, &grid);
+            let mag_db_l = if rec_l.is_empty() {
+                Vec::new()
+            } else {
+                frequency_response_curve(&aligned_l, &ref_signal, runtime.input_rate, &grid)
+            };
+            let mag_db_r = if rec_r.is_empty() {
+                Vec::new()
+            } else {
+                frequency_response_curve(&aligned_r, &ref_signal, runtime.input_rate, &grid)
+            };
             mags_l.push(mag_db_l);
             mags_r.push(mag_db_r);
+
+            let progress_value = if request.mono_mode {
+                match mono_side {
+                    SweepMonoSide::Left => delay_l,
+                    SweepMonoSide::Right => delay_r,
+                    SweepMonoSide::Both => delay_l.or(delay_r),
+                }
+            } else {
+                delay_l
+            };
 
             let _ = app.emit(
                 "test-progress",
@@ -694,9 +741,14 @@ impl AudioEngine {
                     test: "sweep_fr".to_string(),
                     current: i,
                     total: request.repeats,
-                    value: delay_l,
+                    value: progress_value,
                     message: if request.mono_mode {
-                        format!("mono sweep {i}/{}", request.repeats)
+                        let side_label = match mono_side {
+                            SweepMonoSide::Left => "left",
+                            SweepMonoSide::Right => "right",
+                            SweepMonoSide::Both => "left+right",
+                        };
+                        format!("mono ({side_label}) sweep {i}/{}", request.repeats)
                     } else {
                         format!("sweep {i}/{}", request.repeats)
                     },
@@ -710,11 +762,14 @@ impl AudioEngine {
 
         let left_avg = average_curves(&mags_l);
         let right_avg = average_curves(&mags_r);
-        let mut all_curves = mags_l.clone();
-        all_curves.extend(mags_r.clone());
+        let mut all_curves = Vec::new();
+        all_curves.extend(mags_l.iter().filter(|curve| !curve.is_empty()).cloned());
+        all_curves.extend(mags_r.iter().filter(|curve| !curve.is_empty()).cloned());
         let avg_all = average_curves(&all_curves);
         let avg_delay_l = average_option(&delays_l);
         let avg_delay_r = average_option(&delays_r);
+        let has_left_data = mags_l.iter().any(|curve| !curve.is_empty());
+        let has_right_data = mags_r.iter().any(|curve| !curve.is_empty());
 
         Ok(TestResultPayload {
             test: "sweep_fr".to_string(),
@@ -725,6 +780,7 @@ impl AudioEngine {
                 "duration": request.duration_secs,
                 "repeats": request.repeats,
                 "mono_mode": request.mono_mode,
+                "mono_side": request.mono_side,
                 "save_plots": request.save_plots,
                 "save_squiglink": request.save_squiglink,
                 "output_dir": request.output_dir.clone()
@@ -750,79 +806,89 @@ impl AudioEngine {
                 if request.save_plots {
                     ensure_output_dir(&output_dir)?;
 
-                    let left_avg_path = output_dir.join(format!("sweep_fr_left_avg_{ts}.png"));
-                    save_sweep_single_plot(
-                        &left_avg_path,
-                        "Left Average Frequency Response",
-                        &grid,
-                        &left_avg,
-                    )?;
-                    files.insert(
-                        "plot_left_avg".to_string(),
-                        Value::String(left_avg_path.display().to_string()),
-                    );
+                    if has_left_data {
+                        let left_avg_path = output_dir.join(format!("sweep_fr_left_avg_{ts}.png"));
+                        save_sweep_single_plot(
+                            &left_avg_path,
+                            "Left Average Frequency Response",
+                            &grid,
+                            &left_avg,
+                        )?;
+                        files.insert(
+                            "plot_left_avg".to_string(),
+                            Value::String(left_avg_path.display().to_string()),
+                        );
 
-                    let left_all_path = output_dir.join(format!("sweep_fr_left_all_{ts}.png"));
-                    save_sweep_multi_plot(
-                        &left_all_path,
-                        "Left All Sweeps Frequency Response",
-                        &grid,
-                        &mags_l,
-                    )?;
-                    files.insert(
-                        "plot_left_all".to_string(),
-                        Value::String(left_all_path.display().to_string()),
-                    );
+                        let left_all_path = output_dir.join(format!("sweep_fr_left_all_{ts}.png"));
+                        save_sweep_multi_plot(
+                            &left_all_path,
+                            "Left All Sweeps Frequency Response",
+                            &grid,
+                            &mags_l,
+                        )?;
+                        files.insert(
+                            "plot_left_all".to_string(),
+                            Value::String(left_all_path.display().to_string()),
+                        );
+                    }
 
-                    let right_avg_path = output_dir.join(format!("sweep_fr_right_avg_{ts}.png"));
-                    save_sweep_single_plot(
-                        &right_avg_path,
-                        "Right Average Frequency Response",
-                        &grid,
-                        &right_avg,
-                    )?;
-                    files.insert(
-                        "plot_right_avg".to_string(),
-                        Value::String(right_avg_path.display().to_string()),
-                    );
+                    if has_right_data {
+                        let right_avg_path = output_dir.join(format!("sweep_fr_right_avg_{ts}.png"));
+                        save_sweep_single_plot(
+                            &right_avg_path,
+                            "Right Average Frequency Response",
+                            &grid,
+                            &right_avg,
+                        )?;
+                        files.insert(
+                            "plot_right_avg".to_string(),
+                            Value::String(right_avg_path.display().to_string()),
+                        );
 
-                    let right_all_path = output_dir.join(format!("sweep_fr_right_all_{ts}.png"));
-                    save_sweep_multi_plot(
-                        &right_all_path,
-                        "Right All Sweeps Frequency Response",
-                        &grid,
-                        &mags_r,
-                    )?;
-                    files.insert(
-                        "plot_right_all".to_string(),
-                        Value::String(right_all_path.display().to_string()),
-                    );
+                        let right_all_path = output_dir.join(format!("sweep_fr_right_all_{ts}.png"));
+                        save_sweep_multi_plot(
+                            &right_all_path,
+                            "Right All Sweeps Frequency Response",
+                            &grid,
+                            &mags_r,
+                        )?;
+                        files.insert(
+                            "plot_right_all".to_string(),
+                            Value::String(right_all_path.display().to_string()),
+                        );
+                    }
 
-                    let all_path = output_dir.join(format!("sweep_fr_all_{ts}.png"));
-                    save_sweep_multi_plot(&all_path, "All Sweeps Frequency Response", &grid, &all_curves)?;
-                    files.insert(
-                        "plot_all".to_string(),
-                        Value::String(all_path.display().to_string()),
-                    );
+                    if !all_curves.is_empty() {
+                        let all_path = output_dir.join(format!("sweep_fr_all_{ts}.png"));
+                        save_sweep_multi_plot(&all_path, "All Sweeps Frequency Response", &grid, &all_curves)?;
+                        files.insert(
+                            "plot_all".to_string(),
+                            Value::String(all_path.display().to_string()),
+                        );
+                    }
 
-                    let lr_avg_path = output_dir.join(format!("sweep_fr_lr_avg_{ts}.png"));
-                    save_sweep_lr_avg_plot(&lr_avg_path, &grid, &left_avg, &right_avg)?;
-                    files.insert(
-                        "plot_lr_avg".to_string(),
-                        Value::String(lr_avg_path.display().to_string()),
-                    );
+                    if has_left_data && has_right_data {
+                        let lr_avg_path = output_dir.join(format!("sweep_fr_lr_avg_{ts}.png"));
+                        save_sweep_lr_avg_plot(&lr_avg_path, &grid, &left_avg, &right_avg)?;
+                        files.insert(
+                            "plot_lr_avg".to_string(),
+                            Value::String(lr_avg_path.display().to_string()),
+                        );
+                    }
 
-                    let avg_all_path = output_dir.join(format!("sweep_fr_avg_all_{ts}.png"));
-                    save_sweep_single_plot(
-                        &avg_all_path,
-                        "Average of All Frequency Response",
-                        &grid,
-                        &avg_all,
-                    )?;
-                    files.insert(
-                        "plot_avg_all".to_string(),
-                        Value::String(avg_all_path.display().to_string()),
-                    );
+                    if !avg_all.is_empty() {
+                        let avg_all_path = output_dir.join(format!("sweep_fr_avg_all_{ts}.png"));
+                        save_sweep_single_plot(
+                            &avg_all_path,
+                            "Average of All Frequency Response",
+                            &grid,
+                            &avg_all,
+                        )?;
+                        files.insert(
+                            "plot_avg_all".to_string(),
+                            Value::String(avg_all_path.display().to_string()),
+                        );
+                    }
                 }
 
                 if request.save_squiglink {

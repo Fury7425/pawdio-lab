@@ -3,6 +3,7 @@ import { pageItems, PageKey } from "../model";
 type SidebarProps = {
   activePage: PageKey;
   running: boolean;
+  experimentalEnabled: boolean;
   onSelectPage: (page: PageKey) => void;
   onRefreshDevices: () => void;
   onStopTest: () => void;
@@ -11,17 +12,22 @@ type SidebarProps = {
 export function Sidebar({
   activePage,
   running,
+  experimentalEnabled,
   onSelectPage,
   onRefreshDevices,
   onStopTest
 }: SidebarProps) {
+  const visiblePages = experimentalEnabled
+    ? pageItems
+    : pageItems.filter((item) => item.key !== "experimental");
+
   return (
     <aside className="sidebar-shell">
       <h1 className="sidebar-title">PawdioLab</h1>
       <p className="sidebar-subtitle">Desktop Audio Diagnostics</p>
 
       <nav className="sidebar-nav" aria-label="Primary">
-        {pageItems.map((item) => (
+        {visiblePages.map((item) => (
           <button
             key={item.key}
             type="button"

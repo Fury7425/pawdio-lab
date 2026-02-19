@@ -104,6 +104,7 @@ const DEFAULT_INPUT_MONITOR: InputMonitorState = {
 
 type PersistedUiState = {
   activePage?: PageKey;
+  experimentalEnabled?: boolean;
   settings?: Partial<AudioSettings>;
   latencyRequest?: Partial<LatencyRequest>;
   sweepRequest?: Partial<SweepRequest>;
@@ -156,6 +157,55 @@ function parsePageKey(value: unknown): PageKey {
     return value;
   }
   return "latency";
+}
+
+type SweepMonoSide = "left" | "right" | "both";
+type SweepInvokeRequest = SweepRequest & { monoSide?: SweepMonoSide };
+
+function recordOrEmpty(value: unknown): Record<string, unknown> {
+  return toRecord(value) ?? {};
+}
+
+function numberCurveList(value: unknown): number[][] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((curve) => {
+      if (!Array.isArray(curve)) {
+        return null;
+      }
+      const cast = curve
+        .map((point) => (typeof point === "number" ? point : Number(point)))
+        .filter((point) => Number.isFinite(point));
+      return cast.length > 0 ? cast : null;
+    })
+    .filter((curve): curve is number[] => curve !== null);
+}
+
+function averageCurveList(curves: number[][]): number[] {
+  if (curves.length === 0) {
+    return [];
+  }
+  const length = curves[0].length;
+  if (length === 0) {
+    return [];
+  }
+  const sums = new Array<number>(length).fill(0);
+  let rows = 0;
+  for (const curve of curves) {
+    if (curve.length < length) {
+      continue;
+    }
+    for (let index = 0; index < length; index += 1) {
+      sums[index] += curve[index];
+    }
+    rows += 1;
+  }
+  if (rows === 0) {
+    return [];
+  }
+  return sums.map((sum) => sum / rows);
 }
 
 function mean(values: number[]): number {
@@ -239,11 +289,60 @@ function requestForPreset(base: LatencyRequest, preset: LatencyPresetConfig, rep
   };
 }
 
+function combineGuidedMonoSweepPayload(leftPayload: TestPayload, rightPayload: TestPayload): TestPayload {
+  const leftParams = recordOrEmpty(leftPayload.params);
+  const rightParams = recordOrEmpty(rightPayload.params);
+  const leftMetrics = recordOrEmpty(leftPayload.metrics);
+  const rightMetrics = recordOrEmpty(rightPayload.metrics);
+  const leftData = recordOrEmpty(leftPayload.data);
+  const rightData = recordOrEmpty(rightPayload.data);
+  const leftFiles = recordOrEmpty(leftPayload.files);
+  const rightFiles = recordOrEmpty(rightPayload.files);
+
+  const leftAll = numberCurveList(leftData.left_mag_db_all);
+  const rightAll = numberCurveList(rightData.right_mag_db_all);
+  const combinedAll = [...leftAll, ...rightAll];
+  const combinedAvg = averageCurveList(combinedAll);
+
+  return {
+    test: "sweep_fr",
+    timestamp: rightPayload.timestamp,
+    params: {
+      ...leftParams,
+      ...rightParams,
+      mono_mode: true,
+      mono_side: "guided_left_then_right"
+    },
+    metrics: {
+      delay_ms_left: leftMetrics.delay_ms_left ?? null,
+      delay_ms_right: rightMetrics.delay_ms_right ?? null
+    },
+    data: {
+      freqs: leftData.freqs ?? rightData.freqs ?? [],
+      left_mag_db_avg: leftData.left_mag_db_avg ?? [],
+      left_mag_db_all: leftAll,
+      right_mag_db_avg: rightData.right_mag_db_avg ?? [],
+      right_mag_db_all: rightAll,
+      mag_db_all: combinedAll,
+      mag_db_avg_all: combinedAvg
+    },
+    files: {
+      ...leftFiles,
+      ...rightFiles
+    }
+  };
+}
+
 export function usePawdioLabController() {
   const persistedUiState = useMemo(() => readPersistedUiState(), []);
 
   const [activePage, setActivePage] = useState<PageKey>(
     parsePageKey(persistedUiState?.activePage)
+  );
+  const [experimentalEnabled, setExperimentalEnabled] = useState(
+    typeof persistedUiState?.experimentalEnabled === "boolean"
+      ? persistedUiState.experimentalEnabled
+      : true
   );
   const [inventory, setInventory] = useState<DeviceInventory | null>(null);
   const [settings, setSettings] = useState<AudioSettings>(
@@ -701,8 +800,22 @@ export function usePawdioLabController() {
     }
   }
 
+  async function invokeSweepFrRaw(request: SweepInvokeRequest): Promise<TestPayload> {
+    return invoke<TestPayload>("run_sweep_fr_test", { request });
+  }
+
   async function runSweepFrTest() {
     if (running) {
+      return;
+    }
+    const monoGuided = sweepRequest.monoMode;
+    if (
+      monoGuided &&
+      !window.confirm(
+        "Mono mode: place the LEFT side on the measurement position, then click OK to run the LEFT sweep."
+      )
+    ) {
+      appendLog("[SWEEP FR] mono run cancelled before LEFT sweep");
       return;
     }
     try {
@@ -723,12 +836,42 @@ export function usePawdioLabController() {
     }));
     setRunning(true);
     setError(null);
-    appendLog("[SWEEP FR] running");
+    appendLog(
+      monoGuided ? "[SWEEP FR] mono guided run started (LEFT -> RIGHT)" : "[SWEEP FR] running"
+    );
     try {
-      const payload = await invoke<TestPayload>("run_sweep_fr_test", { request: sweepRequest });
-      const normalized = { ...payload, timestamp: legacyTimestamp(payload.timestamp) };
-      setSweepLastResult(normalized);
-      appendResult(normalized);
+      if (!monoGuided) {
+        const payload = await invokeSweepFrRaw(sweepRequest);
+        const normalized = { ...payload, timestamp: legacyTimestamp(payload.timestamp) };
+        setSweepLastResult(normalized);
+        appendResult(normalized);
+      } else {
+        appendLog("[SWEEP FR] running LEFT sweep");
+        const leftPayload = await invokeSweepFrRaw({ ...sweepRequest, monoSide: "left" });
+        appendLog("[SWEEP FR] LEFT sweep complete");
+
+        const proceedRight = window.confirm(
+          "Now place the RIGHT side on the measurement position, then click OK to run the RIGHT sweep."
+        );
+        if (!proceedRight) {
+          const leftOnly = { ...leftPayload, timestamp: legacyTimestamp(leftPayload.timestamp) };
+          setSweepLastResult(leftOnly);
+          appendResult(leftOnly);
+          appendLog("[SWEEP FR] mono run stopped after LEFT sweep");
+          return;
+        }
+
+        appendLog("[SWEEP FR] running RIGHT sweep");
+        const rightPayload = await invokeSweepFrRaw({ ...sweepRequest, monoSide: "right" });
+        const combinedPayload = combineGuidedMonoSweepPayload(leftPayload, rightPayload);
+        const normalized = {
+          ...combinedPayload,
+          timestamp: legacyTimestamp(combinedPayload.timestamp)
+        };
+        setSweepLastResult(normalized);
+        appendResult(normalized);
+        appendLog("[SWEEP FR] mono guided run completed");
+      }
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -941,8 +1084,15 @@ export function usePawdioLabController() {
   }, [latencyCalibration]);
 
   useEffect(() => {
+    if (!experimentalEnabled && activePage === "experimental") {
+      setActivePage("latency");
+    }
+  }, [experimentalEnabled, activePage]);
+
+  useEffect(() => {
     const snapshot: PersistedUiState = {
       activePage,
+      experimentalEnabled,
       settings,
       latencyRequest,
       sweepRequest,
@@ -959,6 +1109,7 @@ export function usePawdioLabController() {
     }
   }, [
     activePage,
+    experimentalEnabled,
     settings,
     latencyRequest,
     sweepRequest,
@@ -1053,6 +1204,8 @@ export function usePawdioLabController() {
   return {
     activePage,
     setActivePage,
+    experimentalEnabled,
+    setExperimentalEnabled,
     inventory,
     settings,
     running,
