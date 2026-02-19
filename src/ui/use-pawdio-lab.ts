@@ -271,6 +271,20 @@ export function usePawdioLabController() {
 
       setInventory(devices);
       const merged = { ...liveSettings };
+      const outputIndices = new Set(devices.outputs.map((device) => device.index));
+      const inputIndices = new Set(devices.inputs.map((device) => device.index));
+      if (
+        merged.outputDeviceIndex !== null &&
+        !outputIndices.has(merged.outputDeviceIndex)
+      ) {
+        merged.outputDeviceIndex = null;
+      }
+      if (
+        merged.inputDeviceIndex !== null &&
+        !inputIndices.has(merged.inputDeviceIndex)
+      ) {
+        merged.inputDeviceIndex = null;
+      }
       if (merged.outputDeviceIndex === null && devices.defaultOutputIndex !== null) {
         merged.outputDeviceIndex = devices.defaultOutputIndex;
       }
@@ -286,9 +300,28 @@ export function usePawdioLabController() {
   }
 
   async function commitSettings(next: AudioSettings) {
-    setSettings(next);
+    const normalized = { ...next };
+    if (inventory) {
+      const outputIndices = new Set(inventory.outputs.map((device) => device.index));
+      const inputIndices = new Set(inventory.inputs.map((device) => device.index));
+      if (
+        normalized.outputDeviceIndex !== null &&
+        !outputIndices.has(normalized.outputDeviceIndex)
+      ) {
+        normalized.outputDeviceIndex = inventory.defaultOutputIndex ?? null;
+      }
+      if (
+        normalized.inputDeviceIndex !== null &&
+        !inputIndices.has(normalized.inputDeviceIndex)
+      ) {
+        normalized.inputDeviceIndex = inventory.defaultInputIndex ?? null;
+      }
+    }
+    setSettings(normalized);
     try {
-      const committed = await invoke<AudioSettings>("set_audio_settings", { settings: next });
+      const committed = await invoke<AudioSettings>("set_audio_settings", {
+        settings: normalized
+      });
       setSettings(committed);
     } catch (err) {
       setError(String(err));
