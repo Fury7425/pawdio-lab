@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LatencyProgress, LatencyReport, LatencyRequest, fmtMs, toNumber } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 
@@ -21,6 +21,41 @@ type LatencyPageProps = {
   onCalibrateGlobal: (repeats: number) => void;
 };
 
+const LATENCY_UI_STORAGE_KEY = "pawdio-lab-latency-ui-v1";
+
+type PresetSelection = {
+  beep200: boolean;
+  beep1k: boolean;
+  beep2k: boolean;
+  beep5k: boolean;
+  impulse: boolean;
+};
+
+type LatencyUiPrefs = {
+  runSelection: PresetSelection;
+  calibrationRepeats: number;
+  calibrationMode: PresetSelection;
+};
+
+function readLatencyUiPrefs(): LatencyUiPrefs | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(LATENCY_UI_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed as LatencyUiPrefs;
+  } catch {
+    return null;
+  }
+}
+
 export function LatencyPage({
   request,
   onChangeRequest,
@@ -36,21 +71,41 @@ export function LatencyPage({
   onCalibrateAll,
   onCalibrateGlobal
 }: LatencyPageProps) {
-  const [runSelection, setRunSelection] = useState({
-    beep200: true,
-    beep1k: true,
-    beep2k: true,
-    beep5k: true,
-    impulse: false
-  });
-  const [calibrationRepeats, setCalibrationRepeats] = useState(5);
-  const [calibrationMode, setCalibrationMode] = useState({
-    beep200: true,
-    beep1k: true,
-    beep2k: true,
-    beep5k: true,
-    impulse: true
-  });
+  const storedUiPrefs = useMemo(() => readLatencyUiPrefs(), []);
+  const [runSelection, setRunSelection] = useState<PresetSelection>(
+    storedUiPrefs?.runSelection ?? {
+      beep200: true,
+      beep1k: true,
+      beep2k: true,
+      beep5k: true,
+      impulse: false
+    }
+  );
+  const [calibrationRepeats, setCalibrationRepeats] = useState(
+    storedUiPrefs?.calibrationRepeats ?? 5
+  );
+  const [calibrationMode, setCalibrationMode] = useState<PresetSelection>(
+    storedUiPrefs?.calibrationMode ?? {
+      beep200: true,
+      beep1k: true,
+      beep2k: true,
+      beep5k: true,
+      impulse: true
+    }
+  );
+
+  useEffect(() => {
+    const snapshot: LatencyUiPrefs = {
+      runSelection,
+      calibrationRepeats,
+      calibrationMode
+    };
+    try {
+      localStorage.setItem(LATENCY_UI_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // ignore storage write failures
+    }
+  }, [runSelection, calibrationRepeats, calibrationMode]);
 
   const breakdownText = useMemo(() => {
     if (progressRows.length === 0) {
