@@ -198,6 +198,7 @@ export function usePawdioLabController() {
   const [sweepRequest, setSweepRequest] = useState<SweepRequest>(defaultSweepRequest);
   const [sweepLastResult, setSweepLastResult] = useState<TestPayload | null>(null);
   const [inputMonitor, setInputMonitor] = useState<InputMonitorState>(DEFAULT_INPUT_MONITOR);
+  const [pinkNoisePlaying, setPinkNoisePlaying] = useState(false);
 
   const [balanceRequest, setBalanceRequest] = useState(defaultBalanceRequest);
   const [crosstalkRequest, setCrosstalkRequest] = useState<CrosstalkRequest>(defaultCrosstalkRequest);
@@ -338,6 +339,12 @@ export function usePawdioLabController() {
     } catch {
       // no-op
     }
+    try {
+      await invoke("stop_pink_noise");
+    } catch {
+      // no-op
+    }
+    setPinkNoisePlaying(false);
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
@@ -405,6 +412,12 @@ export function usePawdioLabController() {
     } catch {
       // no-op
     }
+    try {
+      await invoke("stop_pink_noise");
+    } catch {
+      // no-op
+    }
+    setPinkNoisePlaying(false);
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
@@ -441,6 +454,12 @@ export function usePawdioLabController() {
     } catch {
       // no-op
     }
+    try {
+      await invoke("stop_pink_noise");
+    } catch {
+      // no-op
+    }
+    setPinkNoisePlaying(false);
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
@@ -495,6 +514,12 @@ export function usePawdioLabController() {
     } catch {
       // no-op
     }
+    try {
+      await invoke("stop_pink_noise");
+    } catch {
+      // no-op
+    }
+    setPinkNoisePlaying(false);
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
@@ -553,6 +578,12 @@ export function usePawdioLabController() {
     } catch {
       // no-op
     }
+    try {
+      await invoke("stop_pink_noise");
+    } catch {
+      // no-op
+    }
+    setPinkNoisePlaying(false);
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
@@ -600,6 +631,12 @@ export function usePawdioLabController() {
     } catch {
       // no-op
     }
+    try {
+      await invoke("stop_pink_noise");
+    } catch {
+      // no-op
+    }
+    setPinkNoisePlaying(false);
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
@@ -664,6 +701,48 @@ export function usePawdioLabController() {
     }
   }
 
+  async function startPinkNoise() {
+    if (running) {
+      appendLog("[pink-noise] cannot start while a test is running");
+      return;
+    }
+    try {
+      try {
+        await invoke("stop_pink_noise");
+      } catch {
+        // no-op
+      }
+      await new Promise<void>((resolve) => {
+        window.setTimeout(resolve, 80);
+      });
+      await invoke("start_pink_noise");
+      setPinkNoisePlaying(true);
+      setInputMonitor((prev) => ({
+        ...prev,
+        status: prev.monitoring ? prev.status : "Playing pink noise..."
+      }));
+      appendLog("[pink-noise] started");
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
+  async function stopPinkNoise() {
+    try {
+      await invoke("stop_pink_noise");
+      setPinkNoisePlaying(false);
+      setInputMonitor((prev) => ({
+        ...prev,
+        status: prev.monitoring ? prev.status : "Pink noise stopped."
+      }));
+      appendLog("[pink-noise] stopped");
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
   async function resetInputMonitorPeak() {
     try {
       await invoke("reset_input_monitor_peak");
@@ -721,6 +800,7 @@ export function usePawdioLabController() {
   async function stopTest() {
     try {
       await invoke("stop_test");
+      setPinkNoisePlaying(false);
       setInputMonitor((prev) => ({
         ...prev,
         monitoring: false,
@@ -811,6 +891,16 @@ export function usePawdioLabController() {
           status: "Monitor error. Check input device/sample rate."
         }));
       }
+      if (
+        event.payload.test === "pink_noise" &&
+        event.payload.message.toLowerCase().includes("error")
+      ) {
+        setPinkNoisePlaying(false);
+        setInputMonitor((prev) => ({
+          ...prev,
+          status: "Pink noise error. Check output device/sample rate."
+        }));
+      }
     })
       .then((off) => {
         offProgress = off;
@@ -869,8 +959,11 @@ export function usePawdioLabController() {
     setSweepRequest,
     sweepLastResult,
     inputMonitor,
+    pinkNoisePlaying,
     startInputMonitor,
     stopInputMonitor,
+    startPinkNoise,
+    stopPinkNoise,
     resetInputMonitorPeak,
     balanceRequest,
     setBalanceRequest,
