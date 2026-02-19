@@ -53,6 +53,7 @@ type InputMonitorState = {
 };
 
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
+const UI_STATE_STORAGE_KEY = "pawdio-lab-ui-state-v1";
 
 const LATENCY_PRESETS: LatencyPresetConfig[] = [
   {
@@ -100,6 +101,62 @@ const DEFAULT_INPUT_MONITOR: InputMonitorState = {
   clipCount: 0,
   splEstimate: -2
 };
+
+type PersistedUiState = {
+  activePage?: PageKey;
+  settings?: Partial<AudioSettings>;
+  latencyRequest?: Partial<LatencyRequest>;
+  sweepRequest?: Partial<SweepRequest>;
+  balanceRequest?: Partial<typeof defaultBalanceRequest>;
+  crosstalkRequest?: Partial<CrosstalkRequest>;
+  thdRequest?: Partial<ThdRequest>;
+  thdToneText?: string;
+  isolationRequest?: Partial<IsolationRequest>;
+};
+
+function toRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function readPersistedUiState(): PersistedUiState | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+  try {
+    const raw = window.localStorage.getItem(UI_STATE_STORAGE_KEY);
+    if (!raw) {
+      return null;
+    }
+    const parsed = JSON.parse(raw);
+    return toRecord(parsed) ? (parsed as PersistedUiState) : null;
+  } catch {
+    return null;
+  }
+}
+
+function mergeWithDefaults<T extends Record<string, unknown>>(defaults: T, stored: unknown): T {
+  const record = toRecord(stored);
+  if (!record) {
+    return defaults;
+  }
+  return { ...defaults, ...(record as Partial<T>) };
+}
+
+function parsePageKey(value: unknown): PageKey {
+  if (
+    value === "latency" ||
+    value === "sweep_fr" ||
+    value === "experimental" ||
+    value === "devices" ||
+    value === "results"
+  ) {
+    return value;
+  }
+  return "latency";
+}
 
 function mean(values: number[]): number {
   if (values.length === 0) {
@@ -183,28 +240,50 @@ function requestForPreset(base: LatencyRequest, preset: LatencyPresetConfig, rep
 }
 
 export function usePawdioLabController() {
-  const [activePage, setActivePage] = useState<PageKey>("latency");
+  const persistedUiState = useMemo(() => readPersistedUiState(), []);
+
+  const [activePage, setActivePage] = useState<PageKey>(
+    parsePageKey(persistedUiState?.activePage)
+  );
   const [inventory, setInventory] = useState<DeviceInventory | null>(null);
-  const [settings, setSettings] = useState<AudioSettings>(defaultSettings);
+  const [settings, setSettings] = useState<AudioSettings>(
+    mergeWithDefaults(defaultSettings, persistedUiState?.settings)
+  );
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(defaultLatencyRequest);
+  const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(
+    mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest)
+  );
   const [latencyProgress, setLatencyProgress] = useState<LatencyProgress[]>([]);
   const [latencyReport, setLatencyReport] = useState<LatencyReport | null>(null);
   const [latencyCalibration, setLatencyCalibration] =
     useState<LatencyCalibration>(defaultLatencyCalibration);
 
-  const [sweepRequest, setSweepRequest] = useState<SweepRequest>(defaultSweepRequest);
+  const [sweepRequest, setSweepRequest] = useState<SweepRequest>(
+    mergeWithDefaults(defaultSweepRequest, persistedUiState?.sweepRequest)
+  );
   const [sweepLastResult, setSweepLastResult] = useState<TestPayload | null>(null);
   const [inputMonitor, setInputMonitor] = useState<InputMonitorState>(DEFAULT_INPUT_MONITOR);
   const [pinkNoisePlaying, setPinkNoisePlaying] = useState(false);
 
-  const [balanceRequest, setBalanceRequest] = useState(defaultBalanceRequest);
-  const [crosstalkRequest, setCrosstalkRequest] = useState<CrosstalkRequest>(defaultCrosstalkRequest);
-  const [thdRequest, setThdRequest] = useState<ThdRequest>(defaultThdRequest);
-  const [thdToneText, setThdToneText] = useState(defaultThdRequest.tones.join(", "));
-  const [isolationRequest, setIsolationRequest] = useState<IsolationRequest>(defaultIsolationRequest);
+  const [balanceRequest, setBalanceRequest] = useState(
+    mergeWithDefaults(defaultBalanceRequest, persistedUiState?.balanceRequest)
+  );
+  const [crosstalkRequest, setCrosstalkRequest] = useState<CrosstalkRequest>(
+    mergeWithDefaults(defaultCrosstalkRequest, persistedUiState?.crosstalkRequest)
+  );
+  const [thdRequest, setThdRequest] = useState<ThdRequest>(
+    mergeWithDefaults(defaultThdRequest, persistedUiState?.thdRequest)
+  );
+  const [thdToneText, setThdToneText] = useState(
+    typeof persistedUiState?.thdToneText === "string"
+      ? persistedUiState.thdToneText
+      : defaultThdRequest.tones.join(", ")
+  );
+  const [isolationRequest, setIsolationRequest] = useState<IsolationRequest>(
+    mergeWithDefaults(defaultIsolationRequest, persistedUiState?.isolationRequest)
+  );
 
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultEntry[]>([]);
@@ -271,7 +350,7 @@ export function usePawdioLabController() {
       ]);
 
       setInventory(devices);
-      const merged = { ...liveSettings };
+      const merged = { ...liveSettings, ...settings };
       const outputIndices = new Set(devices.outputs.map((device) => device.index));
       const inputIndices = new Set(devices.inputs.map((device) => device.index));
       if (
@@ -860,6 +939,35 @@ export function usePawdioLabController() {
       // ignore storage write issues
     }
   }, [latencyCalibration]);
+
+  useEffect(() => {
+    const snapshot: PersistedUiState = {
+      activePage,
+      settings,
+      latencyRequest,
+      sweepRequest,
+      balanceRequest,
+      crosstalkRequest,
+      thdRequest,
+      thdToneText,
+      isolationRequest
+    };
+    try {
+      localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+      // ignore storage write issues
+    }
+  }, [
+    activePage,
+    settings,
+    latencyRequest,
+    sweepRequest,
+    balanceRequest,
+    crosstalkRequest,
+    thdRequest,
+    thdToneText,
+    isolationRequest
+  ]);
 
   useEffect(() => {
     const timer = setInterval(() => {
