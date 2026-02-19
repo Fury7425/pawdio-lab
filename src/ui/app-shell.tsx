@@ -61,8 +61,11 @@ export function PawdioLabApp() {
               onRun={() => run(controller.runSweepFrTest())}
               lastResult={controller.sweepLastResult}
               monitor={controller.inputMonitor}
+              pinkNoisePlaying={controller.pinkNoisePlaying}
               onStartMonitor={() => run(controller.startInputMonitor())}
               onStopMonitor={() => run(controller.stopInputMonitor())}
+              onStartPinkNoise={() => run(controller.startPinkNoise())}
+              onStopPinkNoise={() => run(controller.stopPinkNoise())}
               onResetPeak={() => run(controller.resetInputMonitorPeak())}
             />
           )}
