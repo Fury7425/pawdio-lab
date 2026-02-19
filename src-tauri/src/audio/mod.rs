@@ -573,6 +573,39 @@ impl AudioEngine {
         Ok(())
     }
 
+    pub fn run_pink_noise(settings: AudioSettings, cancel: Arc<AtomicBool>) -> Result<(), AudioError> {
+        let host = preferred_host()?;
+        let output_entries = enumerate_output_devices(&host)?;
+        let output_device =
+            select_device(&host, &output_entries, settings.output_device_index, false)?;
+        let (output_config, output_format) =
+            choose_output_config(&output_device, settings.output_sample_rate)?;
+        let channels = output_config.channels as usize;
+
+        let noise_state = Arc::new(Mutex::new(PinkNoiseState::new(0.25)));
+        let err_fn = |err| {
+            eprintln!("pink noise stream error: {err}");
+        };
+
+        let stream = build_pink_output_stream(
+            &output_device,
+            &output_config,
+            output_format,
+            OutputRouting::Both,
+            channels,
+            noise_state,
+            err_fn,
+        )?;
+        stream.play()?;
+
+        while !cancel.load(Ordering::SeqCst) {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        drop(stream);
+        Ok(())
+    }
+
     pub fn run_sweep_fr_test(
         settings: AudioSettings,
         mut request: SweepFrRequest,
@@ -2499,6 +2532,234 @@ fn route_sample(sample: f32, routing: OutputRouting) -> (f32, f32) {
         OutputRouting::Both => (sample, sample),
         OutputRouting::LeftOnly => (sample, 0.0),
         OutputRouting::RightOnly => (0.0, sample),
+    }
+}
+
+struct PinkNoiseState {
+    b0: f32,
+    b1: f32,
+    b2: f32,
+    b3: f32,
+    b4: f32,
+    b5: f32,
+    b6: f32,
+    seed: u64,
+    gain: f32,
+}
+
+impl PinkNoiseState {
+    fn new(gain: f32) -> Self {
+        let seed = SystemTime::now()
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_nanos() as u64
+            ^ 0x9E37_79B9_7F4A_7C15;
+
+        Self {
+            b0: 0.0,
+            b1: 0.0,
+            b2: 0.0,
+            b3: 0.0,
+            b4: 0.0,
+            b5: 0.0,
+            b6: 0.0,
+            seed: if seed == 0 { 0xA5A5_A5A5_A5A5_A5A5 } else { seed },
+            gain: gain.clamp(0.0, 1.0),
+        }
+    }
+
+    fn next_white(&mut self) -> f32 {
+        let mut x = self.seed;
+        x ^= x << 13;
+        x ^= x >> 7;
+        x ^= x << 17;
+        self.seed = x;
+        let unit = (x as f64) / (u64::MAX as f64);
+        (unit as f32) * 2.0 - 1.0
+    }
+
+    fn next_sample(&mut self) -> f32 {
+        let x = self.next_white();
+        self.b0 = 0.99886 * self.b0 + x * 0.055_517_9;
+        self.b1 = 0.99332 * self.b1 + x * 0.075_075_9;
+        self.b2 = 0.96900 * self.b2 + x * 0.153_852_0;
+        self.b3 = 0.86650 * self.b3 + x * 0.310_485_6;
+        self.b4 = 0.55000 * self.b4 + x * 0.532_952_2;
+        self.b5 = -0.7616 * self.b5 - x * 0.016_898_0;
+        let y = self.b0 + self.b1 + self.b2 + self.b3 + self.b4 + self.b5 + self.b6 + x * 0.5362;
+        self.b6 = x * 0.115_926;
+
+        // 0.11 keeps the Paul Kellet filter output in a comfortable playback range.
+        (y * 0.11 * self.gain).clamp(-1.0, 1.0)
+    }
+}
+
+fn build_pink_output_stream(
+    device: &Device,
+    config: &StreamConfig,
+    format: SampleFormat,
+    routing: OutputRouting,
+    channels: usize,
+    noise_state: Arc<Mutex<PinkNoiseState>>,
+    err_fn: impl Fn(cpal::StreamError) + Send + 'static + Copy,
+) -> Result<Stream, AudioError> {
+    match format {
+        SampleFormat::F32 => {
+            let state = noise_state.clone();
+            Ok(device.build_output_stream(
+                config,
+                move |data: &mut [f32], _| {
+                    write_pink_f32(data, channels, routing, &state);
+                },
+                err_fn,
+                None,
+            )?)
+        }
+        SampleFormat::I16 => {
+            let state = noise_state.clone();
+            Ok(device.build_output_stream(
+                config,
+                move |data: &mut [i16], _| {
+                    write_pink_i16(data, channels, routing, &state);
+                },
+                err_fn,
+                None,
+            )?)
+        }
+        SampleFormat::U16 => {
+            let state = noise_state.clone();
+            Ok(device.build_output_stream(
+                config,
+                move |data: &mut [u16], _| {
+                    write_pink_u16(data, channels, routing, &state);
+                },
+                err_fn,
+                None,
+            )?)
+        }
+        SampleFormat::U8 => {
+            let state = noise_state.clone();
+            Ok(device.build_output_stream(
+                config,
+                move |data: &mut [u8], _| {
+                    write_pink_u8(data, channels, routing, &state);
+                },
+                err_fn,
+                None,
+            )?)
+        }
+        other => Err(AudioError::UnsupportedSampleFormat(format!("{other:?}"))),
+    }
+}
+
+fn write_pink_f32(
+    data: &mut [f32],
+    channels: usize,
+    routing: OutputRouting,
+    noise_state: &Arc<Mutex<PinkNoiseState>>,
+) {
+    if let Ok(mut state) = noise_state.lock() {
+        for frame in data.chunks_mut(channels.max(1)) {
+            let mono = state.next_sample();
+            let (left, right) = route_sample(mono, routing);
+            for (ch, sample) in frame.iter_mut().enumerate() {
+                *sample = if ch == 0 {
+                    left
+                } else if ch == 1 {
+                    right
+                } else if ch % 2 == 0 {
+                    left
+                } else {
+                    right
+                };
+            }
+        }
+    } else {
+        data.fill(0.0);
+    }
+}
+
+fn write_pink_i16(
+    data: &mut [i16],
+    channels: usize,
+    routing: OutputRouting,
+    noise_state: &Arc<Mutex<PinkNoiseState>>,
+) {
+    if let Ok(mut state) = noise_state.lock() {
+        for frame in data.chunks_mut(channels.max(1)) {
+            let mono = state.next_sample();
+            let (left, right) = route_sample(mono, routing);
+            for (ch, sample) in frame.iter_mut().enumerate() {
+                let value = if ch == 0 {
+                    left
+                } else if ch == 1 {
+                    right
+                } else if ch % 2 == 0 {
+                    left
+                } else {
+                    right
+                };
+                *sample = (value * i16::MAX as f32) as i16;
+            }
+        }
+    } else {
+        data.fill(0);
+    }
+}
+
+fn write_pink_u16(
+    data: &mut [u16],
+    channels: usize,
+    routing: OutputRouting,
+    noise_state: &Arc<Mutex<PinkNoiseState>>,
+) {
+    if let Ok(mut state) = noise_state.lock() {
+        for frame in data.chunks_mut(channels.max(1)) {
+            let mono = state.next_sample();
+            let (left, right) = route_sample(mono, routing);
+            for (ch, sample) in frame.iter_mut().enumerate() {
+                let value = if ch == 0 {
+                    left
+                } else if ch == 1 {
+                    right
+                } else if ch % 2 == 0 {
+                    left
+                } else {
+                    right
+                };
+                *sample = ((value * 0.5 + 0.5) * u16::MAX as f32) as u16;
+            }
+        }
+    } else {
+        data.fill(u16::MAX / 2);
+    }
+}
+
+fn write_pink_u8(
+    data: &mut [u8],
+    channels: usize,
+    routing: OutputRouting,
+    noise_state: &Arc<Mutex<PinkNoiseState>>,
+) {
+    if let Ok(mut state) = noise_state.lock() {
+        for frame in data.chunks_mut(channels.max(1)) {
+            let mono = state.next_sample();
+            let (left, right) = route_sample(mono, routing);
+            for (ch, sample) in frame.iter_mut().enumerate() {
+                let value = if ch == 0 {
+                    left
+                } else if ch == 1 {
+                    right
+                } else if ch % 2 == 0 {
+                    left
+                } else {
+                    right
+                };
+                *sample = ((value * 0.5 + 0.5) * u8::MAX as f32) as u8;
+            }
+        }
+    } else {
+        data.fill(u8::MAX / 2);
     }
 }
 
