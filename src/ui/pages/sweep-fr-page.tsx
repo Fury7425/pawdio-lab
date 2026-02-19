@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { SweepRequest, toNumber } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 
@@ -22,8 +23,11 @@ type SweepFrPageProps = {
     clipCount: number;
     splEstimate: number;
   };
+  pinkNoisePlaying: boolean;
   onStartMonitor: () => void;
   onStopMonitor: () => void;
+  onStartPinkNoise: () => void;
+  onStopPinkNoise: () => void;
   onResetPeak: () => void;
 };
 
@@ -34,10 +38,24 @@ export function SweepFrPage({
   onRun,
   lastResult,
   monitor,
+  pinkNoisePlaying,
   onStartMonitor,
   onStopMonitor,
+  onStartPinkNoise,
+  onStopPinkNoise,
   onResetPeak
 }: SweepFrPageProps) {
+  const [meterHistory, setMeterHistory] = useState<number[]>(() =>
+    Array.from({ length: 48 }, () => 0)
+  );
+
+  const currentNorm = Math.min(1, Math.max(0, (monitor.currentDbfs + 96) / 96));
+  const peakNorm = Math.min(1, Math.max(0, (monitor.peakDbfs + 96) / 96));
+
+  useEffect(() => {
+    setMeterHistory((prev) => [...prev.slice(1), currentNorm]);
+  }, [currentNorm]);
+
   return (
     <div className="page-stack">
       <section className="page-card">
@@ -165,7 +183,23 @@ export function SweepFrPage({
             <p className="muted" style={{ marginTop: 0 }}>
               {monitor.status}
             </p>
-            <div className="placeholder-box" style={{ minHeight: 82, marginBottom: 12 }} />
+            <div className="level-meter" style={{ marginBottom: 12 }}>
+              <div className="level-meter-grid" />
+              <div className="level-meter-bars">
+                {meterHistory.map((level, index) => (
+                  <span
+                    key={`meter-${index}`}
+                    className={`level-meter-bar ${
+                      level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
+                    }`.trim()}
+                    style={{
+                      height: `${Math.max(8, level * 100)}%`
+                    }}
+                  />
+                ))}
+              </div>
+              <span className="level-meter-peak" style={{ left: `${peakNorm * 100}%` }} />
+            </div>
             <div className="field-grid-3">
               <div className="field-row">
                 <span className="field-label">Current Level</span>
@@ -193,8 +227,13 @@ export function SweepFrPage({
               >
                 {monitor.monitoring ? "Stop Monitoring" : "Start Monitoring"}
               </button>
-              <button type="button" className="skin-btn secondary" disabled>
-                Play Pink Noise
+              <button
+                type="button"
+                className="skin-btn secondary"
+                disabled={running}
+                onClick={pinkNoisePlaying ? onStopPinkNoise : onStartPinkNoise}
+              >
+                {pinkNoisePlaying ? "Stop Pink Noise" : "Play Pink Noise"}
               </button>
               <button type="button" className="skin-btn secondary" onClick={onResetPeak}>
                 Reset Peak
