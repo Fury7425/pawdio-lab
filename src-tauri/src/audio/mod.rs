@@ -1083,13 +1083,12 @@ fn preferred_host() -> Result<Host, AudioError> {
 
 fn enumerate_output_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)>, AudioError> {
     let mut output_devices = Vec::new();
-    for device in host.devices()? {
+    for (host_index, device) in host.devices()?.enumerate() {
         if let Ok(config) = device.default_output_config() {
-            let index = output_devices.len();
             output_devices.push((
                 device.clone(),
                 AudioDeviceInfo {
-                    index,
+                    index: host_index,
                     name: device.name()?,
                     is_input: false,
                     channels: config.channels(),
@@ -1103,13 +1102,12 @@ fn enumerate_output_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)
 
 fn enumerate_input_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)>, AudioError> {
     let mut input_devices = Vec::new();
-    for device in host.devices()? {
+    for (host_index, device) in host.devices()?.enumerate() {
         if let Ok(config) = device.default_input_config() {
-            let index = input_devices.len();
             input_devices.push((
                 device.clone(),
                 AudioDeviceInfo {
-                    index,
+                    index: host_index,
                     name: device.name()?,
                     is_input: true,
                     channels: config.channels(),
@@ -1139,6 +1137,10 @@ fn select_device(
 ) -> Result<Device, AudioError> {
     if let Some(index) = selected_index {
         if let Some((device, _)) = entries.iter().find(|(_, info)| info.index == index) {
+            return Ok(device.clone());
+        }
+        // Backward-compat fallback for previously persisted compact indices.
+        if let Some((device, _)) = entries.get(index) {
             return Ok(device.clone());
         }
     }
