@@ -1,6 +1,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { AudioSettings, DeviceInventory, fromSelectValue, toNumber, toSelectValue } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
+import {
+  DEFAULT_APPEARANCE_MODE,
+  DEFAULT_INPUT_BIT_DEPTH,
+  DEFAULT_ACCENT_COLOR,
+  DeviceUiPrefs,
+  normalizeAccentColor,
+  normalizeAppearanceMode,
+  persistDeviceUiPrefs,
+  readDeviceUiPrefs
+} from "../theme";
 
 type DevicesPageProps = {
   inventory: DeviceInventory | null;
@@ -10,33 +20,6 @@ type DevicesPageProps = {
   onCommitSettings: (settings: AudioSettings) => void;
   onRefreshDevices: () => void;
 };
-
-const DEVICE_UI_STORAGE_KEY = "pawdio-lab-device-ui-v1";
-
-type DeviceUiPrefs = {
-  appearanceMode: string;
-  accentColor: string;
-  inputBitDepth: string;
-};
-
-function readDeviceUiPrefs(): DeviceUiPrefs | null {
-  if (typeof window === "undefined") {
-    return null;
-  }
-  try {
-    const raw = window.localStorage.getItem(DEVICE_UI_STORAGE_KEY);
-    if (!raw) {
-      return null;
-    }
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
-      return null;
-    }
-    return parsed as DeviceUiPrefs;
-  } catch {
-    return null;
-  }
-}
 
 export function DevicesPage({
   inventory,
@@ -48,9 +31,15 @@ export function DevicesPage({
 }: DevicesPageProps) {
   const storedUiPrefs = useMemo(() => readDeviceUiPrefs(), []);
   const [draft, setDraft] = useState(settings);
-  const [appearanceMode, setAppearanceMode] = useState(storedUiPrefs?.appearanceMode ?? "Dark");
-  const [accentColor, setAccentColor] = useState(storedUiPrefs?.accentColor ?? "Blue");
-  const [inputBitDepth, setInputBitDepth] = useState(storedUiPrefs?.inputBitDepth ?? "Auto");
+  const [appearanceMode, setAppearanceMode] = useState(
+    storedUiPrefs?.appearanceMode ?? DEFAULT_APPEARANCE_MODE
+  );
+  const [accentColor, setAccentColor] = useState(
+    storedUiPrefs?.accentColor ?? DEFAULT_ACCENT_COLOR
+  );
+  const [inputBitDepth, setInputBitDepth] = useState(
+    storedUiPrefs?.inputBitDepth ?? DEFAULT_INPUT_BIT_DEPTH
+  );
 
   useEffect(() => {
     setDraft(settings);
@@ -62,11 +51,7 @@ export function DevicesPage({
       accentColor,
       inputBitDepth
     };
-    try {
-      localStorage.setItem(DEVICE_UI_STORAGE_KEY, JSON.stringify(snapshot));
-    } catch {
-      // ignore storage write failures
-    }
+    persistDeviceUiPrefs(snapshot);
   }, [appearanceMode, accentColor, inputBitDepth]);
 
   function commitDeviceSelection(next: AudioSettings) {
@@ -223,7 +208,7 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={appearanceMode}
-                onChange={(event) => setAppearanceMode(event.target.value)}
+                onChange={(event) => setAppearanceMode(normalizeAppearanceMode(event.target.value))}
               >
                 <option value="Dark">Dark</option>
                 <option value="Light">Light</option>
@@ -236,11 +221,12 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={accentColor}
-                onChange={(event) => setAccentColor(event.target.value)}
+                onChange={(event) => setAccentColor(normalizeAccentColor(event.target.value))}
               >
                 <option value="Blue">Blue</option>
                 <option value="Teal">Teal</option>
                 <option value="Greyscale">Greyscale</option>
+                <option value="Purple">Purple</option>
               </select>
             </label>
           </div>

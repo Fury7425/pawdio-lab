@@ -92,6 +92,8 @@ pub struct LatencyTestRequest {
     pub save_per_sound_plot: bool,
     #[serde(default = "default_true")]
     pub save_overall_bar_chart: bool,
+    #[serde(default)]
+    pub calibrated_offset_ms: f32,
 }
 
 impl Default for LatencyTestRequest {
@@ -106,6 +108,7 @@ impl Default for LatencyTestRequest {
             output_dir: None,
             save_per_sound_plot: true,
             save_overall_bar_chart: true,
+            calibrated_offset_ms: 0.0,
         }
     }
 }
@@ -271,6 +274,13 @@ pub struct LatencyTestReport {
     pub std_dev_ms: Option<f32>,
     pub cancelled: bool,
     pub timestamp_utc: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LatencyExportEntry {
+    pub request: LatencyTestRequest,
+    pub report: LatencyTestReport,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -471,7 +481,8 @@ impl AudioEngine {
                         reference,
                         avg_delay,
                         runtime.input_rate,
-                        &format!("{preset_name} avg {avg_delay:.1} ms"),
+                        &preset_name,
+                        valid.len(),
                     )
                     .is_ok()
                     {
@@ -522,6 +533,36 @@ impl AudioEngine {
         let path = output_dir.join(format!("latency_report_{ts}.txt"));
         let text = build_latency_text_report(request, report);
         write_text_file(&path, &text)?;
+        Ok(path)
+    }
+
+    pub fn export_latency_suite_report(
+        request: &LatencyTestRequest,
+        suite: &[LatencyExportEntry],
+    ) -> Result<PathBuf, AudioError> {
+        let output_dir = resolve_output_dir(&request.output_dir);
+        ensure_output_dir(&output_dir)?;
+        let ts = timestamp_filename();
+        let path = output_dir.join(format!("latency_report_{ts}.txt"));
+        let text = build_latency_suite_text_report(suite);
+        write_text_file(&path, &text)?;
+        Ok(path)
+    }
+
+    pub fn save_latency_overall_bar_chart(
+        request: &LatencyTestRequest,
+        suite: &[LatencyExportEntry],
+    ) -> Result<PathBuf, AudioError> {
+        let output_dir = resolve_output_dir(&request.output_dir);
+        ensure_output_dir(&output_dir)?;
+        let path = overall_bar_path(&output_dir)?;
+        let bars = latency_bars_from_suite(suite);
+        if bars.is_empty() {
+            return Err(AudioError::FileExport(
+                "no valid latency values available for bar chart".to_string(),
+            ));
+        }
+        save_overall_bar_chart(&path, &bars)?;
         Ok(path)
     }
 
@@ -1556,13 +1597,13 @@ fn latency_preset_identity(signal: TestSignalKind, frequency_hz: f32) -> (String
         TestSignalKind::Sine => {
             let f = frequency_hz;
             if (f - 1000.0).abs() <= 20.0 {
-                ("beep_1k".to_string(), "1 kHz Beep".to_string())
+                ("beep_1k".to_string(), "1kHz Beep".to_string())
             } else if (f - 2000.0).abs() <= 20.0 {
-                ("beep_2k".to_string(), "2 kHz Beep".to_string())
+                ("beep_2k".to_string(), "Mixed (2kHz Sine)".to_string())
             } else if (f - 5000.0).abs() <= 50.0 {
-                ("beep_5k".to_string(), "5 kHz Beep".to_string())
+                ("beep_5k".to_string(), "5kHz Beep".to_string())
             } else if (f - 200.0).abs() <= 5.0 {
-                ("beep_200".to_string(), "200 Hz Beep".to_string())
+                ("beep_200".to_string(), "200Hz Low Beep".to_string())
             } else {
                 ("sine_custom".to_string(), format!("Sine {f:.0} Hz"))
             }
@@ -1583,70 +1624,225 @@ fn overall_bar_path(output_dir: &Path) -> Result<PathBuf, AudioError> {
     Ok(output_dir.join(format!("overall_bar_{}.png", timestamp_filename())))
 }
 
+fn latency_bars_from_suite(suite: &[LatencyExportEntry]) -> Vec<(String, Vec<f32>)> {
+    let mut bars = Vec::new();
+    for entry in suite {
+        let (_, label) = latency_preset_identity(entry.request.signal, entry.request.frequency_hz);
+        let delays: Vec<f32> = entry
+            .report
+            .measurements
+            .iter()
+            .filter_map(|measurement| measurement.delay_ms)
+            .collect();
+        if !delays.is_empty() {
+            bars.push((label, delays));
+        }
+    }
+    bars
+}
+
+fn latency_performance_label(avg: f32) -> (&'static str, &'static str) {
+    if avg <= 40.0 {
+        (
+            "Good (< 40ms)",
+            "Your headphones have low latency - suitable for most tasks.",
+        )
+    } else if avg <= 80.0 {
+        (
+            "Moderate (40-80ms)",
+            "Your headphones have moderate latency - may be noticeable.",
+        )
+    } else {
+        (
+            "Poor (> 80ms)",
+            "Your headphones have high latency - may cause audio sync issues.",
+        )
+    }
+}
+
+fn latency_consistency_label(std: f32) -> &'static str {
+    if std <= 10.0 {
+        "Good (low variation)"
+    } else if std <= 30.0 {
+        "Moderate (some variation)"
+    } else {
+        "Poor (high variation - check audio setup)"
+    }
+}
+
 fn build_latency_text_report(request: &LatencyTestRequest, report: &LatencyTestReport) -> String {
-    let delays: Vec<f32> = report.measurements.iter().filter_map(|m| m.delay_ms).collect();
-    let overall_avg = report.average_delay_ms.unwrap_or_else(|| mean(&delays));
-    let overall_std = report
-        .std_dev_ms
-        .unwrap_or_else(|| standard_deviation(&delays, overall_avg));
-    let signal_name = latency_preset_identity(request.signal, request.frequency_hz).1;
+    let single = vec![LatencyExportEntry {
+        request: request.clone(),
+        report: report.clone(),
+    }];
+    build_latency_suite_text_report(&single)
+}
+
+fn build_latency_suite_text_report(suite: &[LatencyExportEntry]) -> String {
+    if suite.is_empty() {
+        return [
+            "============================================================",
+            "HEADPHONE DELAY TEST REPORT",
+            "============================================================",
+            "No latency results available.",
+            "============================================================",
+            "REPORT END",
+            "============================================================",
+        ]
+        .join("\n");
+    }
+
+    let test_date = suite
+        .last()
+        .map(|entry| entry.report.timestamp_utc.clone())
+        .unwrap_or_else(timestamp_string);
+    let first_request = &suite[0].request;
+    let first_report = &suite[0].report;
+
+    let all_delays: Vec<f32> = suite
+        .iter()
+        .flat_map(|entry| entry.report.measurements.iter().filter_map(|measurement| measurement.delay_ms))
+        .collect();
+    let overall_avg = if all_delays.is_empty() {
+        0.0
+    } else {
+        mean(&all_delays)
+    };
+    let overall_std = if all_delays.is_empty() {
+        0.0
+    } else {
+        standard_deviation(&all_delays, overall_avg)
+    };
+
+    let first_offset = first_request.calibrated_offset_ms;
+    let same_offset = suite
+        .iter()
+        .all(|entry| (entry.request.calibrated_offset_ms - first_offset).abs() <= 1e-4);
+    let calibration_line = if same_offset {
+        format!("Calibration Offset Applied: {first_offset:.4} ms")
+    } else {
+        "Calibration Offset Applied: Per-sound + global (varies by sound type)".to_string()
+    };
 
     let mut lines = vec![
         "============================================================".to_string(),
         "HEADPHONE DELAY TEST REPORT".to_string(),
         "============================================================".to_string(),
-        format!("Test Date: {}", report.timestamp_utc),
-        format!("Overall Tests Per Sound Type: {}", request.repeats),
-        format!("Output Sample Rate: {} Hz", report.sample_rate),
-        format!("Input Sample Rate: {} Hz", report.input_sample_rate),
+        format!("Test Date: {test_date}"),
+        format!("Overall Tests Per Sound Type: {}", first_request.repeats),
+        format!("Sample Rate: {} Hz", first_report.input_sample_rate),
         format!(
-            "Default Test Signal Buffer Duration: {:.3} seconds",
-            request.duration_secs
+            "Default Test Signal Buffer Duration: {:.4} seconds (Sine waves use this primarily)",
+            first_request.duration_secs
         ),
-        "Calibration Offset Applied: 0.0000 ms".to_string(),
+        calibration_line,
         "".to_string(),
         "".to_string(),
-        "==================== OVERALL AVERAGE CALIBRATED DELAY (ALL SOUND TYPES) ====================".to_string(),
+        "==================== OVERALL AVERAGE CALIBRATED DELAY (ALL SOUND TYPES) ===================="
+            .to_string(),
         format!("Overall Average Calibrated Delay: {overall_avg:.4} ms"),
         format!("Overall Standard Deviation: {overall_std:.4} ms"),
-        format!("Total Successful Tests: {}", delays.len()),
+        format!("Total Successful Tests: {}", all_delays.len()),
         "============================================================".to_string(),
         "".to_string(),
-        format!("==================== Results for '{}' ====================", signal_name),
-        "Individual test results (Calibrated):".to_string(),
-        "------------------------------".to_string(),
     ];
 
-    for measurement in &report.measurements {
-        if let Some(value) = measurement.delay_ms {
-            lines.push(format!("Test {}: {value:.4} ms", measurement.iteration));
+    for entry in suite {
+        let (_, sound_name) = latency_preset_identity(entry.request.signal, entry.request.frequency_hz);
+        let delays: Vec<f32> = entry
+            .report
+            .measurements
+            .iter()
+            .filter_map(|measurement| measurement.delay_ms)
+            .collect();
+        let avg = if delays.is_empty() {
+            None
         } else {
-            lines.push(format!("Test {}: failed", measurement.iteration));
-        }
-    }
+            Some(entry.report.average_delay_ms.unwrap_or_else(|| mean(&delays)))
+        };
+        let std = if delays.is_empty() {
+            None
+        } else {
+            let avg_value = avg.unwrap_or(0.0);
+            Some(entry.report.std_dev_ms.unwrap_or_else(|| standard_deviation(&delays, avg_value)))
+        };
 
-    lines.extend([
-        "".to_string(),
-        "STATISTICAL ANALYSIS:".to_string(),
-        "------------------------------".to_string(),
-        format!("Average calibrated delay: {overall_avg:.4} ms"),
-        format!("Standard deviation: {overall_std:.4} ms"),
-        if delays.is_empty() {
-            "No successful runs".to_string()
-        } else {
+        lines.push(format!("==================== Results for '{}' ====================", sound_name));
+        lines.push("Individual test results (Calibrated):".to_string());
+        lines.push("------------------------------".to_string());
+        for measurement in &entry.report.measurements {
+            if let Some(value) = measurement.delay_ms {
+                lines.push(format!("Test {}: {value:.4} ms", measurement.iteration));
+            } else {
+                lines.push(format!("Test {}: failed", measurement.iteration));
+            }
+        }
+        lines.push("".to_string());
+
+        lines.push(format!(
+            "STATISTICAL ANALYSIS for '{}' (Calibrated):",
+            sound_name
+        ));
+        lines.push("------------------------------".to_string());
+        if let (Some(avg_value), Some(std_value)) = (avg, std) {
             let min = delays.iter().copied().fold(f32::INFINITY, f32::min);
             let max = delays.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-            format!(
-                "Minimum calibrated delay: {min:.4} ms\nMaximum calibrated delay: {max:.4} ms\nRange: {:.4} ms",
-                max - min
-            )
-        },
-        "".to_string(),
-        "============================================================".to_string(),
-        "REPORT END".to_string(),
-        "============================================================".to_string(),
-    ]);
+            lines.push(format!("Average calibrated delay: {avg_value:.4} ms"));
+            lines.push(format!("Standard deviation: {std_value:.4} ms"));
+            lines.push(format!("Minimum calibrated delay: {min:.4} ms"));
+            lines.push(format!("Maximum calibrated delay: {max:.4} ms"));
+            lines.push(format!("Range: {:.4} ms", max - min));
+        } else {
+            lines.push("No successful runs".to_string());
+        }
+        lines.push("".to_string());
 
+        lines.push(format!(
+            "PERFORMANCE ASSESSMENT for '{}' (Calibrated):",
+            sound_name
+        ));
+        lines.push("------------------------------".to_string());
+        if let Some(avg_value) = avg {
+            let (label, desc) = latency_performance_label(avg_value);
+            lines.push(format!("Performance: {label}"));
+            lines.push(desc.to_string());
+        } else {
+            lines.push("Performance: N/A".to_string());
+        }
+        lines.push("".to_string());
+
+        lines.push(format!("CONSISTENCY ANALYSIS for '{}':", sound_name));
+        lines.push("------------------------------".to_string());
+        if let Some(std_value) = std {
+            lines.push(format!("Consistency: {}", latency_consistency_label(std_value)));
+        } else {
+            lines.push("Consistency: N/A".to_string());
+        }
+        lines.push("".to_string());
+
+        lines.push(format!(
+            "RAW DATA (Calibrated Delays for '{}'):",
+            sound_name
+        ));
+        lines.push("------------------------------".to_string());
+        if delays.is_empty() {
+            lines.push("Delays (ms): none".to_string());
+        } else {
+            lines.push(format!(
+                "Delays (ms): {}",
+                delays
+                    .iter()
+                    .map(|value| format!("{value:.4}"))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ));
+        }
+        lines.push("".to_string());
+    }
+
+    lines.push("============================================================".to_string());
+    lines.push("REPORT END".to_string());
+    lines.push("============================================================".to_string());
     lines.join("\n")
 }
 
@@ -1673,29 +1869,49 @@ fn save_latency_plot(
     reference: &[f32],
     avg_delay_ms: f32,
     sample_rate: u32,
-    title: &str,
+    sound_name: &str,
+    successful_tests: usize,
 ) -> Result<(), AudioError> {
-    let root = BitMapBackend::new(path, (1100, 700)).into_drawing_area();
-    root.fill(&RGBColor(16, 20, 30))
+    let bg = RGBColor(230, 230, 230);
+    let root = BitMapBackend::new(path, (1280, 860)).into_drawing_area();
+    root.fill(&bg)
         .map_err(|err| AudioError::FileExport(format!("plot background {}: {err}", path.display())))?;
-    let areas = root.split_evenly((3, 1));
+    let (title_area, body_area) = root.split_vertically(70);
+    title_area
+        .fill(&bg)
+        .map_err(|err| AudioError::FileExport(format!("plot title background {}: {err}", path.display())))?;
+    title_area
+        .draw(&Text::new(
+            format!("Delay Analysis for {sound_name} (Example Plot with Calibrated Average Delay)"),
+            (18, 45),
+            ("sans-serif", 36).into_font().color(&BLACK),
+        ))
+        .map_err(|err| AudioError::FileExport(format!("plot title {}: {err}", path.display())))?;
+    let areas = body_area.split_evenly((3, 1));
+
+    for area in &areas {
+        area.fill(&bg)
+            .map_err(|err| AudioError::FileExport(format!("plot panel background {}: {err}", path.display())))?;
+    }
 
     {
         let x_end = (reference.len().max(1) as f32 * 1000.0) / sample_rate.max(1) as f32;
         let (y_min, y_max) = y_bounds(reference);
         let mut chart = ChartBuilder::on(&areas[0])
             .margin(10)
-            .caption(format!("{title} | Reference"), ("sans-serif", 20).into_font().color(&WHITE))
+            .caption("Reference Signal (Played)", ("sans-serif", 28).into_font().color(&BLACK))
             .set_label_area_size(LabelAreaPosition::Left, 45)
-            .set_label_area_size(LabelAreaPosition::Bottom, 35)
+            .set_label_area_size(LabelAreaPosition::Bottom, 40)
             .build_cartesian_2d(0f32..x_end.max(1.0), y_min..y_max)
             .map_err(|err| AudioError::FileExport(format!("plot reference {}: {err}", path.display())))?;
         chart
             .configure_mesh()
-            .x_desc("ms")
-            .y_desc("amp")
-            .axis_style(WHITE.mix(0.85))
-            .label_style(("sans-serif", 12).into_font().color(&WHITE))
+            .x_desc("Time (ms)")
+            .y_desc("Amplitude")
+            .axis_style(BLACK.mix(0.85))
+            .bold_line_style(BLACK.mix(0.12))
+            .light_line_style(BLACK.mix(0.08))
+            .label_style(("sans-serif", 18).into_font().color(&BLACK))
             .draw()
             .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
         chart
@@ -1704,7 +1920,7 @@ fn save_latency_plot(
                     .iter()
                     .enumerate()
                     .map(|(idx, value)| (idx as f32 * 1000.0 / sample_rate.max(1) as f32, *value)),
-                &CYAN,
+                BLUE.stroke_width(2),
             ))
             .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
     }
@@ -1714,17 +1930,19 @@ fn save_latency_plot(
         let (y_min, y_max) = y_bounds(recorded);
         let mut chart = ChartBuilder::on(&areas[1])
             .margin(10)
-            .caption("Recorded", ("sans-serif", 18).into_font().color(&WHITE))
+            .caption("Recorded Signal", ("sans-serif", 28).into_font().color(&BLACK))
             .set_label_area_size(LabelAreaPosition::Left, 45)
-            .set_label_area_size(LabelAreaPosition::Bottom, 35)
+            .set_label_area_size(LabelAreaPosition::Bottom, 40)
             .build_cartesian_2d(0f32..x_end.max(1.0), y_min..y_max)
             .map_err(|err| AudioError::FileExport(format!("plot recorded {}: {err}", path.display())))?;
         chart
             .configure_mesh()
-            .x_desc("ms")
-            .y_desc("amp")
-            .axis_style(WHITE.mix(0.85))
-            .label_style(("sans-serif", 12).into_font().color(&WHITE))
+            .x_desc("Time (ms)")
+            .y_desc("Amplitude")
+            .axis_style(BLACK.mix(0.85))
+            .bold_line_style(BLACK.mix(0.12))
+            .light_line_style(BLACK.mix(0.08))
+            .label_style(("sans-serif", 18).into_font().color(&BLACK))
             .draw()
             .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
         chart
@@ -1733,7 +1951,7 @@ fn save_latency_plot(
                     .iter()
                     .enumerate()
                     .map(|(idx, value)| (idx as f32 * 1000.0 / sample_rate.max(1) as f32, *value)),
-                &YELLOW,
+                BLUE.stroke_width(2),
             ))
             .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
     }
@@ -1744,33 +1962,93 @@ fn save_latency_plot(
             let step = (corr_points.len() as f32 / 4000.0).ceil() as usize;
             corr_points = corr_points.into_iter().step_by(step.max(1)).collect();
         }
+        if corr_points.is_empty() {
+            return Ok(());
+        }
         let ys: Vec<f32> = corr_points.iter().map(|(_, value)| *value).collect();
         let (y_min, y_max) = y_bounds(&ys);
-        let x_end = corr_points.last().map(|(x, _)| *x).unwrap_or(1.0);
+        let x_min = corr_points.first().map(|(x, _)| *x).unwrap_or(0.0);
+        let x_max = corr_points.last().map(|(x, _)| *x).unwrap_or(1.0);
+        let y_span = (y_max - y_min).max(1e-6);
         let mut chart = ChartBuilder::on(&areas[2])
             .margin(10)
-            .caption("Cross-Correlation", ("sans-serif", 18).into_font().color(&WHITE))
+            .caption("Cross-Correlation", ("sans-serif", 28).into_font().color(&BLACK))
             .set_label_area_size(LabelAreaPosition::Left, 45)
-            .set_label_area_size(LabelAreaPosition::Bottom, 35)
-            .build_cartesian_2d(0f32..x_end.max(1.0), y_min..y_max)
+            .set_label_area_size(LabelAreaPosition::Bottom, 40)
+            .build_cartesian_2d(x_min..x_max.max(x_min + 1.0), y_min..y_max)
             .map_err(|err| AudioError::FileExport(format!("plot correlation {}: {err}", path.display())))?;
         chart
             .configure_mesh()
             .x_desc("Delay (ms)")
-            .y_desc("corr")
-            .axis_style(WHITE.mix(0.85))
-            .label_style(("sans-serif", 12).into_font().color(&WHITE))
+            .y_desc("Correlation")
+            .axis_style(BLACK.mix(0.85))
+            .bold_line_style(BLACK.mix(0.12))
+            .light_line_style(BLACK.mix(0.08))
+            .label_style(("sans-serif", 18).into_font().color(&BLACK))
             .draw()
             .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
         chart
-            .draw_series(LineSeries::new(corr_points.iter().copied(), &GREEN))
+            .draw_series(LineSeries::new(corr_points.iter().copied(), BLUE.stroke_width(2)))
             .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
+
+        let dash_height = y_span / 26.0;
+        let gap_height = dash_height * 0.7;
+        let mut y = y_min;
+        while y < y_max {
+            let y2 = (y + dash_height).min(y_max);
+            chart
+                .draw_series(std::iter::once(PathElement::new(
+                    vec![(avg_delay_ms, y), (avg_delay_ms, y2)],
+                    RED.stroke_width(2),
+                )))
+                .map_err(|err| AudioError::FileExport(format!("plot marker {}: {err}", path.display())))?;
+            y += dash_height + gap_height;
+        }
+
         chart
             .draw_series(std::iter::once(PathElement::new(
-                vec![(avg_delay_ms, y_min), (avg_delay_ms, y_max)],
+                vec![(avg_delay_ms, y_min), (avg_delay_ms, y_min + y_span * 0.08)],
                 RED.stroke_width(2),
             )))
-            .map_err(|err| AudioError::FileExport(format!("plot marker {}: {err}", path.display())))?;
+            .map_err(|err| AudioError::FileExport(format!("plot legend marker {}: {err}", path.display())))?
+            .label(format!("Avg Calibrated Delay: {avg_delay_ms:.4} ms"))
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(2)));
+
+        chart
+            .configure_series_labels()
+            .background_style(WHITE.mix(0.85))
+            .border_style(BLACK.mix(0.45))
+            .draw()
+            .map_err(|err| AudioError::FileExport(format!("plot legend {}: {err}", path.display())))?;
+
+        let x_span = (x_max - x_min).max(1.0);
+        let box_left = x_min + x_span * 0.01;
+        let box_right = x_min + x_span * 0.35;
+        let box_top = y_max - y_span * 0.02;
+        let box_bottom = y_max - y_span * 0.20;
+        chart
+            .draw_series(std::iter::once(Rectangle::new(
+                [(box_left, box_bottom), (box_right, box_top)],
+                RGBColor(244, 237, 120).filled(),
+            )))
+            .map_err(|err| AudioError::FileExport(format!("plot note background {}: {err}", path.display())))?;
+        chart
+            .draw_series(std::iter::once(Rectangle::new(
+                [(box_left, box_bottom), (box_right, box_top)],
+                RGBColor(120, 110, 40).stroke_width(1),
+            )))
+            .map_err(|err| AudioError::FileExport(format!("plot note border {}: {err}", path.display())))?;
+        chart
+            .draw_series(std::iter::once(Text::new(
+                format!(
+                    "Average Calibrated Delay ({} tests): {:.4} ms",
+                    successful_tests.max(1),
+                    avg_delay_ms
+                ),
+                (box_left + x_span * 0.008, box_bottom + y_span * 0.08),
+                ("sans-serif", 20).into_font().color(&BLACK),
+            )))
+            .map_err(|err| AudioError::FileExport(format!("plot note text {}: {err}", path.display())))?;
     }
 
     root.present()
@@ -1802,9 +2080,17 @@ fn cross_correlation_points(recorded: &[f32], reference: &[f32], sample_rate: u3
     }
     ifft.process(&mut a);
 
-    let max_lag = recorded.len().saturating_sub(1).min(a.len().saturating_sub(1));
-    (0..=max_lag)
-        .map(|idx| (idx as f32 * 1000.0 / sample_rate as f32, a[idx].re))
+    let min_lag = -(reference.len() as isize - 1);
+    let max_lag = recorded.len().saturating_sub(1) as isize;
+    (min_lag..=max_lag)
+        .map(|lag| {
+            let idx = if lag < 0 {
+                (n as isize + lag) as usize
+            } else {
+                lag as usize
+            };
+            (lag as f32 * 1000.0 / sample_rate as f32, a[idx].re)
+        })
         .collect()
 }
 
@@ -1825,42 +2111,48 @@ fn save_overall_bar_chart(path: &Path, bars_data: &[(String, Vec<f32>)]) -> Resu
         return Ok(());
     }
 
-    let mut y_min = means
+    let y_low = means
         .iter()
         .zip(stds.iter())
         .map(|(m, s)| m - s)
         .fold(f32::INFINITY, f32::min);
-    let mut y_max = means
+    let y_high = means
         .iter()
         .zip(stds.iter())
         .map(|(m, s)| m + s)
         .fold(f32::NEG_INFINITY, f32::max);
-    y_min = y_min.min(0.0) - 0.5;
-    y_max += 0.8;
+    let y_span = (y_high - y_low).max(1.0);
+    let mut y_min = (y_low - y_span * 0.12).min(0.0);
+    let mut y_max = y_high + y_span * 0.20;
     if y_max <= y_min {
         y_max = y_min + 1.0;
     }
+    if (y_max - y_min).abs() < 1e-6 {
+        y_min -= 1.0;
+        y_max += 1.0;
+    }
 
-    let root = BitMapBackend::new(path, (1000, 600)).into_drawing_area();
-    root.fill(&RGBColor(16, 20, 30))
+    let bg = RGBColor(230, 230, 230);
+    let root = BitMapBackend::new(path, (1100, 640)).into_drawing_area();
+    root.fill(&bg)
         .map_err(|err| AudioError::FileExport(format!("bar background {}: {err}", path.display())))?;
 
     let x_end = labels.len() as f32;
     let mut chart = ChartBuilder::on(&root)
-        .margin(20)
+        .margin(24)
         .caption(
-            "Average Delay by Sound Type",
-            ("sans-serif", 26).into_font().color(&WHITE),
+            "Average Headphone Calibrated Delay per Sound Type",
+            ("sans-serif", 34).into_font().color(&BLACK),
         )
-        .set_label_area_size(LabelAreaPosition::Left, 48)
-        .set_label_area_size(LabelAreaPosition::Bottom, 70)
+        .set_label_area_size(LabelAreaPosition::Left, 68)
+        .set_label_area_size(LabelAreaPosition::Bottom, 86)
         .build_cartesian_2d(0f32..x_end, y_min..y_max)
         .map_err(|err| AudioError::FileExport(format!("bar chart {}: {err}", path.display())))?;
 
     chart
         .configure_mesh()
         .x_desc("Sound Type")
-        .y_desc("Delay (ms)")
+        .y_desc("Average Calibrated Delay (ms)")
         .x_labels(labels.len())
         .x_label_formatter(&|x| {
             let idx = (*x).floor() as usize;
@@ -1870,34 +2162,51 @@ fn save_overall_bar_chart(path: &Path, bars_data: &[(String, Vec<f32>)]) -> Resu
                 String::new()
             }
         })
-        .axis_style(WHITE.mix(0.85))
-        .label_style(("sans-serif", 12).into_font().color(&WHITE))
+        .axis_style(BLACK.mix(0.75))
+        .bold_line_style(BLACK.mix(0.12))
+        .light_line_style(BLACK.mix(0.16))
+        .label_style(("sans-serif", 18).into_font().color(&BLACK))
         .draw()
         .map_err(|err| AudioError::FileExport(format!("bar mesh {}: {err}", path.display())))?;
 
+    let y_label_offset = (y_max - y_min) * 0.03;
     for (idx, (mean_value, std_value)) in means.iter().zip(stds.iter()).enumerate() {
         let left = idx as f32 + 0.15;
         let right = idx as f32 + 0.85;
         chart
             .draw_series(std::iter::once(Rectangle::new(
                 [(left, 0.0f32.min(*mean_value)), (right, *mean_value)],
-                BLUE.filled(),
+                RGBColor(126, 186, 210).filled(),
             )))
             .map_err(|err| AudioError::FileExport(format!("bar draw {}: {err}", path.display())))?;
 
         let center = idx as f32 + 0.5;
+        let low = mean_value - std_value;
+        let high = mean_value + std_value;
         chart
             .draw_series(std::iter::once(PathElement::new(
-                vec![(center, mean_value - std_value), (center, mean_value + std_value)],
-                WHITE.stroke_width(2),
+                vec![(center, low), (center, high)],
+                BLACK.stroke_width(2),
+            )))
+            .map_err(|err| AudioError::FileExport(format!("bar err {}: {err}", path.display())))?;
+        chart
+            .draw_series(std::iter::once(PathElement::new(
+                vec![(center - 0.05, low), (center + 0.05, low)],
+                BLACK.stroke_width(2),
+            )))
+            .map_err(|err| AudioError::FileExport(format!("bar err cap {}: {err}", path.display())))?;
+        chart
+            .draw_series(std::iter::once(PathElement::new(
+                vec![(center - 0.05, high), (center + 0.05, high)],
+                BLACK.stroke_width(2),
             )))
             .map_err(|err| AudioError::FileExport(format!("bar err {}: {err}", path.display())))?;
 
         chart
             .draw_series(std::iter::once(Text::new(
-                format!("{mean_value:.1}+-{std_value:.1}"),
-                (center, mean_value + std_value + 0.05),
-                ("sans-serif", 14).into_font().color(&WHITE),
+                format!("{mean_value:.2}"),
+                (center, high + y_label_offset),
+                ("sans-serif", 22).into_font().color(&BLACK),
             )))
             .map_err(|err| AudioError::FileExport(format!("bar label {}: {err}", path.display())))?;
     }

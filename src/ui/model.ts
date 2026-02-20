@@ -36,11 +36,11 @@ export type LatencyRequest = {
   outputDir: string;
   savePerSoundPlot: boolean;
   saveOverallBarChart: boolean;
+  calibratedOffsetMs: number;
 };
 
 export type LatencyCalibration = {
   perSoundOffsetsMs: Record<string, number>;
-  globalOffsetMs: number;
 };
 
 export type SweepRequest = {
@@ -144,12 +144,12 @@ export const defaultLatencyRequest: LatencyRequest = {
   recordMarginSecs: 1,
   outputDir: "",
   savePerSoundPlot: true,
-  saveOverallBarChart: true
+  saveOverallBarChart: true,
+  calibratedOffsetMs: 0
 };
 
 export const defaultLatencyCalibration: LatencyCalibration = {
-  perSoundOffsetsMs: {},
-  globalOffsetMs: 0
+  perSoundOffsetsMs: {}
 };
 
 export const defaultSweepRequest: SweepRequest = {

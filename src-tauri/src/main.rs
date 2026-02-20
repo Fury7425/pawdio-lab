@@ -7,8 +7,8 @@ use std::sync::{
 
 use audio::{
     AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest, DeviceInventory,
-    IsolationRequest, LatencyTestReport, LatencyTestRequest, SweepFrRequest, TestResultPayload,
-    TestProgressEvent, ThdRequest,
+    IsolationRequest, LatencyExportEntry, LatencyTestReport, LatencyTestRequest, SweepFrRequest,
+    TestProgressEvent, TestResultPayload, ThdRequest,
 };
 use serde::Serialize;
 use tauri::{Emitter, State};
@@ -92,8 +92,29 @@ async fn run_latency_test(
 async fn export_latency_report(
     request: LatencyTestRequest,
     report: LatencyTestReport,
+    suite: Option<Vec<LatencyExportEntry>>,
 ) -> Result<String, String> {
-    AudioEngine::export_latency_report(&request, &report)
+    let result = if let Some(entries) = suite {
+        if entries.is_empty() {
+            AudioEngine::export_latency_report(&request, &report)
+        } else {
+            AudioEngine::export_latency_suite_report(&request, &entries)
+        }
+    } else {
+        AudioEngine::export_latency_report(&request, &report)
+    };
+
+    result
+        .map(|path| path.display().to_string())
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+async fn save_latency_overall_bar_chart(
+    request: LatencyTestRequest,
+    suite: Vec<LatencyExportEntry>,
+) -> Result<String, String> {
+    AudioEngine::save_latency_overall_bar_chart(&request, &suite)
         .map(|path| path.display().to_string())
         .map_err(|error| error.to_string())
 }
@@ -397,6 +418,7 @@ fn main() {
             set_audio_settings,
             run_latency_test,
             export_latency_report,
+            save_latency_overall_bar_chart,
             run_sweep_fr_test,
             start_input_monitor,
             stop_input_monitor,

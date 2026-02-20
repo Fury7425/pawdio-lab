@@ -18,7 +18,6 @@ type LatencyPageProps = {
     repeats: number
   ) => void;
   onCalibrateAll: (repeats: number) => void;
-  onCalibrateGlobal: (repeats: number) => void;
 };
 
 const LATENCY_UI_STORAGE_KEY = "pawdio-lab-latency-ui-v1";
@@ -68,8 +67,7 @@ export function LatencyPage({
   onRunAll,
   onSaveReport,
   onCalibrateSelected,
-  onCalibrateAll,
-  onCalibrateGlobal
+  onCalibrateAll
 }: LatencyPageProps) {
   const storedUiPrefs = useMemo(() => readLatencyUiPrefs(), []);
   const [runSelection, setRunSelection] = useState<PresetSelection>(
@@ -120,10 +118,10 @@ export function LatencyPage({
   const lastDelay = progressRows.length > 0 ? progressRows[progressRows.length - 1].delayMs : null;
 
   const presetOptions = [
-    { key: "beep200", label: "200 Hz Beep", signal: "sine" as const, frequencyHz: 200 },
-    { key: "beep1k", label: "1 kHz Beep", signal: "sine" as const, frequencyHz: 1000 },
-    { key: "beep2k", label: "2 kHz Beep", signal: "sine" as const, frequencyHz: 2000 },
-    { key: "beep5k", label: "5 kHz Beep", signal: "sine" as const, frequencyHz: 5000 },
+    { key: "beep200", label: "200Hz Low Beep", signal: "sine" as const, frequencyHz: 200 },
+    { key: "beep1k", label: "1kHz Beep", signal: "sine" as const, frequencyHz: 1000 },
+    { key: "beep2k", label: "Mixed (2kHz Sine)", signal: "sine" as const, frequencyHz: 2000 },
+    { key: "beep5k", label: "5kHz Beep", signal: "sine" as const, frequencyHz: 5000 },
     { key: "impulse", label: "Click (Impulse)", signal: "impulse" as const, frequencyHz: request.frequencyHz }
   ];
 
@@ -336,10 +334,10 @@ export function LatencyPage({
 
           <div className="chip-row">
             {([
-              ["beep1k", "1 kHz Beep"],
-              ["beep200", "200 Hz Beep"],
-              ["beep2k", "2 kHz Beep"],
-              ["beep5k", "5 kHz Beep"],
+              ["beep1k", "1kHz Beep"],
+              ["beep200", "200Hz Low Beep"],
+              ["beep2k", "Mixed (2kHz Sine)"],
+              ["beep5k", "5kHz Beep"],
               ["impulse", "Click (Impulse)"]
             ] as const).map(([key, label]) => (
               <button
@@ -367,7 +365,7 @@ export function LatencyPage({
             <span>{calibrationRepeats}</span>
           </div>
 
-          <div className="field-grid-3" style={{ marginTop: 12 }}>
+          <div className="field-grid-2" style={{ marginTop: 12 }}>
             <button
               type="button"
               className="skin-btn secondary"
@@ -390,14 +388,6 @@ export function LatencyPage({
               onClick={() => onCalibrateAll(calibrationRepeats)}
             >
               Calibrate ALL Presets
-            </button>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              disabled={running}
-              onClick={() => onCalibrateGlobal(calibrationRepeats)}
-            >
-              Calibrate GLOBAL (Impulse)
             </button>
           </div>
 

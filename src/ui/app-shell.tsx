@@ -1,9 +1,11 @@
+import { useEffect } from "react";
 import { Sidebar } from "./components/sidebar";
 import { DevicesPage } from "./pages/devices-page";
 import { ExperimentalPage } from "./pages/experimental-page";
 import { LatencyPage } from "./pages/latency-page";
 import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
+import { startAppearanceThemeSync } from "./theme";
 import { usePawdioLabController } from "./use-pawdio-lab";
 
 export function PawdioLabApp() {
@@ -11,6 +13,8 @@ export function PawdioLabApp() {
   const run = (promise: Promise<unknown>) => {
     promise.catch((err) => console.error(err));
   };
+
+  useEffect(() => startAppearanceThemeSync(), []);
 
   return (
     <main className="app-canvas">
@@ -48,9 +52,6 @@ export function PawdioLabApp() {
                 run(controller.calibrateLatencySelected(keys, repeats))
               }
               onCalibrateAll={(repeats) => run(controller.calibrateLatencyAllPresets(repeats))}
-              onCalibrateGlobal={(repeats) =>
-                run(controller.calibrateLatencyGlobalImpulse(repeats))
-              }
             />
           )}
 

@@ -37,6 +37,16 @@ type LatencyPresetConfig = {
   frequencyHz: number;
 };
 
+type LatencyExportEntry = {
+  request: LatencyRequest;
+  report: LatencyReport;
+};
+
+type LatencyRunResult = {
+  report: LatencyReport;
+  calibratedOffsetMs: number;
+};
+
 type InputLevelEvent = {
   currentDbfs: number;
   peakDbfs: number;
@@ -59,28 +69,28 @@ const LATENCY_PRESETS: LatencyPresetConfig[] = [
   {
     uiKey: "beep1k",
     storageKey: "beep_1k",
-    label: "1 kHz Beep",
+    label: "1kHz Beep",
     signal: "sine",
     frequencyHz: 1000
   },
   {
     uiKey: "beep2k",
     storageKey: "beep_2k",
-    label: "2 kHz Beep",
+    label: "Mixed (2kHz Sine)",
     signal: "sine",
     frequencyHz: 2000
   },
   {
     uiKey: "beep5k",
     storageKey: "beep_5k",
-    label: "5 kHz Beep",
+    label: "5kHz Beep",
     signal: "sine",
     frequencyHz: 5000
   },
   {
     uiKey: "beep200",
     storageKey: "beep_200",
-    label: "200 Hz Beep",
+    label: "200Hz Low Beep",
     signal: "sine",
     frequencyHz: 200
   },
@@ -250,14 +260,20 @@ function calibrationKeyForRequest(request: LatencyRequest): string {
   return "pink_noise";
 }
 
+function calibrationOffsetForRequest(
+  request: LatencyRequest,
+  calibration: LatencyCalibration
+): number {
+  const key = calibrationKeyForRequest(request);
+  return calibration.perSoundOffsetsMs[key] ?? 0;
+}
+
 function applyLatencyCalibration(
   report: LatencyReport,
   request: LatencyRequest,
   calibration: LatencyCalibration
 ): LatencyReport {
-  const key = calibrationKeyForRequest(request);
-  const perSound = calibration.perSoundOffsetsMs[key] ?? 0;
-  const offset = perSound + calibration.globalOffsetMs;
+  const offset = calibrationOffsetForRequest(request, calibration);
   if (offset === 0) {
     return report;
   }
@@ -356,6 +372,7 @@ export function usePawdioLabController() {
   );
   const [latencyProgress, setLatencyProgress] = useState<LatencyProgress[]>([]);
   const [latencyReport, setLatencyReport] = useState<LatencyReport | null>(null);
+  const [latencyExportSuite, setLatencyExportSuite] = useState<LatencyExportEntry[]>([]);
   const [latencyCalibration, setLatencyCalibration] =
     useState<LatencyCalibration>(defaultLatencyCalibration);
 
@@ -407,12 +424,7 @@ export function usePawdioLabController() {
       const value = latencyCalibration.perSoundOffsetsMs[preset.storageKey] ?? 0;
       return `- ${preset.label}: ${value.toFixed(2)}`;
     });
-    return [
-      "Per-sound baselines (ms):",
-      ...ordered,
-      "",
-      `GLOBAL offset: ${latencyCalibration.globalOffsetMs.toFixed(2)} ms`
-    ].join("\n");
+    return ["Per-sound baselines (ms):", ...ordered].join("\n");
   }, [latencyCalibration]);
 
   function appendLog(message: string) {
@@ -547,8 +559,12 @@ export function usePawdioLabController() {
     return invoke<LatencyReport>("run_latency_test", { request });
   }
 
-  async function runLatencyOnce(request: LatencyRequest, includeResult = true): Promise<LatencyReport> {
+  async function runLatencyOnce(
+    request: LatencyRequest,
+    includeResult = true
+  ): Promise<LatencyRunResult> {
     const rawReport = await invokeLatencyRaw(request);
+    const calibratedOffsetMs = calibrationOffsetForRequest(request, latencyCalibration);
     const calibratedReport = applyLatencyCalibration(rawReport, request, latencyCalibration);
     if (includeResult) {
       appendResult({
@@ -561,9 +577,7 @@ export function usePawdioLabController() {
           repeats: request.repeats,
           amplitude: request.amplitude,
           record_margin: request.recordMarginSecs,
-          calibrated_offset_ms:
-            (latencyCalibration.perSoundOffsetsMs[calibrationKeyForRequest(request)] ?? 0) +
-            latencyCalibration.globalOffsetMs
+          calibrated_offset_ms: calibratedOffsetMs
         },
         metrics: {
           average_delay_ms: calibratedReport.averageDelayMs,
@@ -578,7 +592,7 @@ export function usePawdioLabController() {
         files: {}
       });
     }
-    return calibratedReport;
+    return { report: calibratedReport, calibratedOffsetMs };
   }
 
   async function runLatencyTest() {
@@ -605,11 +619,19 @@ export function usePawdioLabController() {
     setError(null);
     setLatencyProgress([]);
     setLatencyReport(null);
+    setLatencyExportSuite([]);
     appendLog(`[latency] started (${latencyRequest.signal})`);
 
     try {
-      const report = await runLatencyOnce(latencyRequest, true);
+      const request = { ...latencyRequest };
+      const { report, calibratedOffsetMs } = await runLatencyOnce(request, true);
       setLatencyReport(report);
+      setLatencyExportSuite([
+        {
+          request: { ...request, calibratedOffsetMs },
+          report
+        }
+      ]);
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -647,17 +669,42 @@ export function usePawdioLabController() {
     setError(null);
     setLatencyProgress([]);
     setLatencyReport(null);
+    setLatencyExportSuite([]);
     appendLog(`[latency] preset suite started (${presets.length})`);
 
     try {
+      const suiteEntries: LatencyExportEntry[] = [];
       for (const preset of presets) {
-        const request = requestForPreset(latencyRequest, preset);
+        const request = {
+          ...requestForPreset(latencyRequest, preset),
+          saveOverallBarChart: false
+        };
         appendLog(`[latency] ${preset.label} started`);
-        const report = await runLatencyOnce(request, true);
+        const { report, calibratedOffsetMs } = await runLatencyOnce(request, true);
         setLatencyReport(report);
+        suiteEntries.push({
+          request: {
+            ...request,
+            saveOverallBarChart: latencyRequest.saveOverallBarChart,
+            calibratedOffsetMs
+          },
+          report
+        });
         if (report.cancelled) {
           appendLog("[latency] preset suite cancelled");
           break;
+        }
+      }
+      setLatencyExportSuite(suiteEntries);
+      if (latencyRequest.saveOverallBarChart && suiteEntries.length > 0) {
+        try {
+          const barPath = await invoke<string>("save_latency_overall_bar_chart", {
+            request: { ...latencyRequest, calibratedOffsetMs: 0 },
+            suite: suiteEntries
+          });
+          appendLog(`[latency] overall bar chart saved -> ${barPath}`);
+        } catch (barError) {
+          appendLog(`[latency] overall bar chart failed: ${String(barError)}`);
         }
       }
       appendLog("[latency] preset suite completed");
@@ -745,59 +792,6 @@ export function usePawdioLabController() {
       LATENCY_PRESETS.map((preset) => preset.uiKey),
       repeats
     );
-  }
-
-  async function calibrateLatencyGlobalImpulse(repeats: number) {
-    if (running) {
-      return;
-    }
-    try {
-      await invoke("stop_input_monitor");
-    } catch {
-      // no-op
-    }
-    try {
-      await invoke("stop_pink_noise");
-    } catch {
-      // no-op
-    }
-    setPinkNoisePlaying(false);
-    setInputMonitor((prev) => ({
-      ...prev,
-      monitoring: false,
-      status: "Monitoring stopped."
-    }));
-    setRunning(true);
-    setError(null);
-    appendLog(`[calibration] global impulse x${repeats}`);
-
-    try {
-      const impulse = LATENCY_PRESETS.find((preset) => preset.uiKey === "impulse");
-      if (!impulse) {
-        return;
-      }
-      const request = {
-        ...requestForPreset(latencyRequest, impulse, repeats),
-        savePerSoundPlot: false,
-        saveOverallBarChart: false
-      };
-      const report = await invokeLatencyRaw(request);
-      const averageDelay = report.averageDelayMs;
-      if (averageDelay !== null) {
-        setLatencyCalibration((prev) => ({
-          ...prev,
-          globalOffsetMs: averageDelay
-        }));
-        appendLog(`[calibration] global offset = ${averageDelay.toFixed(2)} ms`);
-      } else {
-        appendLog("[calibration] global calibration failed");
-      }
-    } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
-    } finally {
-      refreshRuntimeStatus().catch(() => undefined);
-    }
   }
 
   async function invokeSweepFrRaw(request: SweepInvokeRequest): Promise<TestPayload> {
@@ -1002,15 +996,17 @@ export function usePawdioLabController() {
   }
 
   async function exportLatencyReport() {
-    if (!latencyReport) {
+    if (!latencyReport || latencyExportSuite.length === 0) {
       setError("No latency report to export yet.");
       return;
     }
     setError(null);
     try {
+      const latest = latencyExportSuite[latencyExportSuite.length - 1];
       const path = await invoke<string>("export_latency_report", {
-        request: latencyRequest,
-        report: latencyReport
+        request: latest.request,
+        report: latest.report,
+        suite: latencyExportSuite
       });
       appendLog(`[latency] report saved -> ${path}`);
     } catch (err) {
@@ -1066,8 +1062,7 @@ export function usePawdioLabController() {
       const parsed = JSON.parse(raw) as LatencyCalibration;
       if (parsed && typeof parsed === "object") {
         setLatencyCalibration({
-          perSoundOffsetsMs: parsed.perSoundOffsetsMs ?? {},
-          globalOffsetMs: Number.isFinite(parsed.globalOffsetMs) ? parsed.globalOffsetMs : 0
+          perSoundOffsetsMs: parsed.perSoundOffsetsMs ?? {}
         });
       }
     } catch {
@@ -1248,7 +1243,6 @@ export function usePawdioLabController() {
     runLatencyAllTests,
     calibrateLatencySelected,
     calibrateLatencyAllPresets,
-    calibrateLatencyGlobalImpulse,
     runSweepFrTest,
     runBalanceTest,
     runCrosstalkTest,
