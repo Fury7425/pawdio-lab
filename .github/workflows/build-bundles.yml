@@ -7,14 +7,6 @@ on:
 
 jobs:
   build:
-    env:
-      # Used by Tauri on macOS for signing/notarization. Falls back to ad-hoc signing.
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-      APPLE_ID: ${{ secrets.APPLE_ID }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
     strategy:
       fail-fast: false
       matrix:
@@ -55,7 +47,60 @@ jobs:
       - name: Install frontend deps
         run: npm install
 
-      - name: Build Tauri bundle
+      - name: Resolve macOS signing mode
+        if: matrix.platform == 'macos'
+        id: mac_signing
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          set -euo pipefail
+          mode="adhoc"
+          reason="missing-secrets"
+
+          if [ -n "${APPLE_SIGNING_IDENTITY}" ] && [ -n "${APPLE_CERTIFICATE}" ] && [ -n "${APPLE_CERTIFICATE_PASSWORD}" ]; then
+            cert_file="$(mktemp /tmp/pawdio-cert.XXXXXX.p12)"
+            if printf '%s' "${APPLE_CERTIFICATE}" | base64 --decode > "${cert_file}" 2>/dev/null || printf '%s' "${APPLE_CERTIFICATE}" | base64 -D > "${cert_file}" 2>/dev/null; then
+              if openssl pkcs12 -in "${cert_file}" -nokeys -passin "pass:${APPLE_CERTIFICATE_PASSWORD}" >/dev/null 2>&1; then
+                mode="signed"
+                reason="certificate-valid"
+              else
+                reason="certificate-password-or-format-invalid"
+              fi
+            else
+              reason="certificate-not-base64"
+            fi
+            rm -f "${cert_file}"
+          fi
+
+          if [ "${mode}" != "signed" ] && [ "${reason}" != "missing-secrets" ]; then
+            echo "::warning::Falling back to ad-hoc mac signing (${reason}). Check APPLE_CERTIFICATE and APPLE_CERTIFICATE_PASSWORD."
+          fi
+
+          echo "mode=${mode}" >> "${GITHUB_OUTPUT}"
+          echo "reason=${reason}" >> "${GITHUB_OUTPUT}"
+
+      - name: Build Tauri bundle (macOS signed/notarized)
+        if: matrix.platform == 'macos' && steps.mac_signing.outputs.mode == 'signed'
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: npm run tauri build
+
+      - name: Build Tauri bundle (macOS ad-hoc fallback)
+        if: matrix.platform == 'macos' && steps.mac_signing.outputs.mode != 'signed'
+        env:
+          APPLE_SIGNING_IDENTITY: "-"
+        run: npm run tauri build
+
+      - name: Build Tauri bundle (Windows/Linux)
+        if: matrix.platform != 'macos'
         run: npm run tauri build
 
       - name: Upload downloadable artifacts
