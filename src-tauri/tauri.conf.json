@@ -31,8 +31,7 @@
     "targets": "all",
     "icon": ["icons/icon.ico", "icons/icon.png"],
     "macOS": {
-      "signingIdentity": "-",
-      "entitlements": "Entitlements.plist"
+      "signingIdentity": "-"
     }
   }
 }
