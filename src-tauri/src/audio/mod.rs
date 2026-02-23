@@ -621,6 +621,7 @@ impl AudioEngine {
             std::thread::sleep(Duration::from_millis(100));
         }
 
+        stream.pause().ok();
         drop(stream);
         Ok(())
     }
@@ -654,6 +655,7 @@ impl AudioEngine {
             std::thread::sleep(Duration::from_millis(50));
         }
 
+        stream.pause().ok();
         drop(stream);
         Ok(())
     }
@@ -2728,6 +2730,8 @@ fn play_and_record(
     let guard = 0.1f32;
     std::thread::sleep(Duration::from_secs_f32(playback_secs + guard));
 
+    output_stream.pause().ok();
+    input_stream.pause().ok();
     drop(output_stream);
     drop(input_stream);
 

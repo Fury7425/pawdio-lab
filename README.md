@@ -209,6 +209,27 @@ npm run tauri dev
 npm run tauri build
 ```
 
+### macOS Installer Notes
+
+If macOS shows:
+- `"Pawdio Lab" is damaged and can't be opened`
+
+use a signed/notarized build. CI supports this through GitHub secrets:
+- `APPLE_SIGNING_IDENTITY` (Developer ID Application identity)
+- `APPLE_CERTIFICATE` (base64 `.p12`)
+- `APPLE_CERTIFICATE_PASSWORD`
+- `APPLE_ID`
+- `APPLE_PASSWORD` (app-specific password)
+- `APPLE_TEAM_ID`
+
+If those secrets are not configured, CI/local builds now fall back to ad-hoc signing (`signingIdentity: "-"`) to avoid broken unsigned bundles.
+
+For already-downloaded older builds that are quarantined:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Pawdio Lab.app"
+```
+
 ### Optional: Run Legacy Python Prototype
 
 ```bash
