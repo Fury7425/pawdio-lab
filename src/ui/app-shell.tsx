@@ -48,6 +48,7 @@ export function PawdioLabApp() {
               onRunSelected={(keys) => run(controller.runLatencySelectedTests(keys))}
               onRunAll={() => run(controller.runLatencyAllTests())}
               onSaveReport={() => run(controller.exportLatencyReport())}
+              onBrowseOutputFolder={() => run(controller.browseLatencyOutputFolder())}
               onCalibrateSelected={(keys, repeats) =>
                 run(controller.calibrateLatencySelected(keys, repeats))
               }
@@ -61,6 +62,7 @@ export function PawdioLabApp() {
               onChangeRequest={controller.setSweepRequest}
               running={controller.running}
               onRun={() => run(controller.runSweepFrTest())}
+              onBrowseOutputFolder={() => run(controller.browseSweepOutputFolder())}
               lastResult={controller.sweepLastResult}
               monitor={controller.inputMonitor}
               pinkNoisePlaying={controller.pinkNoisePlaying}
@@ -69,6 +71,11 @@ export function PawdioLabApp() {
               onStartPinkNoise={() => run(controller.startPinkNoise())}
               onStopPinkNoise={() => run(controller.stopPinkNoise())}
               onResetPeak={() => run(controller.resetInputMonitorPeak())}
+              hasSweepResult={controller.sweepLastResult !== null}
+              hasSweepHistory={controller.results.some((entry) => entry.payload.test === "sweep_fr")}
+              onExportLastJson={() => run(controller.exportSweepLastJson())}
+              onExportAllJson={() => run(controller.exportSweepAllJson())}
+              onExportLastSquiglink={() => run(controller.exportSweepLastSquiglink())}
             />
           )}
 
