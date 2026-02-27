@@ -122,6 +122,7 @@ The active runtime is the Tauri app.
 - The implementation intentionally stays simple and deterministic (nearest-bin sampling, no smoothing), which is easier to audit and compare run-to-run.
 </details>
 </details>
+
 ## 캘리브레이션, 지연시간, 응답그래프
 <details>
 <details>
@@ -502,5 +503,6 @@ UI and calibration preferences are persisted in local storage, including:
 - `Browse` buttons for output folder are currently UI placeholders.
 - Sweep/experimental export buttons shown in UI are currently disabled placeholders.
 - Experimental tests are functional but still under an `Experimental` page toggle.
+
 
 
