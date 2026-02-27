@@ -13,6 +13,7 @@ type LatencyPageProps = {
   onRunSelected: (keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">) => void;
   onRunAll: () => void;
   onSaveReport: () => void;
+  onBrowseOutputFolder: () => void;
   onCalibrateSelected: (
     keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">,
     repeats: number
@@ -66,6 +67,7 @@ export function LatencyPage({
   onRunSelected,
   onRunAll,
   onSaveReport,
+  onBrowseOutputFolder,
   onCalibrateSelected,
   onCalibrateAll
 }: LatencyPageProps) {
@@ -251,7 +253,7 @@ export function LatencyPage({
               />
             </label>
             <div className="row-end" style={{ alignItems: "end" }}>
-              <button type="button" className="skin-btn secondary">
+              <button type="button" className="skin-btn secondary" onClick={onBrowseOutputFolder}>
                 Browse
               </button>
             </div>
