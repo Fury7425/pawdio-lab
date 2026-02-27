@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
+import { open } from "@tauri-apps/plugin-dialog";
 import {
   AudioSettings,
   CrosstalkRequest,
@@ -191,6 +192,84 @@ function numberCurveList(value: unknown): number[][] {
       return cast.length > 0 ? cast : null;
     })
     .filter((curve): curve is number[] => curve !== null);
+}
+
+function numberList(value: unknown): number[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => (typeof item === "number" ? item : Number(item)))
+    .filter((item) => Number.isFinite(item));
+}
+
+function exportTimestampTag(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  const hh = String(now.getHours()).padStart(2, "0");
+  const mi = String(now.getMinutes()).padStart(2, "0");
+  const ss = String(now.getSeconds()).padStart(2, "0");
+  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
+}
+
+function triggerDownload(content: string, filename: string, mimeType: string): void {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = url;
+  anchor.download = filename;
+  anchor.rel = "noopener";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+}
+
+function sweepAverageCurve(payload: TestPayload): { freqs: number[]; mags: number[] } | null {
+  const data = recordOrEmpty(payload.data);
+  const freqs = numberList(data.freqs);
+  if (freqs.length === 0) {
+    return null;
+  }
+
+  const avgAll = numberList(data.mag_db_avg_all);
+  const avgAllLen = Math.min(freqs.length, avgAll.length);
+  if (avgAllLen > 0) {
+    return {
+      freqs: freqs.slice(0, avgAllLen),
+      mags: avgAll.slice(0, avgAllLen)
+    };
+  }
+
+  const left = numberList(data.left_mag_db_avg);
+  const right = numberList(data.right_mag_db_avg);
+  const lrLen = Math.min(freqs.length, left.length, right.length);
+  if (lrLen > 0) {
+    return {
+      freqs: freqs.slice(0, lrLen),
+      mags: left.slice(0, lrLen).map((value, index) => (value + right[index]) / 2)
+    };
+  }
+
+  const leftLen = Math.min(freqs.length, left.length);
+  if (leftLen > 0) {
+    return {
+      freqs: freqs.slice(0, leftLen),
+      mags: left.slice(0, leftLen)
+    };
+  }
+
+  const rightLen = Math.min(freqs.length, right.length);
+  if (rightLen > 0) {
+    return {
+      freqs: freqs.slice(0, rightLen),
+      mags: right.slice(0, rightLen)
+    };
+  }
+
+  return null;
 }
 
 function averageCurveList(curves: number[][]): number[] {
@@ -1015,6 +1094,122 @@ export function usePawdioLabController() {
     }
   }
 
+  async function exportSweepLastJson() {
+    if (!sweepLastResult) {
+      setError("No Sweep FR result to export yet.");
+      return;
+    }
+
+    setError(null);
+    try {
+      const filename = `sweep_fr_last_${exportTimestampTag()}.json`;
+      triggerDownload(
+        `${JSON.stringify(sweepLastResult, null, 2)}\n`,
+        filename,
+        "application/json;charset=utf-8"
+      );
+      appendLog(`[sweep_fr] exported LAST JSON -> ${filename}`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
+  async function exportSweepAllJson() {
+    const sweepResults = results
+      .map((entry) => entry.payload)
+      .filter((payload) => payload.test === "sweep_fr");
+    if (sweepResults.length === 0) {
+      setError("No Sweep FR results to export yet.");
+      return;
+    }
+
+    setError(null);
+    try {
+      const filename = `sweep_fr_all_${exportTimestampTag()}.json`;
+      const bundle = {
+        generatedAt: new Date().toISOString(),
+        count: sweepResults.length,
+        results: sweepResults
+      };
+      triggerDownload(
+        `${JSON.stringify(bundle, null, 2)}\n`,
+        filename,
+        "application/json;charset=utf-8"
+      );
+      appendLog(`[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${filename}`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
+  async function exportSweepLastSquiglink() {
+    if (!sweepLastResult) {
+      setError("No Sweep FR result to export yet.");
+      return;
+    }
+
+    const curve = sweepAverageCurve(sweepLastResult);
+    if (!curve || curve.freqs.length === 0) {
+      setError("Sweep FR result does not include exportable curve data.");
+      return;
+    }
+
+    setError(null);
+    try {
+      const filename = `squiglink_avg_${exportTimestampTag()}.txt`;
+      const lines = [
+        "# PawdioLab Frequency Response - Average (L+R)",
+        "# Frequency(Hz)\tAmplitude(dB)"
+      ];
+      for (let index = 0; index < curve.freqs.length; index += 1) {
+        lines.push(`${curve.freqs[index].toFixed(2)}\t${curve.mags[index].toFixed(3)}`);
+      }
+      triggerDownload(`${lines.join("\n")}\n`, filename, "text/plain;charset=utf-8");
+      appendLog(`[sweep_fr] exported LAST Squiglink -> ${filename}`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
+  async function browseLatencyOutputFolder() {
+    setError(null);
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: latencyRequest.outputDir || undefined
+      });
+      if (typeof selected === "string" && selected.length > 0) {
+        setLatencyRequest((prev) => ({ ...prev, outputDir: selected }));
+        appendLog(`[latency] output folder set -> ${selected}`);
+      }
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
+  async function browseSweepOutputFolder() {
+    setError(null);
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: sweepRequest.outputDir || undefined
+      });
+      if (typeof selected === "string" && selected.length > 0) {
+        setSweepRequest((prev) => ({ ...prev, outputDir: selected }));
+        appendLog(`[sweep_fr] output folder set -> ${selected}`);
+      }
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
   async function stopTest() {
     try {
       await invoke("stop_test");
@@ -1249,6 +1444,11 @@ export function usePawdioLabController() {
     runThdTest,
     runIsolationTest,
     exportLatencyReport,
+    exportSweepLastJson,
+    exportSweepAllJson,
+    exportSweepLastSquiglink,
+    browseLatencyOutputFolder,
+    browseSweepOutputFolder,
     stopTest,
     copyLogs,
     clearLogs,

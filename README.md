@@ -464,7 +464,7 @@ python app/main.py
 
 ## Exported Files
 
-If `Output Folder` is empty, files are written to the app's current working directory.
+If `Output Folder` is empty, files are written to `~/Documents/Pawdio 
 
 Latency:
 - `latency_report_<timestamp>.txt`
@@ -501,9 +501,10 @@ UI and calibration preferences are persisted in local storage, including:
 
 ## Current Limitations
 
-- `Browse` buttons for output folder are currently UI placeholders.
 - Sweep/experimental export buttons shown in UI are currently disabled placeholders.
 - Experimental tests are functional but still under an `Experimental` page toggle.
+
+
 
 
 

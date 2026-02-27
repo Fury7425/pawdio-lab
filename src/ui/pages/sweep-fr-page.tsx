@@ -7,6 +7,7 @@ type SweepFrPageProps = {
   onChangeRequest: (request: SweepRequest) => void;
   running: boolean;
   onRun: () => void;
+  onBrowseOutputFolder: () => void;
   lastResult: {
     test: string;
     timestamp: string;
@@ -29,6 +30,11 @@ type SweepFrPageProps = {
   onStartPinkNoise: () => void;
   onStopPinkNoise: () => void;
   onResetPeak: () => void;
+  hasSweepResult: boolean;
+  hasSweepHistory: boolean;
+  onExportLastJson: () => void;
+  onExportAllJson: () => void;
+  onExportLastSquiglink: () => void;
 };
 
 export function SweepFrPage({
@@ -36,6 +42,7 @@ export function SweepFrPage({
   onChangeRequest,
   running,
   onRun,
+  onBrowseOutputFolder,
   lastResult,
   monitor,
   pinkNoisePlaying,
@@ -43,7 +50,12 @@ export function SweepFrPage({
   onStopMonitor,
   onStartPinkNoise,
   onStopPinkNoise,
-  onResetPeak
+  onResetPeak,
+  hasSweepResult,
+  hasSweepHistory,
+  onExportLastJson,
+  onExportAllJson,
+  onExportLastSquiglink
 }: SweepFrPageProps) {
   const [meterHistory, setMeterHistory] = useState<number[]>(() =>
     Array.from({ length: 48 }, () => 0)
@@ -167,7 +179,7 @@ export function SweepFrPage({
               />
             </label>
             <div className="row-end" style={{ alignItems: "end" }}>
-              <button type="button" className="skin-btn secondary">
+              <button type="button" className="skin-btn secondary" onClick={onBrowseOutputFolder}>
                 Browse
               </button>
               <button type="button" className="skin-btn" disabled={running} onClick={onRun}>
@@ -251,13 +263,28 @@ export function SweepFrPage({
               </pre>
             </div>
             <div className="row-end" style={{ marginTop: 12 }}>
-              <button type="button" className="skin-btn secondary" disabled>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                disabled={running || !hasSweepResult}
+                onClick={onExportLastJson}
+              >
                 Export LAST (JSON)
               </button>
-              <button type="button" className="skin-btn secondary" disabled>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                disabled={running || !hasSweepHistory}
+                onClick={onExportAllJson}
+              >
                 Export ALL (JSON)
               </button>
-              <button type="button" className="skin-btn secondary" disabled>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                disabled={running || !hasSweepResult}
+                onClick={onExportLastSquiglink}
+              >
                 Export LAST to Squiglink
               </button>
             </div>
