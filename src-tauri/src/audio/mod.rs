@@ -2225,6 +2225,57 @@ fn sweep_y_bounds(curves: &[Vec<f32>]) -> (f32, f32) {
     y_bounds(&values)
 }
 
+const SWEEP_PLOT_WIDTH: u32 = 2400;
+const SWEEP_PLOT_HEIGHT: u32 = 1100;
+const SWEEP_PLOT_NORMALIZE_FREQ_HZ: f32 = 500.0;
+const SWEEP_PLOT_NORMALIZE_TARGET_DB: f32 = 60.0;
+
+fn interpolated_value_at_frequency(freqs: &[f32], values: &[f32], target_hz: f32) -> Option<f32> {
+    let len = freqs.len().min(values.len());
+    if len == 0 {
+        return None;
+    }
+    if len == 1 {
+        return Some(values[0]);
+    }
+
+    let target = target_hz.max(0.0);
+    if target <= freqs[0] {
+        return Some(values[0]);
+    }
+
+    for idx in 1..len {
+        let left_f = freqs[idx - 1];
+        let right_f = freqs[idx];
+        if target <= right_f {
+            let left_v = values[idx - 1];
+            let right_v = values[idx];
+            let span = (right_f - left_f).abs().max(1e-12);
+            let t = ((target - left_f) / span).clamp(0.0, 1.0);
+            return Some(left_v + (right_v - left_v) * t);
+        }
+    }
+
+    Some(values[len - 1])
+}
+
+fn normalize_curve_for_sweep_plot(freqs: &[f32], curve: &[f32]) -> Vec<f32> {
+    if freqs.is_empty() || curve.is_empty() {
+        return Vec::new();
+    }
+    let baseline = interpolated_value_at_frequency(freqs, curve, SWEEP_PLOT_NORMALIZE_FREQ_HZ)
+        .unwrap_or_else(|| curve[0]);
+    let offset = SWEEP_PLOT_NORMALIZE_TARGET_DB - baseline;
+    curve.iter().map(|value| *value + offset).collect()
+}
+
+fn normalize_curves_for_sweep_plot(freqs: &[f32], curves: &[Vec<f32>]) -> Vec<Vec<f32>> {
+    curves
+        .iter()
+        .map(|curve| normalize_curve_for_sweep_plot(freqs, curve))
+        .collect()
+}
+
 fn save_sweep_single_plot(
     path: &Path,
     title: &str,
@@ -2244,44 +2295,89 @@ fn save_sweep_multi_plot(
         return Ok(());
     }
 
+    let normalized_curves = normalize_curves_for_sweep_plot(freqs, curves);
+    let normalized_non_empty: Vec<Vec<f32>> = normalized_curves
+        .into_iter()
+        .filter(|curve| !curve.is_empty())
+        .collect();
+    if normalized_non_empty.is_empty() {
+        return Ok(());
+    }
+
     let x_min = freqs
         .iter()
         .copied()
         .filter(|f| *f > 0.0)
         .fold(f32::INFINITY, f32::min);
     let x_max = freqs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let (y_min, y_max) = sweep_y_bounds(curves);
+    let (y_min, y_max) = sweep_y_bounds(&normalized_non_empty);
 
-    let root = BitMapBackend::new(path, (900, 500)).into_drawing_area();
-    root.fill(&RGBColor(16, 20, 30))
+    let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
+    root.fill(&RGBColor(240, 240, 240))
         .map_err(|err| AudioError::FileExport(format!("sweep background {}: {err}", path.display())))?;
 
+    let title = format!(
+        "{title}  |  normalized to {:.0} Hz @ {:.0} dB",
+        SWEEP_PLOT_NORMALIZE_FREQ_HZ, SWEEP_PLOT_NORMALIZE_TARGET_DB
+    );
+
     let mut chart = ChartBuilder::on(&root)
-        .margin(18)
-        .caption(title, ("sans-serif", 22).into_font().color(&WHITE))
-        .set_label_area_size(LabelAreaPosition::Left, 52)
-        .set_label_area_size(LabelAreaPosition::Bottom, 46)
+        .margin(28)
+        .caption(title, ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .set_label_area_size(LabelAreaPosition::Left, 100)
+        .set_label_area_size(LabelAreaPosition::Bottom, 84)
         .build_cartesian_2d((x_min..x_max).log_scale(), y_min..y_max)
         .map_err(|err| AudioError::FileExport(format!("sweep chart {}: {err}", path.display())))?;
 
     chart
         .configure_mesh()
         .x_desc("Frequency (Hz)")
-        .y_desc("Relative Level (dB)")
-        .axis_style(WHITE.mix(0.85))
-        .label_style(("sans-serif", 12).into_font().color(&WHITE))
+        .y_desc("dB")
+        .axis_style(RGBColor(125, 125, 125))
+        .light_line_style(RGBColor(210, 210, 210))
+        .bold_line_style(RGBColor(180, 180, 180))
+        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .x_label_formatter(&|value| {
+            if *value >= 1000.0 {
+                format!("{:.0}k", *value / 1000.0)
+            } else {
+                format!("{value:.0}")
+            }
+        })
         .draw()
         .map_err(|err| AudioError::FileExport(format!("sweep mesh {}: {err}", path.display())))?;
 
-    for (idx, curve) in curves.iter().enumerate() {
-        let color = Palette99::pick(idx).mix(if curves.len() > 1 { 0.45 } else { 0.95 });
+    chart
+        .draw_series(std::iter::once(PathElement::new(
+            vec![
+                (x_min, SWEEP_PLOT_NORMALIZE_TARGET_DB),
+                (x_max, SWEEP_PLOT_NORMALIZE_TARGET_DB),
+            ],
+            RGBColor(145, 145, 145).mix(0.7).stroke_width(2),
+        )))
+        .map_err(|err| AudioError::FileExport(format!("sweep norm-line {}: {err}", path.display())))?;
+
+    chart
+        .draw_series(std::iter::once(PathElement::new(
+            vec![(SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_min), (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_max)],
+            RGBColor(175, 175, 175).mix(0.65).stroke_width(2),
+        )))
+        .map_err(|err| AudioError::FileExport(format!("sweep norm-marker {}: {err}", path.display())))?;
+
+    for (idx, curve) in normalized_non_empty.iter().enumerate() {
+        let alpha = if normalized_non_empty.len() > 1 { 0.35 } else { 0.95 };
+        let color = if idx % 2 == 0 {
+            RGBColor(13, 73, 176).mix(alpha)
+        } else {
+            RGBColor(23, 95, 201).mix(alpha)
+        };
         chart
             .draw_series(LineSeries::new(
                 freqs
                     .iter()
                     .zip(curve.iter())
                     .map(|(x, y)| (*x, *y)),
-                color.stroke_width(if curves.len() > 1 { 1 } else { 2 }),
+                color.stroke_width(if normalized_non_empty.len() > 1 { 2 } else { 5 }),
             ))
             .map_err(|err| AudioError::FileExport(format!("sweep line {}: {err}", path.display())))?;
     }
@@ -2299,60 +2395,96 @@ fn save_sweep_lr_avg_plot(
     if freqs.len() < 2 || left.is_empty() || right.is_empty() {
         return Ok(());
     }
+
+    let left_norm = normalize_curve_for_sweep_plot(freqs, left);
+    let right_norm = normalize_curve_for_sweep_plot(freqs, right);
+    if left_norm.is_empty() || right_norm.is_empty() {
+        return Ok(());
+    }
+
     let x_min = freqs
         .iter()
         .copied()
         .filter(|f| *f > 0.0)
         .fold(f32::INFINITY, f32::min);
     let x_max = freqs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
-    let (y_min, y_max) = y_bounds(&left.iter().chain(right.iter()).copied().collect::<Vec<f32>>());
+    let (y_min, y_max) = sweep_y_bounds(&[left_norm.clone(), right_norm.clone()]);
 
-    let root = BitMapBackend::new(path, (900, 500)).into_drawing_area();
-    root.fill(&RGBColor(16, 20, 30))
+    let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
+    root.fill(&RGBColor(240, 240, 240))
         .map_err(|err| AudioError::FileExport(format!("sweep background {}: {err}", path.display())))?;
 
+    let title = format!(
+        "Left/Right Average Frequency Response  |  normalized to {:.0} Hz @ {:.0} dB",
+        SWEEP_PLOT_NORMALIZE_FREQ_HZ, SWEEP_PLOT_NORMALIZE_TARGET_DB
+    );
+
     let mut chart = ChartBuilder::on(&root)
-        .margin(18)
-        .caption(
-            "Left/Right Average Frequency Response",
-            ("sans-serif", 22).into_font().color(&WHITE),
-        )
-        .set_label_area_size(LabelAreaPosition::Left, 52)
-        .set_label_area_size(LabelAreaPosition::Bottom, 46)
+        .margin(28)
+        .caption(title, ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .set_label_area_size(LabelAreaPosition::Left, 100)
+        .set_label_area_size(LabelAreaPosition::Bottom, 84)
         .build_cartesian_2d((x_min..x_max).log_scale(), y_min..y_max)
         .map_err(|err| AudioError::FileExport(format!("sweep chart {}: {err}", path.display())))?;
 
     chart
         .configure_mesh()
         .x_desc("Frequency (Hz)")
-        .y_desc("Relative Level (dB)")
-        .axis_style(WHITE.mix(0.85))
-        .label_style(("sans-serif", 12).into_font().color(&WHITE))
+        .y_desc("dB")
+        .axis_style(RGBColor(125, 125, 125))
+        .light_line_style(RGBColor(210, 210, 210))
+        .bold_line_style(RGBColor(180, 180, 180))
+        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .x_label_formatter(&|value| {
+            if *value >= 1000.0 {
+                format!("{:.0}k", *value / 1000.0)
+            } else {
+                format!("{value:.0}")
+            }
+        })
         .draw()
         .map_err(|err| AudioError::FileExport(format!("sweep mesh {}: {err}", path.display())))?;
 
     chart
+        .draw_series(std::iter::once(PathElement::new(
+            vec![
+                (x_min, SWEEP_PLOT_NORMALIZE_TARGET_DB),
+                (x_max, SWEEP_PLOT_NORMALIZE_TARGET_DB),
+            ],
+            RGBColor(145, 145, 145).mix(0.7).stroke_width(2),
+        )))
+        .map_err(|err| AudioError::FileExport(format!("sweep norm-line {}: {err}", path.display())))?;
+
+    chart
+        .draw_series(std::iter::once(PathElement::new(
+            vec![(SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_min), (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_max)],
+            RGBColor(175, 175, 175).mix(0.65).stroke_width(2),
+        )))
+        .map_err(|err| AudioError::FileExport(format!("sweep norm-marker {}: {err}", path.display())))?;
+
+    chart
         .draw_series(LineSeries::new(
-            freqs.iter().zip(left.iter()).map(|(x, y)| (*x, *y)),
-            CYAN.stroke_width(2),
+            freqs.iter().zip(left_norm.iter()).map(|(x, y)| (*x, *y)),
+            RGBColor(12, 67, 170).stroke_width(5),
         ))
         .map_err(|err| AudioError::FileExport(format!("sweep left {}: {err}", path.display())))?
         .label("Left")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], CYAN.stroke_width(2)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(12, 67, 170).stroke_width(5)));
 
     chart
         .draw_series(LineSeries::new(
-            freqs.iter().zip(right.iter()).map(|(x, y)| (*x, *y)),
-            YELLOW.stroke_width(2),
+            freqs.iter().zip(right_norm.iter()).map(|(x, y)| (*x, *y)),
+            RGBColor(27, 95, 195).stroke_width(4),
         ))
         .map_err(|err| AudioError::FileExport(format!("sweep right {}: {err}", path.display())))?
         .label("Right")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 20, y)], YELLOW.stroke_width(2)));
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(27, 95, 195).stroke_width(4)));
 
     chart
         .configure_series_labels()
-        .border_style(WHITE.mix(0.7))
-        .background_style(BLACK.mix(0.2))
+        .border_style(RGBColor(170, 170, 170))
+        .background_style(RGBColor(236, 236, 236).mix(0.8))
+        .label_font(("sans-serif", 28).into_font().color(&RGBColor(110, 110, 110)))
         .draw()
         .map_err(|err| AudioError::FileExport(format!("sweep legend {}: {err}", path.display())))?;
 
