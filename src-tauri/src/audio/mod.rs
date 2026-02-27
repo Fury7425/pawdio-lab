@@ -1564,10 +1564,19 @@ fn resolve_output_dir(requested: &Option<String>) -> PathBuf {
         .filter(|value| !value.is_empty())
         .map(PathBuf::from);
 
-    candidate.unwrap_or_else(|| {
-        std::env::current_dir()
-            .unwrap_or_else(|_| PathBuf::from("."))
-    })
+    candidate.unwrap_or_else(default_output_dir)
+}
+
+fn default_output_dir() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .or_else(|| std::env::var_os("USERPROFILE"))
+        .map(PathBuf::from);
+
+    if let Some(home_dir) = home {
+        return home_dir.join("Documents").join("Pawdio Lab Exports");
+    }
+
+    std::env::temp_dir().join("pawdio-lab-exports")
 }
 
 fn ensure_output_dir(path: &Path) -> Result<(), AudioError> {
