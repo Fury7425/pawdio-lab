@@ -226,6 +226,7 @@ The active runtime is the Tauri app.
 - 구현을 최근접 빈 샘플링/무스무딩으로 단순화해 재현성과 디버깅 용이성을 높였습니다.
 </details>
 </details>
+
 ## Test Catalog (What Each Test Does and How)
 
 ### 1. Latency Test
@@ -503,6 +504,7 @@ UI and calibration preferences are persisted in local storage, including:
 - `Browse` buttons for output folder are currently UI placeholders.
 - Sweep/experimental export buttons shown in UI are currently disabled placeholders.
 - Experimental tests are functional but still under an `Experimental` page toggle.
+
 
 
 
