@@ -20,7 +20,7 @@ The active runtime is the Tauri app.
 - Stores structured results/logs and exports latency/sweep artifacts
 
 ## Calibration, Delay, and Frequency Response (Explainers)
-
+<details>
 <details>
 <summary>Audio-focused explanation (what it does, why it does it, how to read it)</summary>
 
@@ -121,9 +121,10 @@ The active runtime is the Tauri app.
 - Explicit delay alignment before FFT ratio avoids smearing from time offset.
 - The implementation intentionally stays simple and deterministic (nearest-bin sampling, no smoothing), which is easier to audit and compare run-to-run.
 </details>
+</details>
 
 ## Calibration, Delay, and Frequency Response (Korean)
-
+<details>
 <details>
 <summary>오디오 중심 설명 (무엇을 측정하고, 왜 그렇게 만들었고, 어떻게 해석하는지)</summary>
 
@@ -223,6 +224,7 @@ The active runtime is the Tauri app.
 - 기준 대비 비율 계산은 절대 출력 레벨 영향 일부를 줄이고 DUT 전달 특성 변화를 강조합니다.
 - FFT 비율 전에 시간 정렬을 수행해 지연으로 인한 스펙트럼 번짐을 줄입니다.
 - 구현을 최근접 빈 샘플링/무스무딩으로 단순화해 재현성과 디버깅 용이성을 높였습니다.
+</details>
 </details>
 
 ## Test Catalog (What Each Test Does and How)
@@ -509,3 +511,4 @@ UI and calibration preferences are persisted in local storage, including:
 
 - Experimental export buttons shown in UI are currently disabled placeholders.
 - Experimental tests are functional but still under an `Experimental` page toggle.
+
