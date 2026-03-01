@@ -95,9 +95,10 @@ jobs:
 
       - name: Build Tauri bundle (macOS ad-hoc fallback)
         if: matrix.platform == 'macos' && steps.mac_signing.outputs.mode != 'signed'
-        env:
-          APPLE_SIGNING_IDENTITY: "-"
-        run: npm run tauri build
+        shell: bash
+        run: |
+          set -euo pipefail
+          npm run tauri build -- --config '{"bundle":{"macOS":{"entitlements":null,"signingIdentity":null}}}'
 
       - name: Build Tauri bundle (Windows/Linux)
         if: matrix.platform != 'macos'
