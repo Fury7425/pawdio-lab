@@ -123,7 +123,7 @@ The active runtime is the Tauri app.
 </details>
 </details>
 
-## 캘리브레이션, 지연시간, 응답그래프
+## Calibration, Delay, and Frequency Response (Korean)
 <details>
 <details>
 <summary>오디오 중심 설명 (무엇을 측정하고, 왜 그렇게 만들었고, 어떻게 해석하는지)</summary>
@@ -417,6 +417,14 @@ npm run tauri dev
 npm run tauri build
 ```
 
+For customizable executable/app bundle naming during build, set metadata inline:
+
+```bash
+npm run release:build -- --version 1.0.0 --product-name "Pawdio Lab"
+```
+
+The generated installer/app bundle names follow `productName` + `version`.
+
 ### macOS Installer Notes
 
 If macOS shows:
@@ -464,7 +472,7 @@ python app/main.py
 
 ## Exported Files
 
-If `Output Folder` is empty, files are written to `~/Documents/Pawdio 
+If `Output Folder` is empty, files are written to `~/Documents/Pawdio Lab Exports` (or a system temp fallback if the home directory is unavailable).
 
 Latency:
 - `latency_report_<timestamp>.txt`
@@ -501,11 +509,6 @@ UI and calibration preferences are persisted in local storage, including:
 
 ## Current Limitations
 
-- Sweep/experimental export buttons shown in UI are currently disabled placeholders.
+- Experimental export buttons shown in UI are currently disabled placeholders.
 - Experimental tests are functional but still under an `Experimental` page toggle.
-
-
-
-
-
 
