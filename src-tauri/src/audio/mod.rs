@@ -1874,6 +1874,34 @@ fn y_bounds(samples: &[f32]) -> (f32, f32) {
     }
 }
 
+const LATENCY_PLOT_SIZE: (u32, u32) = (1280, 800);
+const LATENCY_PLOT_TITLE_HEIGHT: u32 = 64;
+const LATENCY_PANEL_MARGIN: u32 = 8;
+const LATENCY_LEFT_LABEL_AREA: u32 = 58;
+const LATENCY_BOTTOM_LABEL_AREA: u32 = 46;
+const LATENCY_MAIN_TITLE_FONT_SIZE: i32 = 34;
+const LATENCY_SUBPLOT_TITLE_FONT_SIZE: i32 = 22;
+const LATENCY_AXIS_LABEL_FONT_SIZE: i32 = 16;
+const LATENCY_TICK_FONT_SIZE: i32 = 13;
+const LATENCY_NOTE_FONT_SIZE: i32 = 16;
+const LATENCY_WAVEFORM_LINE_WIDTH: u32 = 1;
+const LATENCY_CORR_LINE_WIDTH: u32 = 1;
+const LATENCY_DELAY_LINE_WIDTH: u32 = 2;
+const LATENCY_WAVEFORM_LINE_ALPHA: f64 = 0.72;
+const LATENCY_CORR_LINE_ALPHA: f64 = 0.68;
+const LATENCY_GRID_ALPHA: f64 = 0.14;
+const LATENCY_PEAK_BAND_ALPHA: f64 = 0.12;
+const LATENCY_NOTE_BOX_ALPHA: f64 = 0.75;
+const LATENCY_NOTE_WIDTH_RATIO: f32 = 0.34;
+const LATENCY_NOTE_HEIGHT_RATIO: f32 = 0.18;
+const LATENCY_PEAK_BAND_RATIO: f32 = 0.008;
+const LATENCY_PEAK_BAND_MIN_MS: f32 = 0.8;
+const LATENCY_BG: RGBColor = RGBColor(240, 242, 246);
+
+fn latency_figure_title(sound_name: &str) -> String {
+    format!("{sound_name} - Delay Analysis")
+}
+
 fn save_latency_plot(
     path: &Path,
     recorded: &[f32],
@@ -1883,25 +1911,26 @@ fn save_latency_plot(
     sound_name: &str,
     successful_tests: usize,
 ) -> Result<(), AudioError> {
-    let bg = RGBColor(230, 230, 230);
-    let root = BitMapBackend::new(path, (1280, 860)).into_drawing_area();
-    root.fill(&bg)
+    let root = BitMapBackend::new(path, LATENCY_PLOT_SIZE).into_drawing_area();
+    root.fill(&LATENCY_BG)
         .map_err(|err| AudioError::FileExport(format!("plot background {}: {err}", path.display())))?;
-    let (title_area, body_area) = root.split_vertically(70);
+    let (title_area, body_area) = root.split_vertically(LATENCY_PLOT_TITLE_HEIGHT);
     title_area
-        .fill(&bg)
+        .fill(&LATENCY_BG)
         .map_err(|err| AudioError::FileExport(format!("plot title background {}: {err}", path.display())))?;
     title_area
         .draw(&Text::new(
-            format!("Delay Analysis for {sound_name} (Example Plot with Calibrated Average Delay)"),
-            (18, 45),
-            ("sans-serif", 36).into_font().color(&BLACK),
+            latency_figure_title(sound_name),
+            (22, 41),
+            ("sans-serif", LATENCY_MAIN_TITLE_FONT_SIZE, FontStyle::Bold)
+                .into_font()
+                .color(&BLACK),
         ))
         .map_err(|err| AudioError::FileExport(format!("plot title {}: {err}", path.display())))?;
     let areas = body_area.split_evenly((3, 1));
 
     for area in &areas {
-        area.fill(&bg)
+        area.fill(&LATENCY_BG)
             .map_err(|err| AudioError::FileExport(format!("plot panel background {}: {err}", path.display())))?;
     }
 
@@ -1909,20 +1938,35 @@ fn save_latency_plot(
         let x_end = (reference.len().max(1) as f32 * 1000.0) / sample_rate.max(1) as f32;
         let (y_min, y_max) = y_bounds(reference);
         let mut chart = ChartBuilder::on(&areas[0])
-            .margin(10)
-            .caption("Reference Signal (Played)", ("sans-serif", 28).into_font().color(&BLACK))
-            .set_label_area_size(LabelAreaPosition::Left, 45)
-            .set_label_area_size(LabelAreaPosition::Bottom, 40)
+            .margin(LATENCY_PANEL_MARGIN)
+            .caption(
+                "Reference Signal",
+                ("sans-serif", LATENCY_SUBPLOT_TITLE_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK),
+            )
+            .set_label_area_size(LabelAreaPosition::Left, LATENCY_LEFT_LABEL_AREA)
+            .set_label_area_size(LabelAreaPosition::Bottom, LATENCY_BOTTOM_LABEL_AREA)
             .build_cartesian_2d(0f32..x_end.max(1.0), y_min..y_max)
             .map_err(|err| AudioError::FileExport(format!("plot reference {}: {err}", path.display())))?;
         chart
             .configure_mesh()
             .x_desc("Time (ms)")
             .y_desc("Amplitude")
-            .axis_style(BLACK.mix(0.85))
-            .bold_line_style(BLACK.mix(0.12))
-            .light_line_style(BLACK.mix(0.08))
-            .label_style(("sans-serif", 18).into_font().color(&BLACK))
+            .axis_desc_style(
+                ("sans-serif", LATENCY_AXIS_LABEL_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK),
+            )
+            .axis_style(BLACK.mix(0.72))
+            .bold_line_style(BLACK.mix(LATENCY_GRID_ALPHA))
+            .max_light_lines(0)
+            .light_line_style(BLACK.mix(0.0))
+            .label_style(
+                ("sans-serif", LATENCY_TICK_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK.mix(0.86)),
+            )
             .draw()
             .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
         chart
@@ -1931,7 +1975,8 @@ fn save_latency_plot(
                     .iter()
                     .enumerate()
                     .map(|(idx, value)| (idx as f32 * 1000.0 / sample_rate.max(1) as f32, *value)),
-                BLUE.stroke_width(2),
+                BLUE.mix(LATENCY_WAVEFORM_LINE_ALPHA)
+                    .stroke_width(LATENCY_WAVEFORM_LINE_WIDTH),
             ))
             .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
     }
@@ -1940,20 +1985,35 @@ fn save_latency_plot(
         let x_end = (recorded.len().max(1) as f32 * 1000.0) / sample_rate.max(1) as f32;
         let (y_min, y_max) = y_bounds(recorded);
         let mut chart = ChartBuilder::on(&areas[1])
-            .margin(10)
-            .caption("Recorded Signal", ("sans-serif", 28).into_font().color(&BLACK))
-            .set_label_area_size(LabelAreaPosition::Left, 45)
-            .set_label_area_size(LabelAreaPosition::Bottom, 40)
+            .margin(LATENCY_PANEL_MARGIN)
+            .caption(
+                "Recorded Signal",
+                ("sans-serif", LATENCY_SUBPLOT_TITLE_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK),
+            )
+            .set_label_area_size(LabelAreaPosition::Left, LATENCY_LEFT_LABEL_AREA)
+            .set_label_area_size(LabelAreaPosition::Bottom, LATENCY_BOTTOM_LABEL_AREA)
             .build_cartesian_2d(0f32..x_end.max(1.0), y_min..y_max)
             .map_err(|err| AudioError::FileExport(format!("plot recorded {}: {err}", path.display())))?;
         chart
             .configure_mesh()
             .x_desc("Time (ms)")
             .y_desc("Amplitude")
-            .axis_style(BLACK.mix(0.85))
-            .bold_line_style(BLACK.mix(0.12))
-            .light_line_style(BLACK.mix(0.08))
-            .label_style(("sans-serif", 18).into_font().color(&BLACK))
+            .axis_desc_style(
+                ("sans-serif", LATENCY_AXIS_LABEL_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK),
+            )
+            .axis_style(BLACK.mix(0.72))
+            .bold_line_style(BLACK.mix(LATENCY_GRID_ALPHA))
+            .max_light_lines(0)
+            .light_line_style(BLACK.mix(0.0))
+            .label_style(
+                ("sans-serif", LATENCY_TICK_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK.mix(0.86)),
+            )
             .draw()
             .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
         chart
@@ -1962,17 +2022,14 @@ fn save_latency_plot(
                     .iter()
                     .enumerate()
                     .map(|(idx, value)| (idx as f32 * 1000.0 / sample_rate.max(1) as f32, *value)),
-                BLUE.stroke_width(2),
+                BLUE.mix(LATENCY_WAVEFORM_LINE_ALPHA)
+                    .stroke_width(LATENCY_WAVEFORM_LINE_WIDTH),
             ))
             .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
     }
 
     {
-        let mut corr_points = cross_correlation_points(recorded, reference, sample_rate);
-        if corr_points.len() > 4000 {
-            let step = (corr_points.len() as f32 / 4000.0).ceil() as usize;
-            corr_points = corr_points.into_iter().step_by(step.max(1)).collect();
-        }
+        let corr_points = cross_correlation_points(recorded, reference, sample_rate);
         if corr_points.is_empty() {
             return Ok(());
         }
@@ -1982,25 +2039,70 @@ fn save_latency_plot(
         let x_max = corr_points.last().map(|(x, _)| *x).unwrap_or(1.0);
         let y_span = (y_max - y_min).max(1e-6);
         let mut chart = ChartBuilder::on(&areas[2])
-            .margin(10)
-            .caption("Cross-Correlation", ("sans-serif", 28).into_font().color(&BLACK))
-            .set_label_area_size(LabelAreaPosition::Left, 45)
-            .set_label_area_size(LabelAreaPosition::Bottom, 40)
+            .margin(LATENCY_PANEL_MARGIN)
+            .caption(
+                "Cross-Correlation",
+                ("sans-serif", LATENCY_SUBPLOT_TITLE_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK),
+            )
+            .set_label_area_size(LabelAreaPosition::Left, LATENCY_LEFT_LABEL_AREA)
+            .set_label_area_size(LabelAreaPosition::Bottom, LATENCY_BOTTOM_LABEL_AREA)
             .build_cartesian_2d(x_min..x_max.max(x_min + 1.0), y_min..y_max)
             .map_err(|err| AudioError::FileExport(format!("plot correlation {}: {err}", path.display())))?;
         chart
             .configure_mesh()
             .x_desc("Delay (ms)")
             .y_desc("Correlation")
-            .axis_style(BLACK.mix(0.85))
-            .bold_line_style(BLACK.mix(0.12))
-            .light_line_style(BLACK.mix(0.08))
-            .label_style(("sans-serif", 18).into_font().color(&BLACK))
+            .axis_desc_style(
+                ("sans-serif", LATENCY_AXIS_LABEL_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK),
+            )
+            .axis_style(BLACK.mix(0.72))
+            .bold_line_style(BLACK.mix(LATENCY_GRID_ALPHA))
+            .max_light_lines(0)
+            .light_line_style(BLACK.mix(0.0))
+            .label_style(
+                ("sans-serif", LATENCY_TICK_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK.mix(0.86)),
+            )
             .draw()
             .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
+
+        let (peak_delay_ms, peak_corr_value) = corr_points
+            .iter()
+            .copied()
+            .fold(
+                (avg_delay_ms, 0.0f32),
+                |best, current| if current.1.abs() > best.1.abs() { current } else { best },
+            );
+        let x_span = (x_max - x_min).max(1.0);
+        let peak_half_width = (x_span * LATENCY_PEAK_BAND_RATIO).max(LATENCY_PEAK_BAND_MIN_MS);
+        let band_left = (peak_delay_ms - peak_half_width).max(x_min);
+        let band_right = (peak_delay_ms + peak_half_width).min(x_max);
         chart
-            .draw_series(LineSeries::new(corr_points.iter().copied(), BLUE.stroke_width(2)))
+            .draw_series(std::iter::once(Rectangle::new(
+                [(band_left, y_min), (band_right, y_max)],
+                RGBColor(255, 163, 92).mix(LATENCY_PEAK_BAND_ALPHA).filled(),
+            )))
+            .map_err(|err| AudioError::FileExport(format!("plot peak band {}: {err}", path.display())))?;
+
+        chart
+            .draw_series(LineSeries::new(
+                corr_points.iter().copied(),
+                BLUE.mix(LATENCY_CORR_LINE_ALPHA)
+                    .stroke_width(LATENCY_CORR_LINE_WIDTH),
+            ))
             .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
+        chart
+            .draw_series(std::iter::once(Circle::new(
+                (peak_delay_ms, peak_corr_value),
+                4,
+                RGBColor(255, 163, 92).mix(0.65).filled(),
+            )))
+            .map_err(|err| AudioError::FileExport(format!("plot peak marker {}: {err}", path.display())))?;
 
         let dash_height = y_span / 26.0;
         let gap_height = dash_height * 0.7;
@@ -2010,7 +2112,7 @@ fn save_latency_plot(
             chart
                 .draw_series(std::iter::once(PathElement::new(
                     vec![(avg_delay_ms, y), (avg_delay_ms, y2)],
-                    RED.stroke_width(2),
+                    RED.stroke_width(LATENCY_DELAY_LINE_WIDTH),
                 )))
                 .map_err(|err| AudioError::FileExport(format!("plot marker {}: {err}", path.display())))?;
             y += dash_height + gap_height;
@@ -2019,28 +2121,37 @@ fn save_latency_plot(
         chart
             .draw_series(std::iter::once(PathElement::new(
                 vec![(avg_delay_ms, y_min), (avg_delay_ms, y_min + y_span * 0.08)],
-                RED.stroke_width(2),
+                RED.stroke_width(LATENCY_DELAY_LINE_WIDTH),
             )))
             .map_err(|err| AudioError::FileExport(format!("plot legend marker {}: {err}", path.display())))?
             .label(format!("Avg Calibrated Delay: {avg_delay_ms:.4} ms"))
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(2)));
+            .legend(|(x, y)| {
+                PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(LATENCY_DELAY_LINE_WIDTH))
+            });
 
         chart
             .configure_series_labels()
-            .background_style(WHITE.mix(0.85))
+            .background_style(WHITE.mix(0.72))
             .border_style(BLACK.mix(0.45))
+            .label_font(("sans-serif", LATENCY_TICK_FONT_SIZE, FontStyle::Normal).into_font())
             .draw()
             .map_err(|err| AudioError::FileExport(format!("plot legend {}: {err}", path.display())))?;
 
-        let x_span = (x_max - x_min).max(1.0);
-        let box_left = x_min + x_span * 0.01;
-        let box_right = x_min + x_span * 0.35;
-        let box_top = y_max - y_span * 0.02;
-        let box_bottom = y_max - y_span * 0.20;
+        let box_width = x_span * LATENCY_NOTE_WIDTH_RATIO;
+        let box_height = y_span * LATENCY_NOTE_HEIGHT_RATIO;
+        let use_left_corner = peak_delay_ms > (x_min + x_span * 0.5);
+        let box_left = if use_left_corner {
+            x_min + x_span * 0.02
+        } else {
+            x_max - box_width - x_span * 0.02
+        };
+        let box_right = box_left + box_width;
+        let box_top = y_max - y_span * 0.04;
+        let box_bottom = box_top - box_height;
         chart
             .draw_series(std::iter::once(Rectangle::new(
                 [(box_left, box_bottom), (box_right, box_top)],
-                RGBColor(244, 237, 120).filled(),
+                RGBColor(244, 237, 120).mix(LATENCY_NOTE_BOX_ALPHA).filled(),
             )))
             .map_err(|err| AudioError::FileExport(format!("plot note background {}: {err}", path.display())))?;
         chart
@@ -2056,8 +2167,10 @@ fn save_latency_plot(
                     successful_tests.max(1),
                     avg_delay_ms
                 ),
-                (box_left + x_span * 0.008, box_bottom + y_span * 0.08),
-                ("sans-serif", 20).into_font().color(&BLACK),
+                (box_left + x_span * 0.012, box_bottom + box_height * 0.5),
+                ("sans-serif", LATENCY_NOTE_FONT_SIZE, FontStyle::Normal)
+                    .into_font()
+                    .color(&BLACK),
             )))
             .map_err(|err| AudioError::FileExport(format!("plot note text {}: {err}", path.display())))?;
     }
