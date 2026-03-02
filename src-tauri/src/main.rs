@@ -90,18 +90,24 @@ async fn run_latency_test(
 
 #[tauri::command]
 async fn export_latency_report(
+    state: State<'_, AppState>,
     request: LatencyTestRequest,
     report: LatencyTestReport,
     suite: Option<Vec<LatencyExportEntry>>,
 ) -> Result<String, String> {
+    let item_name = {
+        let engine = state.audio.lock().await;
+        engine.settings().item_name
+    };
+
     let result = if let Some(entries) = suite {
         if entries.is_empty() {
-            AudioEngine::export_latency_report(&request, &report)
+            AudioEngine::export_latency_report(&request, &report, &item_name)
         } else {
-            AudioEngine::export_latency_suite_report(&request, &entries)
+            AudioEngine::export_latency_suite_report(&request, &entries, &item_name)
         }
     } else {
-        AudioEngine::export_latency_report(&request, &report)
+        AudioEngine::export_latency_report(&request, &report, &item_name)
     };
 
     result
@@ -111,10 +117,16 @@ async fn export_latency_report(
 
 #[tauri::command]
 async fn save_latency_overall_bar_chart(
+    state: State<'_, AppState>,
     request: LatencyTestRequest,
     suite: Vec<LatencyExportEntry>,
 ) -> Result<String, String> {
-    AudioEngine::save_latency_overall_bar_chart(&request, &suite)
+    let item_name = {
+        let engine = state.audio.lock().await;
+        engine.settings().item_name
+    };
+
+    AudioEngine::save_latency_overall_bar_chart(&request, &suite, &item_name)
         .map(|path| path.display().to_string())
         .map_err(|error| error.to_string())
 }
