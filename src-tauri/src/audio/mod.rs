@@ -597,8 +597,8 @@ impl AudioEngine {
             clip_count: 0,
             sample_rate: input_config.sample_rate.0,
             recent_mono: Vec::new(),
-            rough_fr_hz: logspace(20.0, (input_config.sample_rate.0 as f32 * 0.45).min(20_000.0), 32),
-            rough_fr_db: vec![0.0; 32],
+            rough_fr_hz: logspace(20.0, (input_config.sample_rate.0 as f32 * 0.45).min(20_000.0), 48),
+            rough_fr_db: vec![0.0; 48],
         }));
 
         let err_fn = |err| {
@@ -631,7 +631,7 @@ impl AudioEngine {
                 );
                 if !next_rough.is_empty() && state.rough_fr_db.len() == next_rough.len() {
                     for (prev, next) in state.rough_fr_db.iter_mut().zip(next_rough.iter()) {
-                        *prev = *prev * 0.65 + *next * 0.35;
+                        *prev = *prev * 0.78 + *next * 0.22;
                     }
                 }
                 let _ = app.emit(
