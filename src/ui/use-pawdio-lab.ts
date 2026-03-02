@@ -52,6 +52,8 @@ type InputLevelEvent = {
   currentDbfs: number;
   peakDbfs: number;
   clipCount: number;
+  roughFrHz?: number[];
+  roughFrDb?: number[];
 };
 
 type InputMonitorState = {
@@ -61,6 +63,8 @@ type InputMonitorState = {
   peakDbfs: number;
   clipCount: number;
   splEstimate: number;
+  roughFrHz: number[];
+  roughFrDb: number[];
 };
 
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
@@ -110,7 +114,9 @@ const DEFAULT_INPUT_MONITOR: InputMonitorState = {
   currentDbfs: -96,
   peakDbfs: -96,
   clipCount: 0,
-  splEstimate: -2
+  splEstimate: -2,
+  roughFrHz: [],
+  roughFrDb: []
 };
 
 type PersistedUiState = {
@@ -1369,7 +1375,15 @@ export function usePawdioLabController() {
           currentDbfs: current,
           peakDbfs: peak,
           clipCount: clips,
-          splEstimate: current + 94
+          splEstimate: current + 94,
+          roughFrHz:
+            Array.isArray(event.payload.roughFrHz) && event.payload.roughFrHz.length > 0
+              ? event.payload.roughFrHz
+              : prev.roughFrHz,
+          roughFrDb:
+            Array.isArray(event.payload.roughFrDb) && event.payload.roughFrDb.length > 0
+              ? event.payload.roughFrDb
+              : prev.roughFrDb
         };
       });
     })
