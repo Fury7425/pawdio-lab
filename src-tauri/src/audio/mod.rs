@@ -254,6 +254,8 @@ pub struct InputLevelEvent {
     pub current_dbfs: f32,
     pub peak_dbfs: f32,
     pub clip_count: u32,
+    pub rough_fr_hz: Vec<f32>,
+    pub rough_fr_db: Vec<f32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -583,6 +585,10 @@ impl AudioEngine {
             current_dbfs: -96.0,
             peak_dbfs: -96.0,
             clip_count: 0,
+            sample_rate: input_config.sample_rate.0,
+            recent_mono: Vec::new(),
+            rough_fr_hz: logspace(20.0, (input_config.sample_rate.0 as f32 * 0.45).min(20_000.0), 32),
+            rough_fr_db: vec![0.0; 32],
         }));
 
         let err_fn = |err| {
@@ -607,13 +613,25 @@ impl AudioEngine {
                 }
             }
 
-            if let Ok(state) = stats.lock() {
+            if let Ok(mut state) = stats.lock() {
+                let next_rough = compute_monitor_rough_fr_db(
+                    &state.recent_mono,
+                    state.sample_rate,
+                    &state.rough_fr_hz,
+                );
+                if !next_rough.is_empty() && state.rough_fr_db.len() == next_rough.len() {
+                    for (prev, next) in state.rough_fr_db.iter_mut().zip(next_rough.iter()) {
+                        *prev = *prev * 0.65 + *next * 0.35;
+                    }
+                }
                 let _ = app.emit(
                     "input-level",
                     InputLevelEvent {
                         current_dbfs: state.current_dbfs,
                         peak_dbfs: state.peak_dbfs,
                         clip_count: state.clip_count,
+                        rough_fr_hz: state.rough_fr_hz.clone(),
+                        rough_fr_db: state.rough_fr_db.clone(),
                     },
                 );
             }
@@ -3400,6 +3418,10 @@ struct MonitorStats {
     current_dbfs: f32,
     peak_dbfs: f32,
     clip_count: u32,
+    sample_rate: u32,
+    recent_mono: Vec<f32>,
+    rough_fr_hz: Vec<f32>,
+    rough_fr_db: Vec<f32>,
 }
 
 fn build_monitor_stream(
@@ -3467,12 +3489,14 @@ fn update_monitor_stats(samples: &[f32], channels: usize, stats: &Arc<Mutex<Moni
     let mut frame_count = 0usize;
     let mut sum_sq = 0.0f32;
     let mut clips = 0u32;
+    let mut mono_samples = Vec::with_capacity(samples.len() / channels.max(1) + 1);
 
     for frame in samples.chunks(channels.max(1)) {
         if frame.is_empty() {
             continue;
         }
         let mono = frame.iter().copied().sum::<f32>() / frame.len() as f32;
+        mono_samples.push(mono);
         sum_sq += mono * mono;
         if mono.abs() >= 0.98 {
             clips += 1;
@@ -3493,7 +3517,40 @@ fn update_monitor_stats(samples: &[f32], channels: usize, stats: &Arc<Mutex<Moni
             state.peak_dbfs = current;
         }
         state.clip_count = state.clip_count.saturating_add(clips);
+        state.recent_mono.extend(mono_samples);
+        let max_len = 8192usize;
+        if state.recent_mono.len() > max_len {
+            let drop_count = state.recent_mono.len() - max_len;
+            state.recent_mono.drain(0..drop_count);
+        }
     }
+}
+
+fn compute_monitor_rough_fr_db(samples: &[f32], sample_rate: u32, freq_grid: &[f32]) -> Vec<f32> {
+    if samples.len() < 512 || sample_rate == 0 || freq_grid.is_empty() {
+        return Vec::new();
+    }
+
+    let n = samples.len().min(4096).next_power_of_two().max(1024);
+    let start = samples.len().saturating_sub(n);
+    let mut windowed = vec![0.0f32; n];
+    let denom = (n.saturating_sub(1)).max(1) as f32;
+    for (i, value) in samples[start..].iter().enumerate().take(n) {
+        let w = 0.5 - 0.5 * (2.0 * PI * i as f32 / denom).cos();
+        windowed[i] = *value * w;
+    }
+
+    let spectrum = magnitude_spectrum(&windowed, n);
+    let mut rough = Vec::with_capacity(freq_grid.len());
+    for freq in freq_grid {
+        let bin = ((*freq / sample_rate as f32) * n as f32).round() as usize;
+        let idx = bin.min(spectrum.len().saturating_sub(1));
+        let mag = spectrum[idx].max(1e-12);
+        rough.push(20.0 * mag.log10());
+    }
+
+    let avg = mean(&rough);
+    rough.into_iter().map(|v| (v - avg).clamp(-24.0, 24.0)).collect()
 }
 
 fn read_monitor_f32(data: &[f32], channels: usize, stats: &Arc<Mutex<MonitorStats>>) {
