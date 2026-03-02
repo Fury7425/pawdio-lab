@@ -394,6 +394,7 @@ impl AudioEngine {
         cancel: Arc<AtomicBool>,
         app: AppHandle,
     ) -> Result<LatencyTestReport, AudioError> {
+        let item_name = settings.item_name.clone();
         let runtime = AudioRuntime::new(settings)?;
         let repeats = request.repeats.clamp(1, 128);
         let duration = request.duration_secs.clamp(0.03, 12.0);
@@ -476,7 +477,7 @@ impl AudioEngine {
         };
 
         let run_tag = timestamp_filename();
-        let output_dir = resolve_measurement_output_dir(&request.output_dir, &settings.item_name, &run_tag);
+        let output_dir = resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag);
         if request.save_per_sound_plot {
             if let (Some(rec), Some(reference), Some(avg_delay)) =
                 (first_recorded.as_ref(), first_reference.as_ref(), report.average_delay_ms)
@@ -693,6 +694,7 @@ impl AudioEngine {
         cancel: Arc<AtomicBool>,
         app: AppHandle,
     ) -> Result<TestResultPayload, AudioError> {
+        let item_name = settings.item_name.clone();
         let runtime = AudioRuntime::new(settings)?;
         request.f0 = request.f0.max(20.0);
         request.f1 = request.f1.clamp(request.f0 + 1.0, 20_000.0);
@@ -871,8 +873,7 @@ impl AudioEngine {
             files: {
                 let mut files = serde_json::Map::<String, Value>::new();
                 let ts = timestamp_filename();
-                let output_dir =
-                    resolve_measurement_output_dir(&request.output_dir, &settings.item_name, &ts);
+                let output_dir = resolve_measurement_output_dir(&request.output_dir, &item_name, &ts);
 
                 if request.save_plots {
                     ensure_output_dir(&output_dir)?;
