@@ -124,6 +124,20 @@ export function DevicesPage({
               </select>
             </label>
           </div>
+          <label className="field-row" style={{ marginTop: 10 }}>
+            <span className="field-label">Item Name</span>
+            <input
+              className="skin-input"
+              value={draft.itemName}
+              placeholder="e.g. HD600, Unit-A, My Headphone"
+              onChange={(event) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  itemName: event.target.value
+                }))
+              }
+            />
+          </label>
 
           <div className="row-end" style={{ marginTop: 12 }}>
             <button type="button" className="skin-btn" onClick={() => onCommitSettings(draft)}>
