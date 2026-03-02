@@ -65,7 +65,7 @@ export function SweepFrPage({
 
   const currentNorm = Math.min(1, Math.max(0, (monitor.currentDbfs + 96) / 96));
   const peakNorm = Math.min(1, Math.max(0, (monitor.peakDbfs + 96) / 96));
-  const roughFrPath = (() => {
+  const roughFrGraph = (() => {
     const freqs = monitor.roughFrHz;
     const values = monitor.roughFrDb;
     if (freqs.length < 2 || values.length < 2 || freqs.length !== values.length) {
@@ -77,15 +77,58 @@ export function SweepFrPage({
     const maxLog = Math.log10(maxHz);
     const spanLog = Math.max(1e-6, maxLog - minLog);
 
-    return values
-      .map((value, index) => {
-        const hz = Math.min(maxHz, Math.max(minHz, freqs[index]));
-        const x = ((Math.log10(hz) - minLog) / spanLog) * 100;
-        const clamped = Math.max(-18, Math.min(18, value));
-        const y = ((18 - clamped) / 36) * 100;
-        return `${x.toFixed(2)},${y.toFixed(2)}`;
+    const smoothValues = values.map((_, index) => {
+      let weightedSum = 0;
+      let weightTotal = 0;
+      for (let offset = -2; offset <= 2; offset += 1) {
+        const target = index + offset;
+        if (target < 0 || target >= values.length) {
+          continue;
+        }
+        const weight = offset === 0 ? 3 : Math.abs(offset) === 1 ? 2 : 1;
+        weightedSum += values[target] * weight;
+        weightTotal += weight;
+      }
+      return weightTotal > 0 ? weightedSum / weightTotal : values[index];
+    });
+
+    const points = smoothValues.map((value, index) => {
+      const hz = Math.min(maxHz, Math.max(minHz, freqs[index]));
+      const x = ((Math.log10(hz) - minLog) / spanLog) * 100;
+      const clamped = Math.max(-18, Math.min(18, value));
+      const y = 10 + ((18 - clamped) / 36) * 80;
+      return { x, y };
+    });
+
+    if (points.length < 2) {
+      return null;
+    }
+
+    let linePath = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
+    for (let i = 1; i < points.length - 1; i += 1) {
+      const midX = (points[i].x + points[i + 1].x) / 2;
+      const midY = (points[i].y + points[i + 1].y) / 2;
+      linePath += ` Q ${points[i].x.toFixed(2)} ${points[i].y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}`;
+    }
+    const last = points[points.length - 1];
+    linePath += ` T ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
+
+    const xGuides = [20, 100, 1000, 10000]
+      .map((freq) => {
+        const x = ((Math.log10(freq) - minLog) / spanLog) * 100;
+        if (!Number.isFinite(x) || x < 0 || x > 100) {
+          return null;
+        }
+        const label = freq >= 1000 ? `${Math.round(freq / 1000)}k` : `${freq}`;
+        return { x, label };
       })
-      .join(" ");
+      .filter((entry): entry is { x: number; label: string } => entry !== null);
+
+    return {
+      linePath,
+      areaPath: `${linePath} L 100 100 L 0 100 Z`,
+      xGuides
+    };
   })();
 
   useEffect(() => {
@@ -284,18 +327,45 @@ export function SweepFrPage({
             </p>
             <div className="level-meter">
               <svg viewBox="0 0 100 100" style={{ width: "100%", height: 128, display: "block" }}>
+                <line x1="0" y1="10" x2="100" y2="10" stroke="var(--level-grid)" strokeWidth="0.6" />
                 <line x1="0" y1="50" x2="100" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
-                <line x1="0" y1="25" x2="100" y2="25" stroke="var(--level-grid)" strokeWidth="0.6" />
-                <line x1="0" y1="75" x2="100" y2="75" stroke="var(--level-grid)" strokeWidth="0.6" />
-                {pinkNoisePlaying && roughFrPath ? (
-                  <polyline
-                    points={roughFrPath}
-                    fill="none"
-                    stroke="var(--accent-strong)"
-                    strokeWidth="1.8"
-                    strokeLinejoin="round"
-                    strokeLinecap="round"
-                  />
+                <line x1="0" y1="90" x2="100" y2="90" stroke="var(--level-grid)" strokeWidth="0.6" />
+                {(roughFrGraph?.xGuides ?? []).map((guide) => (
+                  <g key={`guide-${guide.label}-${guide.x.toFixed(2)}`}>
+                    <line
+                      x1={guide.x}
+                      y1="8"
+                      x2={guide.x}
+                      y2="92"
+                      stroke="var(--level-grid)"
+                      strokeWidth="0.45"
+                    />
+                    <text x={guide.x} y="98" textAnchor="middle" fontSize="6" fill="var(--text-muted)">
+                      {guide.label}
+                    </text>
+                  </g>
+                ))}
+                <text x="2" y="12" fontSize="6" fill="var(--text-muted)">
+                  +18 dB
+                </text>
+                <text x="2" y="52" fontSize="6" fill="var(--text-muted)">
+                  0 dB
+                </text>
+                <text x="2" y="92" fontSize="6" fill="var(--text-muted)">
+                  -18 dB
+                </text>
+                {pinkNoisePlaying && roughFrGraph ? (
+                  <>
+                    <path d={roughFrGraph.areaPath} fill="var(--accent-dim)" opacity="0.2" />
+                    <path
+                      d={roughFrGraph.linePath}
+                      fill="none"
+                      stroke="var(--accent-strong)"
+                      strokeWidth="2"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  </>
                 ) : (
                   <text x="50" y="54" textAnchor="middle" fontSize="7" fill="var(--text-muted)">
                     Waiting for live data
