@@ -219,71 +219,35 @@ export function SweepFrPage({
             <p className="muted" style={{ marginTop: 0 }}>
               {monitor.status}
             </p>
-            <div className="field-grid-2" style={{ marginBottom: 12 }}>
-              <div>
-                <div className="level-meter" style={{ marginBottom: 12 }}>
-                  <div className="level-meter-grid" />
-                  <div className="level-meter-bars">
-                    {meterHistory.map((level, index) => (
-                      <span
-                        key={`meter-${index}`}
-                        className={`level-meter-bar ${
-                          level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
-                        }`.trim()}
-                        style={{
-                          height: `${Math.max(8, level * 100)}%`
-                        }}
-                      />
-                    ))}
-                  </div>
-                  <span className="level-meter-peak" style={{ left: `${peakNorm * 100}%` }} />
-                </div>
-                <div className="field-grid-3">
-                  <div className="field-row">
-                    <span className="field-label">Current Level</span>
-                    <strong>{monitor.currentDbfs.toFixed(1)} dBFS</strong>
-                  </div>
-                  <div className="field-row">
-                    <span className="field-label">Peak Level</span>
-                    <strong>{monitor.peakDbfs.toFixed(1)} dBFS</strong>
-                  </div>
-                  <div className="field-row">
-                    <span className="field-label">SPL Estimate</span>
-                    <strong>{monitor.splEstimate.toFixed(1)} dB SPL</strong>
-                  </div>
-                </div>
+            <div className="level-meter" style={{ marginBottom: 12 }}>
+              <div className="level-meter-grid" />
+              <div className="level-meter-bars">
+                {meterHistory.map((level, index) => (
+                  <span
+                    key={`meter-${index}`}
+                    className={`level-meter-bar ${
+                      level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
+                    }`.trim()}
+                    style={{
+                      height: `${Math.max(8, level * 100)}%`
+                    }}
+                  />
+                ))}
               </div>
-              <div className="level-meter">
-                <div
-                  style={{
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    marginBottom: 8
-                  }}
-                >
-                  <span className="field-label">Live Rough FR (Pink Noise)</span>
-                  <span className="muted">{pinkNoisePlaying ? "Live" : "Idle"}</span>
-                </div>
-                <svg viewBox="0 0 100 100" style={{ width: "100%", height: 100, display: "block" }}>
-                  <line x1="0" y1="50" x2="100" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
-                  <line x1="0" y1="25" x2="100" y2="25" stroke="var(--level-grid)" strokeWidth="0.6" />
-                  <line x1="0" y1="75" x2="100" y2="75" stroke="var(--level-grid)" strokeWidth="0.6" />
-                  {pinkNoisePlaying && roughFrPath ? (
-                    <polyline
-                      points={roughFrPath}
-                      fill="none"
-                      stroke="var(--accent-strong)"
-                      strokeWidth="1.8"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                    />
-                  ) : (
-                    <text x="50" y="54" textAnchor="middle" fontSize="7" fill="var(--text-muted)">
-                      Start Pink Noise + Monitoring
-                    </text>
-                  )}
-                </svg>
+              <span className="level-meter-peak" style={{ left: `${peakNorm * 100}%` }} />
+            </div>
+            <div className="field-grid-3">
+              <div className="field-row">
+                <span className="field-label">Current Level</span>
+                <strong>{monitor.currentDbfs.toFixed(1)} dBFS</strong>
+              </div>
+              <div className="field-row">
+                <span className="field-label">Peak Level</span>
+                <strong>{monitor.peakDbfs.toFixed(1)} dBFS</strong>
+              </div>
+              <div className="field-row">
+                <span className="field-label">SPL Estimate</span>
+                <strong>{monitor.splEstimate.toFixed(1)} dB SPL</strong>
               </div>
             </div>
             {monitor.clipCount > 0 && (
@@ -314,42 +278,71 @@ export function SweepFrPage({
           </section>
 
           <section className="page-card">
-            <h3 className="section-subheading">Sweep FR Results</h3>
-            <div className="scroll-box" style={{ minHeight: 468, maxHeight: 468 }}>
-              <pre className="mono-pre">
-                {lastResult
-                  ? JSON.stringify(lastResult, null, 2)
-                  : "No sweep result yet. Run Sweep to populate this panel."}
-              </pre>
-            </div>
-            <div className="row-end" style={{ marginTop: 12 }}>
-              <button
-                type="button"
-                className="skin-btn secondary"
-                disabled={running || !hasSweepResult}
-                onClick={onExportLastJson}
-              >
-                Export LAST (JSON)
-              </button>
-              <button
-                type="button"
-                className="skin-btn secondary"
-                disabled={running || !hasSweepHistory}
-                onClick={onExportAllJson}
-              >
-                Export ALL (JSON)
-              </button>
-              <button
-                type="button"
-                className="skin-btn secondary"
-                disabled={running || !hasSweepResult}
-                onClick={onExportLastSquiglink}
-              >
-                Export LAST to Squiglink
-              </button>
+            <h3 className="section-subheading">Live Rough FR (Pink Noise)</h3>
+            <p className="muted" style={{ marginTop: 0 }}>
+              {pinkNoisePlaying ? "Live preview running" : "Start Pink Noise + Monitoring"}
+            </p>
+            <div className="level-meter">
+              <svg viewBox="0 0 100 100" style={{ width: "100%", height: 128, display: "block" }}>
+                <line x1="0" y1="50" x2="100" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
+                <line x1="0" y1="25" x2="100" y2="25" stroke="var(--level-grid)" strokeWidth="0.6" />
+                <line x1="0" y1="75" x2="100" y2="75" stroke="var(--level-grid)" strokeWidth="0.6" />
+                {pinkNoisePlaying && roughFrPath ? (
+                  <polyline
+                    points={roughFrPath}
+                    fill="none"
+                    stroke="var(--accent-strong)"
+                    strokeWidth="1.8"
+                    strokeLinejoin="round"
+                    strokeLinecap="round"
+                  />
+                ) : (
+                  <text x="50" y="54" textAnchor="middle" fontSize="7" fill="var(--text-muted)">
+                    Waiting for live data
+                  </text>
+                )}
+              </svg>
             </div>
           </section>
         </div>
+
+        <section className="page-card" style={{ marginTop: 12 }}>
+          <h3 className="section-subheading">Sweep FR Results</h3>
+          <div className="scroll-box" style={{ minHeight: 468, maxHeight: 468 }}>
+            <pre className="mono-pre">
+              {lastResult
+                ? JSON.stringify(lastResult, null, 2)
+                : "No sweep result yet. Run Sweep to populate this panel."}
+            </pre>
+          </div>
+          <div className="row-end" style={{ marginTop: 12 }}>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              disabled={running || !hasSweepResult}
+              onClick={onExportLastJson}
+            >
+              Export LAST (JSON)
+            </button>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              disabled={running || !hasSweepHistory}
+              onClick={onExportAllJson}
+            >
+              Export ALL (JSON)
+            </button>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              disabled={running || !hasSweepResult}
+              onClick={onExportLastSquiglink}
+            >
+              Export LAST to Squiglink
+            </button>
+          </div>
+        </section>
+
       </section>
     </div>
   );
