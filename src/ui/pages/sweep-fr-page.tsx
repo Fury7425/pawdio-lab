@@ -23,6 +23,8 @@ type SweepFrPageProps = {
     peakDbfs: number;
     clipCount: number;
     splEstimate: number;
+    roughFrHz: number[];
+    roughFrDb: number[];
   };
   pinkNoisePlaying: boolean;
   onStartMonitor: () => void;
@@ -63,6 +65,28 @@ export function SweepFrPage({
 
   const currentNorm = Math.min(1, Math.max(0, (monitor.currentDbfs + 96) / 96));
   const peakNorm = Math.min(1, Math.max(0, (monitor.peakDbfs + 96) / 96));
+  const roughFrPath = (() => {
+    const freqs = monitor.roughFrHz;
+    const values = monitor.roughFrDb;
+    if (freqs.length < 2 || values.length < 2 || freqs.length !== values.length) {
+      return null;
+    }
+    const minHz = Math.max(1, freqs[0]);
+    const maxHz = Math.max(minHz + 1, freqs[freqs.length - 1]);
+    const minLog = Math.log10(minHz);
+    const maxLog = Math.log10(maxHz);
+    const spanLog = Math.max(1e-6, maxLog - minLog);
+
+    return values
+      .map((value, index) => {
+        const hz = Math.min(maxHz, Math.max(minHz, freqs[index]));
+        const x = ((Math.log10(hz) - minLog) / spanLog) * 100;
+        const clamped = Math.max(-18, Math.min(18, value));
+        const y = ((18 - clamped) / 36) * 100;
+        return `${x.toFixed(2)},${y.toFixed(2)}`;
+      })
+      .join(" ");
+  })();
 
   useEffect(() => {
     setMeterHistory((prev) => [...prev.slice(1), currentNorm]);
@@ -195,35 +219,71 @@ export function SweepFrPage({
             <p className="muted" style={{ marginTop: 0 }}>
               {monitor.status}
             </p>
-            <div className="level-meter" style={{ marginBottom: 12 }}>
-              <div className="level-meter-grid" />
-              <div className="level-meter-bars">
-                {meterHistory.map((level, index) => (
-                  <span
-                    key={`meter-${index}`}
-                    className={`level-meter-bar ${
-                      level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
-                    }`.trim()}
-                    style={{
-                      height: `${Math.max(8, level * 100)}%`
-                    }}
-                  />
-                ))}
+            <div className="field-grid-2" style={{ marginBottom: 12 }}>
+              <div>
+                <div className="level-meter" style={{ marginBottom: 12 }}>
+                  <div className="level-meter-grid" />
+                  <div className="level-meter-bars">
+                    {meterHistory.map((level, index) => (
+                      <span
+                        key={`meter-${index}`}
+                        className={`level-meter-bar ${
+                          level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
+                        }`.trim()}
+                        style={{
+                          height: `${Math.max(8, level * 100)}%`
+                        }}
+                      />
+                    ))}
+                  </div>
+                  <span className="level-meter-peak" style={{ left: `${peakNorm * 100}%` }} />
+                </div>
+                <div className="field-grid-3">
+                  <div className="field-row">
+                    <span className="field-label">Current Level</span>
+                    <strong>{monitor.currentDbfs.toFixed(1)} dBFS</strong>
+                  </div>
+                  <div className="field-row">
+                    <span className="field-label">Peak Level</span>
+                    <strong>{monitor.peakDbfs.toFixed(1)} dBFS</strong>
+                  </div>
+                  <div className="field-row">
+                    <span className="field-label">SPL Estimate</span>
+                    <strong>{monitor.splEstimate.toFixed(1)} dB SPL</strong>
+                  </div>
+                </div>
               </div>
-              <span className="level-meter-peak" style={{ left: `${peakNorm * 100}%` }} />
-            </div>
-            <div className="field-grid-3">
-              <div className="field-row">
-                <span className="field-label">Current Level</span>
-                <strong>{monitor.currentDbfs.toFixed(1)} dBFS</strong>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Peak Level</span>
-                <strong>{monitor.peakDbfs.toFixed(1)} dBFS</strong>
-              </div>
-              <div className="field-row">
-                <span className="field-label">SPL Estimate</span>
-                <strong>{monitor.splEstimate.toFixed(1)} dB SPL</strong>
+              <div className="level-meter">
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 8
+                  }}
+                >
+                  <span className="field-label">Live Rough FR (Pink Noise)</span>
+                  <span className="muted">{pinkNoisePlaying ? "Live" : "Idle"}</span>
+                </div>
+                <svg viewBox="0 0 100 100" style={{ width: "100%", height: 100, display: "block" }}>
+                  <line x1="0" y1="50" x2="100" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
+                  <line x1="0" y1="25" x2="100" y2="25" stroke="var(--level-grid)" strokeWidth="0.6" />
+                  <line x1="0" y1="75" x2="100" y2="75" stroke="var(--level-grid)" strokeWidth="0.6" />
+                  {pinkNoisePlaying && roughFrPath ? (
+                    <polyline
+                      points={roughFrPath}
+                      fill="none"
+                      stroke="var(--accent-strong)"
+                      strokeWidth="1.8"
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  ) : (
+                    <text x="50" y="54" textAnchor="middle" fontSize="7" fill="var(--text-muted)">
+                      Start Pink Noise + Monitoring
+                    </text>
+                  )}
+                </svg>
               </div>
             </div>
             {monitor.clipCount > 0 && (
