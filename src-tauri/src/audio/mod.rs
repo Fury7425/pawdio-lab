@@ -31,6 +31,8 @@ pub struct AudioSettings {
     pub input_sample_rate: u32,
     pub duration_secs: f32,
     pub chunk_size: u32,
+    #[serde(default)]
+    pub item_name: String,
 }
 
 impl Default for AudioSettings {
@@ -42,6 +44,7 @@ impl Default for AudioSettings {
             input_sample_rate: 44_100,
             duration_secs: 0.5,
             chunk_size: 1024,
+            item_name: String::new(),
         }
     }
 }
@@ -362,6 +365,7 @@ impl AudioEngine {
         settings.input_sample_rate = settings.input_sample_rate.clamp(8_000, 192_000);
         settings.duration_secs = settings.duration_secs.clamp(0.03, 12.0);
         settings.chunk_size = settings.chunk_size.clamp(64, 8192);
+        settings.item_name = settings.item_name.trim().to_string();
         self.settings = settings;
     }
 
@@ -471,7 +475,8 @@ impl AudioEngine {
             timestamp_utc: timestamp_string(),
         };
 
-        let output_dir = resolve_output_dir(&request.output_dir);
+        let run_tag = timestamp_filename();
+        let output_dir = resolve_measurement_output_dir(&request.output_dir, &settings.item_name, &run_tag);
         if request.save_per_sound_plot {
             if let (Some(rec), Some(reference), Some(avg_delay)) =
                 (first_recorded.as_ref(), first_reference.as_ref(), report.average_delay_ms)
@@ -528,11 +533,12 @@ impl AudioEngine {
     pub fn export_latency_report(
         request: &LatencyTestRequest,
         report: &LatencyTestReport,
+        item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let output_dir = resolve_output_dir(&request.output_dir);
+        let run_tag = timestamp_filename();
+        let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
         ensure_output_dir(&output_dir)?;
-        let ts = timestamp_filename();
-        let path = output_dir.join(format!("latency_report_{ts}.txt"));
+        let path = output_dir.join(format!("latency_report_{run_tag}.txt"));
         let text = build_latency_text_report(request, report);
         write_text_file(&path, &text)?;
         Ok(path)
@@ -541,11 +547,12 @@ impl AudioEngine {
     pub fn export_latency_suite_report(
         request: &LatencyTestRequest,
         suite: &[LatencyExportEntry],
+        item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let output_dir = resolve_output_dir(&request.output_dir);
+        let run_tag = timestamp_filename();
+        let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
         ensure_output_dir(&output_dir)?;
-        let ts = timestamp_filename();
-        let path = output_dir.join(format!("latency_report_{ts}.txt"));
+        let path = output_dir.join(format!("latency_report_{run_tag}.txt"));
         let text = build_latency_suite_text_report(suite);
         write_text_file(&path, &text)?;
         Ok(path)
@@ -554,10 +561,12 @@ impl AudioEngine {
     pub fn save_latency_overall_bar_chart(
         request: &LatencyTestRequest,
         suite: &[LatencyExportEntry],
+        item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let output_dir = resolve_output_dir(&request.output_dir);
+        let run_tag = timestamp_filename();
+        let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
         ensure_output_dir(&output_dir)?;
-        let path = overall_bar_path(&output_dir)?;
+        let path = output_dir.join(format!("overall_bar_{run_tag}.png"));
         let bars = latency_bars_from_suite(suite);
         if bars.is_empty() {
             return Err(AudioError::FileExport(
@@ -861,8 +870,9 @@ impl AudioEngine {
             }),
             files: {
                 let mut files = serde_json::Map::<String, Value>::new();
-                let output_dir = resolve_output_dir(&request.output_dir);
                 let ts = timestamp_filename();
+                let output_dir =
+                    resolve_measurement_output_dir(&request.output_dir, &settings.item_name, &ts);
 
                 if request.save_plots {
                     ensure_output_dir(&output_dir)?;
@@ -1583,6 +1593,30 @@ fn resolve_output_dir(requested: &Option<String>) -> PathBuf {
         .map(PathBuf::from);
 
     candidate.unwrap_or_else(default_output_dir)
+}
+
+fn sanitize_output_name(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for ch in raw.trim().chars() {
+        let invalid = matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control();
+        if invalid {
+            out.push('_');
+        } else {
+            out.push(ch);
+        }
+    }
+    let cleaned = out.trim_matches(|c| c == ' ' || c == '.').trim().to_string();
+    if cleaned.is_empty() {
+        "item".to_string()
+    } else {
+        cleaned
+    }
+}
+
+fn resolve_measurement_output_dir(requested: &Option<String>, item_name: &str, run_tag: &str) -> PathBuf {
+    let base = resolve_output_dir(requested);
+    let item = sanitize_output_name(item_name);
+    base.join(format!("(({item})-({run_tag}))"))
 }
 
 fn default_output_dir() -> PathBuf {
