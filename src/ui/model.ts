@@ -1,4 +1,4 @@
-﻿export type PageKey = "latency" | "sweep_fr" | "experimental" | "devices" | "results";
+export type PageKey = "latency" | "sweep_fr" | "experimental" | "devices" | "results";
 
 export type AudioDeviceInfo = {
   index: number;
@@ -22,6 +22,7 @@ export type AudioSettings = {
   inputSampleRate: number;
   durationSecs: number;
   chunkSize: number;
+  itemName: string;
 };
 
 export type RuntimeStatus = { running: boolean };
@@ -132,7 +133,8 @@ export const defaultSettings: AudioSettings = {
   outputSampleRate: 44100,
   inputSampleRate: 44100,
   durationSecs: 0.5,
-  chunkSize: 1024
+  chunkSize: 1024,
+  itemName: ""
 };
 
 export const defaultLatencyRequest: LatencyRequest = {
