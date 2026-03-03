@@ -94,7 +94,7 @@ export function SweepFrPage({
 
     const points = smoothValues.map((value, index) => {
       const hz = Math.min(maxHz, Math.max(minHz, freqs[index]));
-      const x = ((Math.log10(hz) - minLog) / spanLog) * 100;
+      const x = ((Math.log10(hz) - minLog) / spanLog) * 200;
       const clamped = Math.max(-18, Math.min(18, value));
       const y = 10 + ((18 - clamped) / 36) * 80;
       return { x, y };
@@ -115,8 +115,8 @@ export function SweepFrPage({
 
     const xGuides = [20, 100, 1000, 10000]
       .map((freq) => {
-        const x = ((Math.log10(freq) - minLog) / spanLog) * 100;
-        if (!Number.isFinite(x) || x < 0 || x > 100) {
+        const x = ((Math.log10(freq) - minLog) / spanLog) * 200;
+        if (!Number.isFinite(x) || x < 0 || x > 200) {
           return null;
         }
         const label = freq >= 1000 ? `${Math.round(freq / 1000)}k` : `${freq}`;
@@ -126,7 +126,7 @@ export function SweepFrPage({
 
     return {
       linePath,
-      areaPath: `${linePath} L 100 100 L 0 100 Z`,
+      areaPath: `${linePath} L 200 100 L 0 100 Z`,
       xGuides
     };
   })();
@@ -326,10 +326,10 @@ export function SweepFrPage({
               {pinkNoisePlaying ? "Live preview running" : "Start Pink Noise + Monitoring"}
             </p>
             <div className="level-meter live-rough-meter">
-              <svg viewBox="0 0 100 100" className="live-rough-svg">
-                <line x1="0" y1="10" x2="100" y2="10" stroke="var(--level-grid)" strokeWidth="0.6" />
-                <line x1="0" y1="50" x2="100" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
-                <line x1="0" y1="90" x2="100" y2="90" stroke="var(--level-grid)" strokeWidth="0.6" />
+              <svg viewBox="0 0 200 100" className="live-rough-svg">
+                <line x1="0" y1="10" x2="200" y2="10" stroke="var(--level-grid)" strokeWidth="0.6" />
+                <line x1="0" y1="50" x2="200" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
+                <line x1="0" y1="90" x2="200" y2="90" stroke="var(--level-grid)" strokeWidth="0.6" />
                 {(roughFrGraph?.xGuides ?? []).map((guide) => (
                   <g key={`guide-${guide.label}-${guide.x.toFixed(2)}`}>
                     <line
@@ -340,18 +340,18 @@ export function SweepFrPage({
                       stroke="var(--level-grid)"
                       strokeWidth="0.45"
                     />
-                    <text x={guide.x} y="98" textAnchor="middle" fontSize="6" fill="var(--text-muted)">
+                    <text x={guide.x} y="98" textAnchor="middle" fontSize="7" fill="var(--text-muted)">
                       {guide.label}
                     </text>
                   </g>
                 ))}
-                <text x="2" y="12" fontSize="6" fill="var(--text-muted)">
+                <text x="4" y="12" fontSize="7" fill="var(--text-muted)">
                   +18 dB
                 </text>
-                <text x="2" y="52" fontSize="6" fill="var(--text-muted)">
+                <text x="4" y="52" fontSize="7" fill="var(--text-muted)">
                   0 dB
                 </text>
-                <text x="2" y="92" fontSize="6" fill="var(--text-muted)">
+                <text x="4" y="92" fontSize="7" fill="var(--text-muted)">
                   -18 dB
                 </text>
                 {pinkNoisePlaying && roughFrGraph ? (
@@ -367,7 +367,7 @@ export function SweepFrPage({
                     />
                   </>
                 ) : (
-                  <text x="50" y="54" textAnchor="middle" fontSize="7" fill="var(--text-muted)">
+                  <text x="100" y="54" textAnchor="middle" fontSize="8" fill="var(--text-muted)">
                     Waiting for live data
                   </text>
                 )}
