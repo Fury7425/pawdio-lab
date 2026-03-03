@@ -320,13 +320,13 @@ export function SweepFrPage({
             </div>
           </section>
 
-          <section className="page-card">
+          <section className="page-card live-rough-card">
             <h3 className="section-subheading">Live Rough FR (Pink Noise)</h3>
             <p className="muted" style={{ marginTop: 0 }}>
               {pinkNoisePlaying ? "Live preview running" : "Start Pink Noise + Monitoring"}
             </p>
-            <div className="level-meter">
-              <svg viewBox="0 0 100 100" style={{ width: "100%", height: 128, display: "block" }}>
+            <div className="level-meter live-rough-meter">
+              <svg viewBox="0 0 100 100" className="live-rough-svg">
                 <line x1="0" y1="10" x2="100" y2="10" stroke="var(--level-grid)" strokeWidth="0.6" />
                 <line x1="0" y1="50" x2="100" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
                 <line x1="0" y1="90" x2="100" y2="90" stroke="var(--level-grid)" strokeWidth="0.6" />

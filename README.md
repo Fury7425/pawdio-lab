@@ -411,6 +411,19 @@ npm install
 npm run tauri dev
 ```
 
+### Hot Reload (Live Dev)
+
+Use the Tauri dev command to run the desktop app with Vite HMR:
+
+```bash
+npm run dev:tauri
+```
+
+During this command:
+- Frontend edits in `src/` apply instantly (hot reload / HMR).
+- Rust changes in `src-tauri/` trigger a rebuild/restart cycle.
+- No full production build step is required while developing.
+
 ### Build Desktop Bundles
 
 ```bash

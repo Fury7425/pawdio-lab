@@ -506,6 +506,25 @@ body {
   overflow: hidden;
 }
 
+.live-rough-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.live-rough-meter {
+  flex: 1 1 auto;
+  min-height: 260px;
+  display: flex;
+  align-items: stretch;
+}
+
+.live-rough-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .level-meter-grid {
   position: absolute;
   inset: 0;
