@@ -1,0 +1,54 @@
+# Node / Vite
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+
+# Tauri / Rust
+src-tauri/target/
+src-tauri/gen/
+src-tauri/.cargo/
+src-tauri/.tauri/
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Python (legacy app/ tools)
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+env/
+
+# Python test/coverage outputs
+.coverage
+.coverage.*
+htmlcov/
+
+# Local runtime artifacts (reports/plots/exports)
+calibration_per_sound.json
+latency_report_*.txt
+overall_bar_*.png
+sweep_fr_*.png
+sweep_fr_*.json
+squiglink_*.txt
+pawdio-lab-exports/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
