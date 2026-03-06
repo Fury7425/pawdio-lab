@@ -5,6 +5,14 @@ export type PageKey =
   | "devices"
   | "results";
 
+export enum PageKeyEnum {
+  Latency = "latency",
+  SweepFr = "sweep_fr",
+  Experimental = "experimental",
+  Devices = "devices",
+  Results = "results",
+}
+
 export type AudioDeviceInfo = {
   index: number;
   name: string;

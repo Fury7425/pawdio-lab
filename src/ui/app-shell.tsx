@@ -7,6 +7,7 @@ import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
 import { startAppearanceThemeSync } from "./theme";
 import { usePawdioLabController } from "./use-pawdio-lab";
+import { PageKeyEnum } from "./model";
 
 export function PawdioLabApp() {
   const controller = usePawdioLabController();
@@ -36,7 +37,7 @@ export function PawdioLabApp() {
             </section>
           )}
 
-          {controller.activePage === "latency" && (
+          {controller.activePage === PageKeyEnum.Latency && (
             <LatencyPage
               request={controller.latencyRequest}
               onChangeRequest={controller.setLatencyRequest}
@@ -62,7 +63,7 @@ export function PawdioLabApp() {
             />
           )}
 
-          {controller.activePage === "sweep_fr" && (
+          {controller.activePage === PageKeyEnum.SweepFr && (
             <SweepFrPage
               request={controller.sweepRequest}
               onChangeRequest={controller.setSweepRequest}
@@ -91,7 +92,7 @@ export function PawdioLabApp() {
             />
           )}
 
-          {controller.activePage === "experimental" &&
+          {controller.activePage === PageKeyEnum.Experimental &&
             controller.experimentalEnabled && (
               <ExperimentalPage
                 running={controller.running}
@@ -112,7 +113,7 @@ export function PawdioLabApp() {
               />
             )}
 
-          {controller.activePage === "devices" && (
+          {controller.activePage === PageKeyEnum.Devices && (
             <DevicesPage
               inventory={controller.inventory}
               settings={controller.settings}
@@ -123,7 +124,7 @@ export function PawdioLabApp() {
             />
           )}
 
-          {controller.activePage === "results" && (
+          {controller.activePage === PageKeyEnum.Results && (
             <ResultsPage
               resultText={controller.resultText}
               logText={controller.logText}
