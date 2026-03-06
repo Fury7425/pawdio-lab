@@ -1,0 +1,14 @@
+            - name: Delete Old GitHub Actions Runs
+  # You may pin to the exact commit or the version.
+  # uses: yanovation/delete-old-actions@ae2559822ec822517c5b6c1d7036c9de045bb2bc
+  uses: yanovation/delete-old-actions@v1
+  with:
+    # GitHub token
+    token: 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
+    # Delete workflow runs older than this many days
+    days-ago: 45
+    # If set to true, only logs what would be deleted
+    dry-run: # optional, default is false
+    # Number of most recent runs per workflow to retain
+    keep-latest: 5
+          
