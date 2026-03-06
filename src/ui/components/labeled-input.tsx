@@ -15,7 +15,7 @@ export function LabeledNumberInput({
   onChange,
   min,
   max,
-  step
+  step,
 }: LabeledNumberInputProps) {
   return (
     <label className="field-row">
@@ -44,12 +44,17 @@ export function LabeledTextInput({
   label,
   value,
   onChange,
-  placeholder
+  placeholder,
 }: LabeledTextInputProps) {
   return (
     <label className="field-row">
       <span className="field-label">{label}</span>
-      <input className="skin-input" value={value} onChange={onChange} placeholder={placeholder} />
+      <input
+        className="skin-input"
+        value={value}
+        onChange={onChange}
+        placeholder={placeholder}
+      />
     </label>
   );
 }

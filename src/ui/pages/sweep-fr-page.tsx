@@ -57,10 +57,10 @@ export function SweepFrPage({
   hasSweepHistory,
   onExportLastJson,
   onExportAllJson,
-  onExportLastSquiglink
+  onExportLastSquiglink,
 }: SweepFrPageProps) {
   const [meterHistory, setMeterHistory] = useState<number[]>(() =>
-    Array.from({ length: 48 }, () => 0)
+    Array.from({ length: 48 }, () => 0),
   );
 
   const currentNorm = Math.min(1, Math.max(0, (monitor.currentDbfs + 96) / 96));
@@ -68,7 +68,11 @@ export function SweepFrPage({
   const roughFrGraph = (() => {
     const freqs = monitor.roughFrHz;
     const values = monitor.roughFrDb;
-    if (freqs.length < 2 || values.length < 2 || freqs.length !== values.length) {
+    if (
+      freqs.length < 2 ||
+      values.length < 2 ||
+      freqs.length !== values.length
+    ) {
       return null;
     }
     const minHz = Math.max(1, freqs[0]);
@@ -127,7 +131,7 @@ export function SweepFrPage({
     return {
       linePath,
       areaPath: `${linePath} L 200 100 L 0 100 Z`,
-      xGuides
+      xGuides,
     };
   })();
 
@@ -147,13 +151,21 @@ export function SweepFrPage({
             <LabeledNumberInput
               label="Start Freq (Hz)"
               value={request.f0}
-              onChange={(event) => onChangeRequest({ ...request, f0: toNumber(event.target.value, 20) })}
+              onChange={(event) =>
+                onChangeRequest({
+                  ...request,
+                  f0: toNumber(event.target.value, 20),
+                })
+              }
             />
             <LabeledNumberInput
               label="End Freq (Hz)"
               value={request.f1}
               onChange={(event) =>
-                onChangeRequest({ ...request, f1: toNumber(event.target.value, 20000) })
+                onChangeRequest({
+                  ...request,
+                  f1: toNumber(event.target.value, 20000),
+                })
               }
             />
             <LabeledNumberInput
@@ -161,7 +173,10 @@ export function SweepFrPage({
               value={request.durationSecs}
               step={0.1}
               onChange={(event) =>
-                onChangeRequest({ ...request, durationSecs: toNumber(event.target.value, 6) })
+                onChangeRequest({
+                  ...request,
+                  durationSecs: toNumber(event.target.value, 6),
+                })
               }
             />
 
@@ -178,7 +193,10 @@ export function SweepFrPage({
                   onChange={(event) =>
                     onChangeRequest({
                       ...request,
-                      repeats: Math.max(1, Math.round(toNumber(event.target.value, 1)))
+                      repeats: Math.max(
+                        1,
+                        Math.round(toNumber(event.target.value, 1)),
+                      ),
                     })
                   }
                 />
@@ -195,7 +213,10 @@ export function SweepFrPage({
               min={0}
               max={1}
               onChange={(event) =>
-                onChangeRequest({ ...request, amplitude: toNumber(event.target.value, 0.5) })
+                onChangeRequest({
+                  ...request,
+                  amplitude: toNumber(event.target.value, 0.5),
+                })
               }
             />
             <div className="field-row">
@@ -206,7 +227,10 @@ export function SweepFrPage({
                     type="checkbox"
                     checked={request.savePlots}
                     onChange={(event) =>
-                      onChangeRequest({ ...request, savePlots: event.target.checked })
+                      onChangeRequest({
+                        ...request,
+                        savePlots: event.target.checked,
+                      })
                     }
                   />
                   Save plots
@@ -216,7 +240,10 @@ export function SweepFrPage({
                     type="checkbox"
                     checked={request.saveSquiglink}
                     onChange={(event) =>
-                      onChangeRequest({ ...request, saveSquiglink: event.target.checked })
+                      onChangeRequest({
+                        ...request,
+                        saveSquiglink: event.target.checked,
+                      })
                     }
                   />
                   Save Squiglink format (.txt)
@@ -226,7 +253,10 @@ export function SweepFrPage({
                     type="checkbox"
                     checked={request.monoMode}
                     onChange={(event) =>
-                      onChangeRequest({ ...request, monoMode: event.target.checked })
+                      onChangeRequest({
+                        ...request,
+                        monoMode: event.target.checked,
+                      })
                     }
                   />
                   Mono Test (one side at a time)
@@ -242,14 +272,25 @@ export function SweepFrPage({
                 className="skin-input"
                 value={request.outputDir}
                 placeholder="Select output folder"
-                onChange={(event) => onChangeRequest({ ...request, outputDir: event.target.value })}
+                onChange={(event) =>
+                  onChangeRequest({ ...request, outputDir: event.target.value })
+                }
               />
             </label>
             <div className="row-end" style={{ alignItems: "end" }}>
-              <button type="button" className="skin-btn secondary" onClick={onBrowseOutputFolder}>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={onBrowseOutputFolder}
+              >
                 Browse
               </button>
-              <button type="button" className="skin-btn" disabled={running} onClick={onRun}>
+              <button
+                type="button"
+                className="skin-btn"
+                disabled={running}
+                onClick={onRun}
+              >
                 Run Sweep
               </button>
             </div>
@@ -272,12 +313,15 @@ export function SweepFrPage({
                       level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
                     }`.trim()}
                     style={{
-                      height: `${Math.max(8, level * 100)}%`
+                      height: `${Math.max(8, level * 100)}%`,
                     }}
                   />
                 ))}
               </div>
-              <span className="level-meter-peak" style={{ left: `${peakNorm * 100}%` }} />
+              <span
+                className="level-meter-peak"
+                style={{ left: `${peakNorm * 100}%` }}
+              />
             </div>
             <div className="field-grid-3">
               <div className="field-row">
@@ -298,7 +342,14 @@ export function SweepFrPage({
                 Clipping detected ({monitor.clipCount})
               </p>
             )}
-            <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                marginTop: 12,
+                flexWrap: "wrap",
+              }}
+            >
               <button
                 type="button"
                 className="skin-btn secondary"
@@ -314,7 +365,11 @@ export function SweepFrPage({
               >
                 {pinkNoisePlaying ? "Stop Pink Noise" : "Play Pink Noise"}
               </button>
-              <button type="button" className="skin-btn secondary" onClick={onResetPeak}>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={onResetPeak}
+              >
                 Reset Peak
               </button>
             </div>
@@ -323,13 +378,36 @@ export function SweepFrPage({
           <section className="page-card live-rough-card">
             <h3 className="section-subheading">Live Rough FR (Pink Noise)</h3>
             <p className="muted" style={{ marginTop: 0 }}>
-              {pinkNoisePlaying ? "Live preview running" : "Start Pink Noise + Monitoring"}
+              {pinkNoisePlaying
+                ? "Live preview running"
+                : "Start Pink Noise + Monitoring"}
             </p>
             <div className="level-meter live-rough-meter">
               <svg viewBox="0 0 200 100" className="live-rough-svg">
-                <line x1="0" y1="10" x2="200" y2="10" stroke="var(--level-grid)" strokeWidth="0.6" />
-                <line x1="0" y1="50" x2="200" y2="50" stroke="var(--level-grid)" strokeWidth="1" />
-                <line x1="0" y1="90" x2="200" y2="90" stroke="var(--level-grid)" strokeWidth="0.6" />
+                <line
+                  x1="0"
+                  y1="10"
+                  x2="200"
+                  y2="10"
+                  stroke="var(--level-grid)"
+                  strokeWidth="0.6"
+                />
+                <line
+                  x1="0"
+                  y1="50"
+                  x2="200"
+                  y2="50"
+                  stroke="var(--level-grid)"
+                  strokeWidth="1"
+                />
+                <line
+                  x1="0"
+                  y1="90"
+                  x2="200"
+                  y2="90"
+                  stroke="var(--level-grid)"
+                  strokeWidth="0.6"
+                />
                 {(roughFrGraph?.xGuides ?? []).map((guide) => (
                   <g key={`guide-${guide.label}-${guide.x.toFixed(2)}`}>
                     <line
@@ -340,7 +418,13 @@ export function SweepFrPage({
                       stroke="var(--level-grid)"
                       strokeWidth="0.45"
                     />
-                    <text x={guide.x} y="98" textAnchor="middle" fontSize="7" fill="var(--text-muted)">
+                    <text
+                      x={guide.x}
+                      y="98"
+                      textAnchor="middle"
+                      fontSize="7"
+                      fill="var(--text-muted)"
+                    >
                       {guide.label}
                     </text>
                   </g>
@@ -356,7 +440,11 @@ export function SweepFrPage({
                 </text>
                 {pinkNoisePlaying && roughFrGraph ? (
                   <>
-                    <path d={roughFrGraph.areaPath} fill="var(--accent-dim)" opacity="0.2" />
+                    <path
+                      d={roughFrGraph.areaPath}
+                      fill="var(--accent-dim)"
+                      opacity="0.2"
+                    />
                     <path
                       d={roughFrGraph.linePath}
                       fill="none"
@@ -367,7 +455,13 @@ export function SweepFrPage({
                     />
                   </>
                 ) : (
-                  <text x="100" y="54" textAnchor="middle" fontSize="8" fill="var(--text-muted)">
+                  <text
+                    x="100"
+                    y="54"
+                    textAnchor="middle"
+                    fontSize="8"
+                    fill="var(--text-muted)"
+                  >
                     Waiting for live data
                   </text>
                 )}
@@ -378,7 +472,10 @@ export function SweepFrPage({
 
         <section className="page-card" style={{ marginTop: 12 }}>
           <h3 className="section-subheading">Sweep FR Results</h3>
-          <div className="scroll-box" style={{ minHeight: 468, maxHeight: 468 }}>
+          <div
+            className="scroll-box"
+            style={{ minHeight: 468, maxHeight: 468 }}
+          >
             <pre className="mono-pre">
               {lastResult
                 ? JSON.stringify(lastResult, null, 2)
@@ -412,7 +509,6 @@ export function SweepFrPage({
             </button>
           </div>
         </section>
-
       </section>
     </div>
   );

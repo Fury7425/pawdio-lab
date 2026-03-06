@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { LatencyProgress, LatencyReport, LatencyRequest, fmtMs, toNumber } from "../model";
+import {
+  LatencyProgress,
+  LatencyReport,
+  LatencyRequest,
+  fmtMs,
+  toNumber,
+} from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 
 type LatencyPageProps = {
@@ -10,13 +16,15 @@ type LatencyPageProps = {
   calibrationText: string;
   running: boolean;
   progressPercent: number;
-  onRunSelected: (keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">) => void;
+  onRunSelected: (
+    keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">,
+  ) => void;
   onRunAll: () => void;
   onSaveReport: () => void;
   onBrowseOutputFolder: () => void;
   onCalibrateSelected: (
     keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">,
-    repeats: number
+    repeats: number,
   ) => void;
   onCalibrateAll: (repeats: number) => void;
 };
@@ -69,7 +77,7 @@ export function LatencyPage({
   onSaveReport,
   onBrowseOutputFolder,
   onCalibrateSelected,
-  onCalibrateAll
+  onCalibrateAll,
 }: LatencyPageProps) {
   const storedUiPrefs = useMemo(() => readLatencyUiPrefs(), []);
   const [runSelection, setRunSelection] = useState<PresetSelection>(
@@ -78,11 +86,11 @@ export function LatencyPage({
       beep1k: true,
       beep2k: true,
       beep5k: true,
-      impulse: false
-    }
+      impulse: false,
+    },
   );
   const [calibrationRepeats, setCalibrationRepeats] = useState(
-    storedUiPrefs?.calibrationRepeats ?? 5
+    storedUiPrefs?.calibrationRepeats ?? 5,
   );
   const [calibrationMode, setCalibrationMode] = useState<PresetSelection>(
     storedUiPrefs?.calibrationMode ?? {
@@ -90,15 +98,15 @@ export function LatencyPage({
       beep1k: true,
       beep2k: true,
       beep5k: true,
-      impulse: true
-    }
+      impulse: true,
+    },
   );
 
   useEffect(() => {
     const snapshot: LatencyUiPrefs = {
       runSelection,
       calibrationRepeats,
-      calibrationMode
+      calibrationMode,
     };
     try {
       localStorage.setItem(LATENCY_UI_STORAGE_KEY, JSON.stringify(snapshot));
@@ -113,18 +121,48 @@ export function LatencyPage({
     }
 
     return progressRows
-      .map((row) => `${row.current}/${row.total}  |  delay=${fmtMs(row.delayMs)}`)
+      .map(
+        (row) => `${row.current}/${row.total}  |  delay=${fmtMs(row.delayMs)}`,
+      )
       .join("\n");
   }, [progressRows]);
 
-  const lastDelay = progressRows.length > 0 ? progressRows[progressRows.length - 1].delayMs : null;
+  const lastDelay =
+    progressRows.length > 0
+      ? progressRows[progressRows.length - 1].delayMs
+      : null;
 
   const presetOptions = [
-    { key: "beep200", label: "200Hz Low Beep", signal: "sine" as const, frequencyHz: 200 },
-    { key: "beep1k", label: "1kHz Beep", signal: "sine" as const, frequencyHz: 1000 },
-    { key: "beep2k", label: "Mixed (2kHz Sine)", signal: "sine" as const, frequencyHz: 2000 },
-    { key: "beep5k", label: "5kHz Beep", signal: "sine" as const, frequencyHz: 5000 },
-    { key: "impulse", label: "Click (Impulse)", signal: "impulse" as const, frequencyHz: request.frequencyHz }
+    {
+      key: "beep200",
+      label: "200Hz Low Beep",
+      signal: "sine" as const,
+      frequencyHz: 200,
+    },
+    {
+      key: "beep1k",
+      label: "1kHz Beep",
+      signal: "sine" as const,
+      frequencyHz: 1000,
+    },
+    {
+      key: "beep2k",
+      label: "Mixed (2kHz Sine)",
+      signal: "sine" as const,
+      frequencyHz: 2000,
+    },
+    {
+      key: "beep5k",
+      label: "5kHz Beep",
+      signal: "sine" as const,
+      frequencyHz: 5000,
+    },
+    {
+      key: "impulse",
+      label: "Click (Impulse)",
+      signal: "impulse" as const,
+      frequencyHz: request.frequencyHz,
+    },
   ];
 
   function isRunPresetEnabled(key: keyof typeof runSelection) {
@@ -148,7 +186,7 @@ export function LatencyPage({
                 onClick={() =>
                   setRunSelection((prev) => ({
                     ...prev,
-                    [preset.key]: !prev[preset.key as keyof typeof prev]
+                    [preset.key]: !prev[preset.key as keyof typeof prev],
                   }))
                 }
               >
@@ -169,7 +207,10 @@ export function LatencyPage({
               onChange={(event) =>
                 onChangeRequest({
                   ...request,
-                  repeats: Math.max(1, Math.round(toNumber(event.target.value, 5)))
+                  repeats: Math.max(
+                    1,
+                    Math.round(toNumber(event.target.value, 5)),
+                  ),
                 })
               }
             />
@@ -181,7 +222,10 @@ export function LatencyPage({
               label="Frequency (Hz)"
               value={request.frequencyHz}
               onChange={(event) =>
-                onChangeRequest({ ...request, frequencyHz: toNumber(event.target.value, 1000) })
+                onChangeRequest({
+                  ...request,
+                  frequencyHz: toNumber(event.target.value, 1000),
+                })
               }
             />
             <LabeledNumberInput
@@ -189,7 +233,10 @@ export function LatencyPage({
               value={request.durationSecs}
               step={0.05}
               onChange={(event) =>
-                onChangeRequest({ ...request, durationSecs: toNumber(event.target.value, 0.5) })
+                onChangeRequest({
+                  ...request,
+                  durationSecs: toNumber(event.target.value, 0.5),
+                })
               }
             />
             <LabeledNumberInput
@@ -199,7 +246,10 @@ export function LatencyPage({
               min={0}
               max={1}
               onChange={(event) =>
-                onChangeRequest({ ...request, amplitude: toNumber(event.target.value, 0.85) })
+                onChangeRequest({
+                  ...request,
+                  amplitude: toNumber(event.target.value, 0.85),
+                })
               }
             />
             <LabeledNumberInput
@@ -208,7 +258,10 @@ export function LatencyPage({
               step={0.1}
               min={0.1}
               onChange={(event) =>
-                onChangeRequest({ ...request, recordMarginSecs: toNumber(event.target.value, 1) })
+                onChangeRequest({
+                  ...request,
+                  recordMarginSecs: toNumber(event.target.value, 1),
+                })
               }
             />
           </div>
@@ -221,7 +274,7 @@ export function LatencyPage({
                 onChange={(event) =>
                   onChangeRequest({
                     ...request,
-                    savePerSoundPlot: event.target.checked
+                    savePerSoundPlot: event.target.checked,
                   })
                 }
               />
@@ -234,7 +287,7 @@ export function LatencyPage({
                 onChange={(event) =>
                   onChangeRequest({
                     ...request,
-                    saveOverallBarChart: event.target.checked
+                    saveOverallBarChart: event.target.checked,
                   })
                 }
               />
@@ -249,11 +302,17 @@ export function LatencyPage({
                 className="skin-input"
                 value={request.outputDir}
                 placeholder="Select output folder"
-                onChange={(event) => onChangeRequest({ ...request, outputDir: event.target.value })}
+                onChange={(event) =>
+                  onChangeRequest({ ...request, outputDir: event.target.value })
+                }
               />
             </label>
             <div className="row-end" style={{ alignItems: "end" }}>
-              <button type="button" className="skin-btn secondary" onClick={onBrowseOutputFolder}>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={onBrowseOutputFolder}
+              >
                 Browse
               </button>
             </div>
@@ -265,7 +324,7 @@ export function LatencyPage({
               display: "flex",
               justifyContent: "space-between",
               gap: 10,
-              flexWrap: "wrap"
+              flexWrap: "wrap",
             }}
           >
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -274,13 +333,24 @@ export function LatencyPage({
                 className="skin-btn"
                 disabled={running}
                 onClick={() => {
-                  const keys = (Object.entries(runSelection) as Array<
-                    ["beep200" | "beep1k" | "beep2k" | "beep5k" | "impulse", boolean]
-                  >)
+                  const keys = (
+                    Object.entries(runSelection) as Array<
+                      [
+                        "beep200" | "beep1k" | "beep2k" | "beep5k" | "impulse",
+                        boolean,
+                      ]
+                    >
+                  )
                     .filter(([, enabled]) => enabled)
                     .map(([key]) => key)
                     .sort((a, b) => {
-                      const order = ["beep1k", "beep2k", "beep5k", "beep200", "impulse"];
+                      const order = [
+                        "beep1k",
+                        "beep2k",
+                        "beep5k",
+                        "beep200",
+                        "impulse",
+                      ];
                       return order.indexOf(a) - order.indexOf(b);
                     });
                   onRunSelected(keys);
@@ -288,7 +358,12 @@ export function LatencyPage({
               >
                 Run Selected
               </button>
-              <button type="button" className="skin-btn secondary" disabled={running} onClick={onRunAll}>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                disabled={running}
+                onClick={onRunAll}
+              >
                 Run ALL
               </button>
             </div>
@@ -309,7 +384,9 @@ export function LatencyPage({
           <div className="metric-grid">
             <article className="metric-card">
               <p className="metric-label">Average (ms)</p>
-              <p className="metric-value">{fmtMs(report?.averageDelayMs ?? null)}</p>
+              <p className="metric-value">
+                {fmtMs(report?.averageDelayMs ?? null)}
+              </p>
             </article>
             <article className="metric-card">
               <p className="metric-label">Std Dev (ms)</p>
@@ -323,7 +400,8 @@ export function LatencyPage({
 
           <div style={{ marginTop: 10 }}>
             <p className="field-label">
-              Detailed Breakdown | Progress {progressPercent}% | Signal {request.signal}
+              Detailed Breakdown | Progress {progressPercent}% | Signal{" "}
+              {request.signal}
             </p>
             <div className="scroll-box">
               <pre className="mono-pre">{breakdownText}</pre>
@@ -335,18 +413,22 @@ export function LatencyPage({
           <h3 className="section-subheading">Calibration</h3>
 
           <div className="chip-row">
-            {([
-              ["beep1k", "1kHz Beep"],
-              ["beep200", "200Hz Low Beep"],
-              ["beep2k", "Mixed (2kHz Sine)"],
-              ["beep5k", "5kHz Beep"],
-              ["impulse", "Click (Impulse)"]
-            ] as const).map(([key, label]) => (
+            {(
+              [
+                ["beep1k", "1kHz Beep"],
+                ["beep200", "200Hz Low Beep"],
+                ["beep2k", "Mixed (2kHz Sine)"],
+                ["beep5k", "5kHz Beep"],
+                ["impulse", "Click (Impulse)"],
+              ] as const
+            ).map(([key, label]) => (
               <button
                 key={key}
                 type="button"
                 className={`chip-btn ${calibrationMode[key] ? "is-on" : ""}`.trim()}
-                onClick={() => setCalibrationMode((prev) => ({ ...prev, [key]: !prev[key] }))}
+                onClick={() =>
+                  setCalibrationMode((prev) => ({ ...prev, [key]: !prev[key] }))
+                }
               >
                 {label}
               </button>
@@ -362,7 +444,11 @@ export function LatencyPage({
               max={20}
               step={1}
               value={calibrationRepeats}
-              onChange={(event) => setCalibrationRepeats(Math.round(toNumber(event.target.value, 5)))}
+              onChange={(event) =>
+                setCalibrationRepeats(
+                  Math.round(toNumber(event.target.value, 5)),
+                )
+              }
             />
             <span>{calibrationRepeats}</span>
           </div>
@@ -373,9 +459,14 @@ export function LatencyPage({
               className="skin-btn secondary"
               disabled={running}
               onClick={() => {
-                const selected = (Object.entries(calibrationMode) as Array<
-                  ["beep200" | "beep1k" | "beep2k" | "beep5k" | "impulse", boolean]
-                >)
+                const selected = (
+                  Object.entries(calibrationMode) as Array<
+                    [
+                      "beep200" | "beep1k" | "beep2k" | "beep5k" | "impulse",
+                      boolean,
+                    ]
+                  >
+                )
                   .filter(([, enabled]) => enabled)
                   .map(([key]) => key);
                 onCalibrateSelected(selected, calibrationRepeats);

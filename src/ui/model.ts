@@ -1,4 +1,17 @@
-export type PageKey = "latency" | "sweep_fr" | "experimental" | "devices" | "results";
+export type PageKey =
+  | "latency"
+  | "sweep_fr"
+  | "experimental"
+  | "devices"
+  | "results";
+
+export enum PageKeyEnum {
+  Latency = "latency",
+  SweepFr = "sweep_fr",
+  Experimental = "experimental",
+  Devices = "devices",
+  Results = "results",
+}
 
 export type AudioDeviceInfo = {
   index: number;
@@ -124,7 +137,7 @@ export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "sweep_fr", label: "Sweep FR" },
   { key: "devices", label: "Devices / Settings" },
   { key: "results", label: "Results / Export" },
-  { key: "experimental", label: "Experimental Tests" }
+  { key: "experimental", label: "Experimental Tests" },
 ];
 
 export const defaultSettings: AudioSettings = {
@@ -134,7 +147,7 @@ export const defaultSettings: AudioSettings = {
   inputSampleRate: 44100,
   durationSecs: 0.5,
   chunkSize: 1024,
-  itemName: ""
+  itemName: "",
 };
 
 export const defaultLatencyRequest: LatencyRequest = {
@@ -147,11 +160,11 @@ export const defaultLatencyRequest: LatencyRequest = {
   outputDir: "",
   savePerSoundPlot: true,
   saveOverallBarChart: true,
-  calibratedOffsetMs: 0
+  calibratedOffsetMs: 0,
 };
 
 export const defaultLatencyCalibration: LatencyCalibration = {
-  perSoundOffsetsMs: {}
+  perSoundOffsetsMs: {},
 };
 
 export const defaultSweepRequest: SweepRequest = {
@@ -163,31 +176,31 @@ export const defaultSweepRequest: SweepRequest = {
   outputDir: "",
   savePlots: true,
   saveSquiglink: true,
-  monoMode: false
+  monoMode: false,
 };
 
 export const defaultBalanceRequest: BalanceRequest = {
   frequencyHz: 1000,
   toneDurationSecs: 1,
-  settleSecs: 0.2
+  settleSecs: 0.2,
 };
 
 export const defaultCrosstalkRequest: CrosstalkRequest = {
   frequencyHz: 1000,
   toneDurationSecs: 1,
   settleSecs: 0.2,
-  direction: "LtoR"
+  direction: "LtoR",
 };
 
 export const defaultThdRequest: ThdRequest = {
   tones: [100, 1000, 6000],
   toneDurationSecs: 1,
-  amplitude: 0.6
+  amplitude: 0.6,
 };
 
 export const defaultIsolationRequest: IsolationRequest = {
   noiseDurationSecs: 2,
-  amplitude: 0.4
+  amplitude: 0.4,
 };
 
 export function toSelectValue(index: number | null): string {

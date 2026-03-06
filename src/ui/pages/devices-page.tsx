@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState } from "react";
-import { AudioSettings, DeviceInventory, fromSelectValue, toNumber, toSelectValue } from "../model";
+import {
+  AudioSettings,
+  DeviceInventory,
+  fromSelectValue,
+  toNumber,
+  toSelectValue,
+} from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import {
   DEFAULT_APPEARANCE_MODE,
@@ -9,7 +15,7 @@ import {
   normalizeAccentColor,
   normalizeAppearanceMode,
   persistDeviceUiPrefs,
-  readDeviceUiPrefs
+  readDeviceUiPrefs,
 } from "../theme";
 
 type DevicesPageProps = {
@@ -27,18 +33,18 @@ export function DevicesPage({
   experimentalEnabled,
   onChangeExperimentalEnabled,
   onCommitSettings,
-  onRefreshDevices
+  onRefreshDevices,
 }: DevicesPageProps) {
   const storedUiPrefs = useMemo(() => readDeviceUiPrefs(), []);
   const [draft, setDraft] = useState(settings);
   const [appearanceMode, setAppearanceMode] = useState(
-    storedUiPrefs?.appearanceMode ?? DEFAULT_APPEARANCE_MODE
+    storedUiPrefs?.appearanceMode ?? DEFAULT_APPEARANCE_MODE,
   );
   const [accentColor, setAccentColor] = useState(
-    storedUiPrefs?.accentColor ?? DEFAULT_ACCENT_COLOR
+    storedUiPrefs?.accentColor ?? DEFAULT_ACCENT_COLOR,
   );
   const [inputBitDepth, setInputBitDepth] = useState(
-    storedUiPrefs?.inputBitDepth ?? DEFAULT_INPUT_BIT_DEPTH
+    storedUiPrefs?.inputBitDepth ?? DEFAULT_INPUT_BIT_DEPTH,
   );
 
   useEffect(() => {
@@ -49,7 +55,7 @@ export function DevicesPage({
     const snapshot: DeviceUiPrefs = {
       appearanceMode,
       accentColor,
-      inputBitDepth
+      inputBitDepth,
     };
     persistDeviceUiPrefs(snapshot);
   }, [appearanceMode, accentColor, inputBitDepth]);
@@ -77,7 +83,7 @@ export function DevicesPage({
                 onChange={(event) =>
                   setDraft((prev) => ({
                     ...prev,
-                    outputSampleRate: toNumber(event.target.value, 44100)
+                    outputSampleRate: toNumber(event.target.value, 44100),
                   }))
                 }
               />
@@ -91,7 +97,7 @@ export function DevicesPage({
                 onChange={(event) =>
                   setDraft((prev) => ({
                     ...prev,
-                    inputSampleRate: toNumber(event.target.value, 44100)
+                    inputSampleRate: toNumber(event.target.value, 44100),
                   }))
                 }
               />
@@ -106,7 +112,7 @@ export function DevicesPage({
               onChange={(event) =>
                 setDraft((prev) => ({
                   ...prev,
-                  durationSecs: toNumber(event.target.value, 0.5)
+                  durationSecs: toNumber(event.target.value, 0.5),
                 }))
               }
             />
@@ -133,14 +139,18 @@ export function DevicesPage({
               onChange={(event) =>
                 setDraft((prev) => ({
                   ...prev,
-                  itemName: event.target.value
+                  itemName: event.target.value,
                 }))
               }
             />
           </label>
 
           <div className="row-end" style={{ marginTop: 12 }}>
-            <button type="button" className="skin-btn" onClick={() => onCommitSettings(draft)}>
+            <button
+              type="button"
+              className="skin-btn"
+              onClick={() => onCommitSettings(draft)}
+            >
               Apply
             </button>
           </div>
@@ -158,21 +168,26 @@ export function DevicesPage({
                 onChange={(event) =>
                   commitDeviceSelection({
                     ...draft,
-                    outputDeviceIndex: fromSelectValue(event.target.value)
+                    outputDeviceIndex: fromSelectValue(event.target.value),
                   })
                 }
               >
                 <option value="none">System Default</option>
                 {(inventory?.outputs ?? []).map((device) => (
                   <option key={device.index} value={String(device.index)}>
-                    {device.name} ({device.channels}ch @ {device.defaultSampleRate}Hz)
+                    {device.name} ({device.channels}ch @{" "}
+                    {device.defaultSampleRate}Hz)
                   </option>
                 ))}
               </select>
             </label>
 
             <div className="row-end" style={{ alignItems: "end" }}>
-              <button type="button" className="skin-btn secondary" onClick={onRefreshDevices}>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={onRefreshDevices}
+              >
                 Refresh Devices
               </button>
             </div>
@@ -186,14 +201,15 @@ export function DevicesPage({
               onChange={(event) =>
                 commitDeviceSelection({
                   ...draft,
-                  inputDeviceIndex: fromSelectValue(event.target.value)
+                  inputDeviceIndex: fromSelectValue(event.target.value),
                 })
               }
             >
               <option value="none">System Default</option>
               {(inventory?.inputs ?? []).map((device) => (
                 <option key={device.index} value={String(device.index)}>
-                  {device.name} ({device.channels}ch @ {device.defaultSampleRate}Hz)
+                  {device.name} ({device.channels}ch @{" "}
+                  {device.defaultSampleRate}Hz)
                 </option>
               ))}
             </select>
@@ -207,7 +223,10 @@ export function DevicesPage({
             onChange={(event) =>
               setDraft((prev) => ({
                 ...prev,
-                chunkSize: Math.max(64, Math.round(toNumber(event.target.value, 1024)))
+                chunkSize: Math.max(
+                  64,
+                  Math.round(toNumber(event.target.value, 1024)),
+                ),
               }))
             }
           />
@@ -222,7 +241,9 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={appearanceMode}
-                onChange={(event) => setAppearanceMode(normalizeAppearanceMode(event.target.value))}
+                onChange={(event) =>
+                  setAppearanceMode(normalizeAppearanceMode(event.target.value))
+                }
               >
                 <option value="Dark">Dark</option>
                 <option value="Light">Light</option>
@@ -235,7 +256,9 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={accentColor}
-                onChange={(event) => setAccentColor(normalizeAccentColor(event.target.value))}
+                onChange={(event) =>
+                  setAccentColor(normalizeAccentColor(event.target.value))
+                }
               >
                 <option value="Blue">Blue</option>
                 <option value="Teal">Teal</option>
@@ -249,7 +272,9 @@ export function DevicesPage({
             <input
               type="checkbox"
               checked={experimentalEnabled}
-              onChange={(event) => onChangeExperimentalEnabled(event.target.checked)}
+              onChange={(event) =>
+                onChangeExperimentalEnabled(event.target.checked)
+              }
             />
             Enable Experimental Tests
           </label>

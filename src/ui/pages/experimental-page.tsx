@@ -4,7 +4,7 @@ import {
   CrosstalkRequest,
   IsolationRequest,
   ThdRequest,
-  toNumber
+  toNumber,
 } from "../model";
 
 type ExperimentalPageProps = {
@@ -50,7 +50,7 @@ export function ExperimentalPage({
   onRunBalance,
   onRunCrosstalk,
   onRunThd,
-  onRunIsolation
+  onRunIsolation,
 }: ExperimentalPageProps) {
   return (
     <div className="page-stack">
@@ -69,7 +69,7 @@ export function ExperimentalPage({
                 onChange={(event) =>
                   onChangeBalance({
                     ...balanceRequest,
-                    frequencyHz: toNumber(event.target.value, 1000)
+                    frequencyHz: toNumber(event.target.value, 1000),
                   })
                 }
               />
@@ -91,7 +91,7 @@ export function ExperimentalPage({
                   onChange={(event) =>
                     onChangeCrosstalk({
                       ...crosstalkRequest,
-                      frequencyHz: toNumber(event.target.value, 1000)
+                      frequencyHz: toNumber(event.target.value, 1000),
                     })
                   }
                 />
@@ -104,7 +104,8 @@ export function ExperimentalPage({
                   onChange={(event) =>
                     onChangeCrosstalk({
                       ...crosstalkRequest,
-                      direction: event.target.value as CrosstalkRequest["direction"]
+                      direction: event.target
+                        .value as CrosstalkRequest["direction"],
                     })
                   }
                 >
@@ -145,7 +146,7 @@ export function ExperimentalPage({
                   onChange={(event) =>
                     onChangeThdRequest({
                       ...thdRequest,
-                      amplitude: toNumber(event.target.value, 0.6)
+                      amplitude: toNumber(event.target.value, 0.6),
                     })
                   }
                 />
@@ -173,7 +174,7 @@ export function ExperimentalPage({
                   onChange={(event) =>
                     onChangeIsolation({
                       ...isolationRequest,
-                      noiseDurationSecs: toNumber(event.target.value, 2)
+                      noiseDurationSecs: toNumber(event.target.value, 2),
                     })
                   }
                 />
@@ -190,7 +191,7 @@ export function ExperimentalPage({
                   onChange={(event) =>
                     onChangeIsolation({
                       ...isolationRequest,
-                      amplitude: toNumber(event.target.value, 0.4)
+                      amplitude: toNumber(event.target.value, 0.4),
                     })
                   }
                 />

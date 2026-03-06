@@ -7,6 +7,7 @@ import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
 import { startAppearanceThemeSync } from "./theme";
 import { usePawdioLabController } from "./use-pawdio-lab";
+import { PageKeyEnum } from "./model";
 
 export function PawdioLabApp() {
   const controller = usePawdioLabController();
@@ -36,7 +37,7 @@ export function PawdioLabApp() {
             </section>
           )}
 
-          {controller.activePage === "latency" && (
+          {controller.activePage === PageKeyEnum.Latency && (
             <LatencyPage
               request={controller.latencyRequest}
               onChangeRequest={controller.setLatencyRequest}
@@ -45,24 +46,32 @@ export function PawdioLabApp() {
               calibrationText={controller.calibrationText}
               running={controller.running}
               progressPercent={controller.latencyProgressPercent}
-              onRunSelected={(keys) => run(controller.runLatencySelectedTests(keys))}
+              onRunSelected={(keys) =>
+                run(controller.runLatencySelectedTests(keys))
+              }
               onRunAll={() => run(controller.runLatencyAllTests())}
               onSaveReport={() => run(controller.exportLatencyReport())}
-              onBrowseOutputFolder={() => run(controller.browseLatencyOutputFolder())}
+              onBrowseOutputFolder={() =>
+                run(controller.browseLatencyOutputFolder())
+              }
               onCalibrateSelected={(keys, repeats) =>
                 run(controller.calibrateLatencySelected(keys, repeats))
               }
-              onCalibrateAll={(repeats) => run(controller.calibrateLatencyAllPresets(repeats))}
+              onCalibrateAll={(repeats) =>
+                run(controller.calibrateLatencyAllPresets(repeats))
+              }
             />
           )}
 
-          {controller.activePage === "sweep_fr" && (
+          {controller.activePage === PageKeyEnum.SweepFr && (
             <SweepFrPage
               request={controller.sweepRequest}
               onChangeRequest={controller.setSweepRequest}
               running={controller.running}
               onRun={() => run(controller.runSweepFrTest())}
-              onBrowseOutputFolder={() => run(controller.browseSweepOutputFolder())}
+              onBrowseOutputFolder={() =>
+                run(controller.browseSweepOutputFolder())
+              }
               lastResult={controller.sweepLastResult}
               monitor={controller.inputMonitor}
               pinkNoisePlaying={controller.pinkNoisePlaying}
@@ -72,34 +81,39 @@ export function PawdioLabApp() {
               onStopPinkNoise={() => run(controller.stopPinkNoise())}
               onResetPeak={() => run(controller.resetInputMonitorPeak())}
               hasSweepResult={controller.sweepLastResult !== null}
-              hasSweepHistory={controller.results.some((entry) => entry.payload.test === "sweep_fr")}
+              hasSweepHistory={controller.results.some(
+                (entry) => entry.payload.test === "sweep_fr",
+              )}
               onExportLastJson={() => run(controller.exportSweepLastJson())}
               onExportAllJson={() => run(controller.exportSweepAllJson())}
-              onExportLastSquiglink={() => run(controller.exportSweepLastSquiglink())}
+              onExportLastSquiglink={() =>
+                run(controller.exportSweepLastSquiglink())
+              }
             />
           )}
 
-          {controller.activePage === "experimental" && controller.experimentalEnabled && (
-            <ExperimentalPage
-              running={controller.running}
-              balanceRequest={controller.balanceRequest}
-              onChangeBalance={controller.setBalanceRequest}
-              crosstalkRequest={controller.crosstalkRequest}
-              onChangeCrosstalk={controller.setCrosstalkRequest}
-              thdRequest={controller.thdRequest}
-              thdToneText={controller.thdToneText}
-              onChangeThdRequest={controller.setThdRequest}
-              onChangeThdToneText={controller.setThdToneText}
-              isolationRequest={controller.isolationRequest}
-              onChangeIsolation={controller.setIsolationRequest}
-              onRunBalance={() => run(controller.runBalanceTest())}
-              onRunCrosstalk={() => run(controller.runCrosstalkTest())}
-              onRunThd={() => run(controller.runThdTest())}
-              onRunIsolation={() => run(controller.runIsolationTest())}
-            />
-          )}
+          {controller.activePage === PageKeyEnum.Experimental &&
+            controller.experimentalEnabled && (
+              <ExperimentalPage
+                running={controller.running}
+                balanceRequest={controller.balanceRequest}
+                onChangeBalance={controller.setBalanceRequest}
+                crosstalkRequest={controller.crosstalkRequest}
+                onChangeCrosstalk={controller.setCrosstalkRequest}
+                thdRequest={controller.thdRequest}
+                thdToneText={controller.thdToneText}
+                onChangeThdRequest={controller.setThdRequest}
+                onChangeThdToneText={controller.setThdToneText}
+                isolationRequest={controller.isolationRequest}
+                onChangeIsolation={controller.setIsolationRequest}
+                onRunBalance={() => run(controller.runBalanceTest())}
+                onRunCrosstalk={() => run(controller.runCrosstalkTest())}
+                onRunThd={() => run(controller.runThdTest())}
+                onRunIsolation={() => run(controller.runIsolationTest())}
+              />
+            )}
 
-          {controller.activePage === "devices" && (
+          {controller.activePage === PageKeyEnum.Devices && (
             <DevicesPage
               inventory={controller.inventory}
               settings={controller.settings}
@@ -110,7 +124,7 @@ export function PawdioLabApp() {
             />
           )}
 
-          {controller.activePage === "results" && (
+          {controller.activePage === PageKeyEnum.Results && (
             <ResultsPage
               resultText={controller.resultText}
               logText={controller.logText}

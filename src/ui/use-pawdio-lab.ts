@@ -27,7 +27,7 @@ import {
   defaultSweepRequest,
   defaultThdRequest,
   legacyTimestamp,
-  parseToneList
+  parseToneList,
 } from "./model";
 
 type LatencyPresetConfig = {
@@ -76,36 +76,36 @@ const LATENCY_PRESETS: LatencyPresetConfig[] = [
     storageKey: "beep_1k",
     label: "1kHz Beep",
     signal: "sine",
-    frequencyHz: 1000
+    frequencyHz: 1000,
   },
   {
     uiKey: "beep2k",
     storageKey: "beep_2k",
     label: "Mixed (2kHz Sine)",
     signal: "sine",
-    frequencyHz: 2000
+    frequencyHz: 2000,
   },
   {
     uiKey: "beep5k",
     storageKey: "beep_5k",
     label: "5kHz Beep",
     signal: "sine",
-    frequencyHz: 5000
+    frequencyHz: 5000,
   },
   {
     uiKey: "beep200",
     storageKey: "beep_200",
     label: "200Hz Low Beep",
     signal: "sine",
-    frequencyHz: 200
+    frequencyHz: 200,
   },
   {
     uiKey: "impulse",
     storageKey: "impulse",
     label: "Click (Impulse)",
     signal: "impulse",
-    frequencyHz: 1000
-  }
+    frequencyHz: 1000,
+  },
 ];
 
 const DEFAULT_INPUT_MONITOR: InputMonitorState = {
@@ -116,7 +116,7 @@ const DEFAULT_INPUT_MONITOR: InputMonitorState = {
   clipCount: 0,
   splEstimate: -2,
   roughFrHz: [],
-  roughFrDb: []
+  roughFrDb: [],
 };
 
 type PersistedUiState = {
@@ -155,7 +155,10 @@ function readPersistedUiState(): PersistedUiState | null {
   }
 }
 
-function mergeWithDefaults<T extends Record<string, unknown>>(defaults: T, stored: unknown): T {
+function mergeWithDefaults<T extends Record<string, unknown>>(
+  defaults: T,
+  stored: unknown,
+): T {
   const record = toRecord(stored);
   if (!record) {
     return defaults;
@@ -220,7 +223,11 @@ function exportTimestampTag(): string {
   return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
 }
 
-function triggerDownload(content: string, filename: string, mimeType: string): void {
+function triggerDownload(
+  content: string,
+  filename: string,
+  mimeType: string,
+): void {
   const blob = new Blob([content], { type: mimeType });
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement("a");
@@ -233,7 +240,9 @@ function triggerDownload(content: string, filename: string, mimeType: string): v
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
-function sweepAverageCurve(payload: TestPayload): { freqs: number[]; mags: number[] } | null {
+function sweepAverageCurve(
+  payload: TestPayload,
+): { freqs: number[]; mags: number[] } | null {
   const data = recordOrEmpty(payload.data);
   const freqs = numberList(data.freqs);
   if (freqs.length === 0) {
@@ -245,7 +254,7 @@ function sweepAverageCurve(payload: TestPayload): { freqs: number[]; mags: numbe
   if (avgAllLen > 0) {
     return {
       freqs: freqs.slice(0, avgAllLen),
-      mags: avgAll.slice(0, avgAllLen)
+      mags: avgAll.slice(0, avgAllLen),
     };
   }
 
@@ -255,7 +264,9 @@ function sweepAverageCurve(payload: TestPayload): { freqs: number[]; mags: numbe
   if (lrLen > 0) {
     return {
       freqs: freqs.slice(0, lrLen),
-      mags: left.slice(0, lrLen).map((value, index) => (value + right[index]) / 2)
+      mags: left
+        .slice(0, lrLen)
+        .map((value, index) => (value + right[index]) / 2),
     };
   }
 
@@ -263,7 +274,7 @@ function sweepAverageCurve(payload: TestPayload): { freqs: number[]; mags: numbe
   if (leftLen > 0) {
     return {
       freqs: freqs.slice(0, leftLen),
-      mags: left.slice(0, leftLen)
+      mags: left.slice(0, leftLen),
     };
   }
 
@@ -271,7 +282,7 @@ function sweepAverageCurve(payload: TestPayload): { freqs: number[]; mags: numbe
   if (rightLen > 0) {
     return {
       freqs: freqs.slice(0, rightLen),
-      mags: right.slice(0, rightLen)
+      mags: right.slice(0, rightLen),
     };
   }
 
@@ -347,7 +358,7 @@ function calibrationKeyForRequest(request: LatencyRequest): string {
 
 function calibrationOffsetForRequest(
   request: LatencyRequest,
-  calibration: LatencyCalibration
+  calibration: LatencyCalibration,
 ): number {
   const key = calibrationKeyForRequest(request);
   return calibration.perSoundOffsetsMs[key] ?? 0;
@@ -356,7 +367,7 @@ function calibrationOffsetForRequest(
 function applyLatencyCalibration(
   report: LatencyReport,
   request: LatencyRequest,
-  calibration: LatencyCalibration
+  calibration: LatencyCalibration,
 ): LatencyReport {
   const offset = calibrationOffsetForRequest(request, calibration);
   if (offset === 0) {
@@ -365,32 +376,40 @@ function applyLatencyCalibration(
 
   const adjustedMeasurements = report.measurements.map((measurement) => ({
     ...measurement,
-    delayMs: measurement.delayMs === null ? null : measurement.delayMs - offset
+    delayMs: measurement.delayMs === null ? null : measurement.delayMs - offset,
   }));
   const values = adjustedMeasurements
     .map((measurement) => measurement.delayMs)
     .filter((value): value is number => value !== null);
   const average = values.length > 0 ? mean(values) : null;
-  const std = values.length > 0 && average !== null ? stdDev(values, average) : null;
+  const std =
+    values.length > 0 && average !== null ? stdDev(values, average) : null;
 
   return {
     ...report,
     measurements: adjustedMeasurements,
     averageDelayMs: average,
-    stdDevMs: std
+    stdDevMs: std,
   };
 }
 
-function requestForPreset(base: LatencyRequest, preset: LatencyPresetConfig, repeats?: number): LatencyRequest {
+function requestForPreset(
+  base: LatencyRequest,
+  preset: LatencyPresetConfig,
+  repeats?: number,
+): LatencyRequest {
   return {
     ...base,
     signal: preset.signal,
     frequencyHz: preset.frequencyHz,
-    repeats: repeats ?? base.repeats
+    repeats: repeats ?? base.repeats,
   };
 }
 
-function combineGuidedMonoSweepPayload(leftPayload: TestPayload, rightPayload: TestPayload): TestPayload {
+function combineGuidedMonoSweepPayload(
+  leftPayload: TestPayload,
+  rightPayload: TestPayload,
+): TestPayload {
   const leftParams = recordOrEmpty(leftPayload.params);
   const rightParams = recordOrEmpty(rightPayload.params);
   const leftMetrics = recordOrEmpty(leftPayload.metrics);
@@ -412,11 +431,11 @@ function combineGuidedMonoSweepPayload(leftPayload: TestPayload, rightPayload: T
       ...leftParams,
       ...rightParams,
       mono_mode: true,
-      mono_side: "guided_left_then_right"
+      mono_side: "guided_left_then_right",
     },
     metrics: {
       delay_ms_left: leftMetrics.delay_ms_left ?? null,
-      delay_ms_right: rightMetrics.delay_ms_right ?? null
+      delay_ms_right: rightMetrics.delay_ms_right ?? null,
     },
     data: {
       freqs: leftData.freqs ?? rightData.freqs ?? [],
@@ -425,12 +444,12 @@ function combineGuidedMonoSweepPayload(leftPayload: TestPayload, rightPayload: T
       right_mag_db_avg: rightData.right_mag_db_avg ?? [],
       right_mag_db_all: rightAll,
       mag_db_all: combinedAll,
-      mag_db_avg_all: combinedAvg
+      mag_db_avg_all: combinedAvg,
     },
     files: {
       ...leftFiles,
-      ...rightFiles
-    }
+      ...rightFiles,
+    },
   };
 }
 
@@ -438,52 +457,66 @@ export function usePawdioLabController() {
   const persistedUiState = useMemo(() => readPersistedUiState(), []);
 
   const [activePage, setActivePage] = useState<PageKey>(
-    parsePageKey(persistedUiState?.activePage)
+    parsePageKey(persistedUiState?.activePage),
   );
   const [experimentalEnabled, setExperimentalEnabled] = useState(
     typeof persistedUiState?.experimentalEnabled === "boolean"
       ? persistedUiState.experimentalEnabled
-      : true
+      : true,
   );
   const [inventory, setInventory] = useState<DeviceInventory | null>(null);
   const [settings, setSettings] = useState<AudioSettings>(
-    mergeWithDefaults(defaultSettings, persistedUiState?.settings)
+    mergeWithDefaults(defaultSettings, persistedUiState?.settings),
   );
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(
-    mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest)
+    mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
   );
   const [latencyProgress, setLatencyProgress] = useState<LatencyProgress[]>([]);
-  const [latencyReport, setLatencyReport] = useState<LatencyReport | null>(null);
-  const [latencyExportSuite, setLatencyExportSuite] = useState<LatencyExportEntry[]>([]);
+  const [latencyReport, setLatencyReport] = useState<LatencyReport | null>(
+    null,
+  );
+  const [latencyExportSuite, setLatencyExportSuite] = useState<
+    LatencyExportEntry[]
+  >([]);
   const [latencyCalibration, setLatencyCalibration] =
     useState<LatencyCalibration>(defaultLatencyCalibration);
 
   const [sweepRequest, setSweepRequest] = useState<SweepRequest>(
-    mergeWithDefaults(defaultSweepRequest, persistedUiState?.sweepRequest)
+    mergeWithDefaults(defaultSweepRequest, persistedUiState?.sweepRequest),
   );
-  const [sweepLastResult, setSweepLastResult] = useState<TestPayload | null>(null);
-  const [inputMonitor, setInputMonitor] = useState<InputMonitorState>(DEFAULT_INPUT_MONITOR);
+  const [sweepLastResult, setSweepLastResult] = useState<TestPayload | null>(
+    null,
+  );
+  const [inputMonitor, setInputMonitor] = useState<InputMonitorState>(
+    DEFAULT_INPUT_MONITOR,
+  );
   const [pinkNoisePlaying, setPinkNoisePlaying] = useState(false);
 
   const [balanceRequest, setBalanceRequest] = useState(
-    mergeWithDefaults(defaultBalanceRequest, persistedUiState?.balanceRequest)
+    mergeWithDefaults(defaultBalanceRequest, persistedUiState?.balanceRequest),
   );
   const [crosstalkRequest, setCrosstalkRequest] = useState<CrosstalkRequest>(
-    mergeWithDefaults(defaultCrosstalkRequest, persistedUiState?.crosstalkRequest)
+    mergeWithDefaults(
+      defaultCrosstalkRequest,
+      persistedUiState?.crosstalkRequest,
+    ),
   );
   const [thdRequest, setThdRequest] = useState<ThdRequest>(
-    mergeWithDefaults(defaultThdRequest, persistedUiState?.thdRequest)
+    mergeWithDefaults(defaultThdRequest, persistedUiState?.thdRequest),
   );
   const [thdToneText, setThdToneText] = useState(
     typeof persistedUiState?.thdToneText === "string"
       ? persistedUiState.thdToneText
-      : defaultThdRequest.tones.join(", ")
+      : defaultThdRequest.tones.join(", "),
   );
   const [isolationRequest, setIsolationRequest] = useState<IsolationRequest>(
-    mergeWithDefaults(defaultIsolationRequest, persistedUiState?.isolationRequest)
+    mergeWithDefaults(
+      defaultIsolationRequest,
+      persistedUiState?.isolationRequest,
+    ),
   );
 
   const [logs, setLogs] = useState<string[]>([]);
@@ -501,12 +534,15 @@ export function usePawdioLabController() {
   const logText = useMemo(() => logs.join("\n"), [logs]);
 
   const resultText = useMemo(() => {
-    return results.map((entry) => JSON.stringify(entry.payload, null, 2)).join("\n\n");
+    return results
+      .map((entry) => JSON.stringify(entry.payload, null, 2))
+      .join("\n\n");
   }, [results]);
 
   const calibrationText = useMemo(() => {
     const ordered = LATENCY_PRESETS.map((preset) => {
-      const value = latencyCalibration.perSoundOffsetsMs[preset.storageKey] ?? 0;
+      const value =
+        latencyCalibration.perSoundOffsetsMs[preset.storageKey] ?? 0;
       return `- ${preset.label}: ${value.toFixed(2)}`;
     });
     return ["Per-sound baselines (ms):", ...ordered].join("\n");
@@ -542,13 +578,17 @@ export function usePawdioLabController() {
     try {
       const [devices, liveSettings] = await Promise.all([
         invoke<DeviceInventory>("list_audio_devices"),
-        invoke<AudioSettings>("get_audio_settings")
+        invoke<AudioSettings>("get_audio_settings"),
       ]);
 
       setInventory(devices);
       const merged = { ...liveSettings, ...settings };
-      const outputIndices = new Set(devices.outputs.map((device) => device.index));
-      const inputIndices = new Set(devices.inputs.map((device) => device.index));
+      const outputIndices = new Set(
+        devices.outputs.map((device) => device.index),
+      );
+      const inputIndices = new Set(
+        devices.inputs.map((device) => device.index),
+      );
       if (
         merged.outputDeviceIndex !== null &&
         !outputIndices.has(merged.outputDeviceIndex)
@@ -561,13 +601,21 @@ export function usePawdioLabController() {
       ) {
         merged.inputDeviceIndex = null;
       }
-      if (merged.outputDeviceIndex === null && devices.defaultOutputIndex !== null) {
+      if (
+        merged.outputDeviceIndex === null &&
+        devices.defaultOutputIndex !== null
+      ) {
         merged.outputDeviceIndex = devices.defaultOutputIndex;
       }
-      if (merged.inputDeviceIndex === null && devices.defaultInputIndex !== null) {
+      if (
+        merged.inputDeviceIndex === null &&
+        devices.defaultInputIndex !== null
+      ) {
         merged.inputDeviceIndex = devices.defaultInputIndex;
       }
-      const committed = await invoke<AudioSettings>("set_audio_settings", { settings: merged });
+      const committed = await invoke<AudioSettings>("set_audio_settings", {
+        settings: merged,
+      });
       setSettings(committed);
     } catch (err) {
       setError(String(err));
@@ -578,8 +626,12 @@ export function usePawdioLabController() {
   async function commitSettings(next: AudioSettings) {
     const normalized = { ...next };
     if (inventory) {
-      const outputIndices = new Set(inventory.outputs.map((device) => device.index));
-      const inputIndices = new Set(inventory.inputs.map((device) => device.index));
+      const outputIndices = new Set(
+        inventory.outputs.map((device) => device.index),
+      );
+      const inputIndices = new Set(
+        inventory.inputs.map((device) => device.index),
+      );
       if (
         normalized.outputDeviceIndex !== null &&
         !outputIndices.has(normalized.outputDeviceIndex)
@@ -596,7 +648,7 @@ export function usePawdioLabController() {
     setSettings(normalized);
     try {
       const committed = await invoke<AudioSettings>("set_audio_settings", {
-        settings: normalized
+        settings: normalized,
       });
       setSettings(committed);
     } catch (err) {
@@ -605,7 +657,11 @@ export function usePawdioLabController() {
     }
   }
 
-  async function runPayloadTest(command: string, request: unknown, startLog: string) {
+  async function runPayloadTest(
+    command: string,
+    request: unknown,
+    startLog: string,
+  ) {
     if (running) {
       return;
     }
@@ -623,7 +679,7 @@ export function usePawdioLabController() {
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
-      status: "Monitoring stopped."
+      status: "Monitoring stopped.",
     }));
     setRunning(true);
     setError(null);
@@ -631,7 +687,10 @@ export function usePawdioLabController() {
 
     try {
       const payload = await invoke<TestPayload>(command, { request });
-      appendResult({ ...payload, timestamp: legacyTimestamp(payload.timestamp) });
+      appendResult({
+        ...payload,
+        timestamp: legacyTimestamp(payload.timestamp),
+      });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -640,17 +699,26 @@ export function usePawdioLabController() {
     }
   }
 
-  async function invokeLatencyRaw(request: LatencyRequest): Promise<LatencyReport> {
+  async function invokeLatencyRaw(
+    request: LatencyRequest,
+  ): Promise<LatencyReport> {
     return invoke<LatencyReport>("run_latency_test", { request });
   }
 
   async function runLatencyOnce(
     request: LatencyRequest,
-    includeResult = true
+    includeResult = true,
   ): Promise<LatencyRunResult> {
     const rawReport = await invokeLatencyRaw(request);
-    const calibratedOffsetMs = calibrationOffsetForRequest(request, latencyCalibration);
-    const calibratedReport = applyLatencyCalibration(rawReport, request, latencyCalibration);
+    const calibratedOffsetMs = calibrationOffsetForRequest(
+      request,
+      latencyCalibration,
+    );
+    const calibratedReport = applyLatencyCalibration(
+      rawReport,
+      request,
+      latencyCalibration,
+    );
     if (includeResult) {
       appendResult({
         test: "latency",
@@ -662,19 +730,19 @@ export function usePawdioLabController() {
           repeats: request.repeats,
           amplitude: request.amplitude,
           record_margin: request.recordMarginSecs,
-          calibrated_offset_ms: calibratedOffsetMs
+          calibrated_offset_ms: calibratedOffsetMs,
         },
         metrics: {
           average_delay_ms: calibratedReport.averageDelayMs,
           std_dev_ms: calibratedReport.stdDevMs,
-          cancelled: calibratedReport.cancelled
+          cancelled: calibratedReport.cancelled,
         },
         data: {
           sample_rate: calibratedReport.sampleRate,
           input_sample_rate: calibratedReport.inputSampleRate,
-          measurements: calibratedReport.measurements
+          measurements: calibratedReport.measurements,
         },
-        files: {}
+        files: {},
       });
     }
     return { report: calibratedReport, calibratedOffsetMs };
@@ -698,7 +766,7 @@ export function usePawdioLabController() {
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
-      status: "Monitoring stopped."
+      status: "Monitoring stopped.",
     }));
     setRunning(true);
     setError(null);
@@ -709,13 +777,16 @@ export function usePawdioLabController() {
 
     try {
       const request = { ...latencyRequest };
-      const { report, calibratedOffsetMs } = await runLatencyOnce(request, true);
+      const { report, calibratedOffsetMs } = await runLatencyOnce(
+        request,
+        true,
+      );
       setLatencyReport(report);
       setLatencyExportSuite([
         {
           request: { ...request, calibratedOffsetMs },
-          report
-        }
+          report,
+        },
       ]);
     } catch (err) {
       setError(String(err));
@@ -748,7 +819,7 @@ export function usePawdioLabController() {
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
-      status: "Monitoring stopped."
+      status: "Monitoring stopped.",
     }));
     setRunning(true);
     setError(null);
@@ -762,18 +833,21 @@ export function usePawdioLabController() {
       for (const preset of presets) {
         const request = {
           ...requestForPreset(latencyRequest, preset),
-          saveOverallBarChart: false
+          saveOverallBarChart: false,
         };
         appendLog(`[latency] ${preset.label} started`);
-        const { report, calibratedOffsetMs } = await runLatencyOnce(request, true);
+        const { report, calibratedOffsetMs } = await runLatencyOnce(
+          request,
+          true,
+        );
         setLatencyReport(report);
         suiteEntries.push({
           request: {
             ...request,
             saveOverallBarChart: latencyRequest.saveOverallBarChart,
-            calibratedOffsetMs
+            calibratedOffsetMs,
           },
-          report
+          report,
         });
         if (report.cancelled) {
           appendLog("[latency] preset suite cancelled");
@@ -783,10 +857,13 @@ export function usePawdioLabController() {
       setLatencyExportSuite(suiteEntries);
       if (latencyRequest.saveOverallBarChart && suiteEntries.length > 0) {
         try {
-          const barPath = await invoke<string>("save_latency_overall_bar_chart", {
-            request: { ...latencyRequest, calibratedOffsetMs: 0 },
-            suite: suiteEntries
-          });
+          const barPath = await invoke<string>(
+            "save_latency_overall_bar_chart",
+            {
+              request: { ...latencyRequest, calibratedOffsetMs: 0 },
+              suite: suiteEntries,
+            },
+          );
           appendLog(`[latency] overall bar chart saved -> ${barPath}`);
         } catch (barError) {
           appendLog(`[latency] overall bar chart failed: ${String(barError)}`);
@@ -802,9 +879,11 @@ export function usePawdioLabController() {
   }
 
   async function runLatencySelectedTests(
-    selectedUiKeys: Array<LatencyPresetConfig["uiKey"]>
+    selectedUiKeys: Array<LatencyPresetConfig["uiKey"]>,
   ) {
-    const selected = LATENCY_PRESETS.filter((preset) => selectedUiKeys.includes(preset.uiKey));
+    const selected = LATENCY_PRESETS.filter((preset) =>
+      selectedUiKeys.includes(preset.uiKey),
+    );
     await runLatencyPresetSuite(selected);
   }
 
@@ -814,7 +893,7 @@ export function usePawdioLabController() {
 
   async function calibrateLatencySelected(
     selectedUiKeys: Array<LatencyPresetConfig["uiKey"]>,
-    repeats: number
+    repeats: number,
   ) {
     if (running) {
       return;
@@ -833,7 +912,7 @@ export function usePawdioLabController() {
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
-      status: "Monitoring stopped."
+      status: "Monitoring stopped.",
     }));
     setRunning(true);
     setError(null);
@@ -841,18 +920,22 @@ export function usePawdioLabController() {
 
     const updates: Record<string, number> = {};
     try {
-      const selected = LATENCY_PRESETS.filter((preset) => selectedUiKeys.includes(preset.uiKey));
+      const selected = LATENCY_PRESETS.filter((preset) =>
+        selectedUiKeys.includes(preset.uiKey),
+      );
       for (const preset of selected) {
         const request = {
           ...requestForPreset(latencyRequest, preset, repeats),
           savePerSoundPlot: false,
-          saveOverallBarChart: false
+          saveOverallBarChart: false,
         };
         appendLog(`[calibration] ${preset.label} measuring...`);
         const report = await invokeLatencyRaw(request);
         if (report.averageDelayMs !== null) {
           updates[preset.storageKey] = report.averageDelayMs;
-          appendLog(`[calibration] ${preset.label} baseline = ${report.averageDelayMs.toFixed(2)} ms`);
+          appendLog(
+            `[calibration] ${preset.label} baseline = ${report.averageDelayMs.toFixed(2)} ms`,
+          );
         } else {
           appendLog(`[calibration] ${preset.label} failed`);
         }
@@ -860,7 +943,7 @@ export function usePawdioLabController() {
       if (Object.keys(updates).length > 0) {
         setLatencyCalibration((prev) => ({
           ...prev,
-          perSoundOffsetsMs: { ...prev.perSoundOffsetsMs, ...updates }
+          perSoundOffsetsMs: { ...prev.perSoundOffsetsMs, ...updates },
         }));
       }
       appendLog("[calibration] selected presets complete");
@@ -875,11 +958,13 @@ export function usePawdioLabController() {
   async function calibrateLatencyAllPresets(repeats: number) {
     await calibrateLatencySelected(
       LATENCY_PRESETS.map((preset) => preset.uiKey),
-      repeats
+      repeats,
     );
   }
 
-  async function invokeSweepFrRaw(request: SweepInvokeRequest): Promise<TestPayload> {
+  async function invokeSweepFrRaw(
+    request: SweepInvokeRequest,
+  ): Promise<TestPayload> {
     return invoke<TestPayload>("run_sweep_fr_test", { request });
   }
 
@@ -891,7 +976,7 @@ export function usePawdioLabController() {
     if (
       monoGuided &&
       !window.confirm(
-        "Mono mode: place the LEFT side on the measurement position, then click OK to run the LEFT sweep."
+        "Mono mode: place the LEFT side on the measurement position, then click OK to run the LEFT sweep.",
       )
     ) {
       appendLog("[SWEEP FR] mono run cancelled before LEFT sweep");
@@ -911,29 +996,40 @@ export function usePawdioLabController() {
     setInputMonitor((prev) => ({
       ...prev,
       monitoring: false,
-      status: "Monitoring stopped."
+      status: "Monitoring stopped.",
     }));
     setRunning(true);
     setError(null);
     appendLog(
-      monoGuided ? "[SWEEP FR] mono guided run started (LEFT -> RIGHT)" : "[SWEEP FR] running"
+      monoGuided
+        ? "[SWEEP FR] mono guided run started (LEFT -> RIGHT)"
+        : "[SWEEP FR] running",
     );
     try {
       if (!monoGuided) {
         const payload = await invokeSweepFrRaw(sweepRequest);
-        const normalized = { ...payload, timestamp: legacyTimestamp(payload.timestamp) };
+        const normalized = {
+          ...payload,
+          timestamp: legacyTimestamp(payload.timestamp),
+        };
         setSweepLastResult(normalized);
         appendResult(normalized);
       } else {
         appendLog("[SWEEP FR] running LEFT sweep");
-        const leftPayload = await invokeSweepFrRaw({ ...sweepRequest, monoSide: "left" });
+        const leftPayload = await invokeSweepFrRaw({
+          ...sweepRequest,
+          monoSide: "left",
+        });
         appendLog("[SWEEP FR] LEFT sweep complete");
 
         const proceedRight = window.confirm(
-          "Now place the RIGHT side on the measurement position, then click OK to run the RIGHT sweep."
+          "Now place the RIGHT side on the measurement position, then click OK to run the RIGHT sweep.",
         );
         if (!proceedRight) {
-          const leftOnly = { ...leftPayload, timestamp: legacyTimestamp(leftPayload.timestamp) };
+          const leftOnly = {
+            ...leftPayload,
+            timestamp: legacyTimestamp(leftPayload.timestamp),
+          };
           setSweepLastResult(leftOnly);
           appendResult(leftOnly);
           appendLog("[SWEEP FR] mono run stopped after LEFT sweep");
@@ -941,11 +1037,17 @@ export function usePawdioLabController() {
         }
 
         appendLog("[SWEEP FR] running RIGHT sweep");
-        const rightPayload = await invokeSweepFrRaw({ ...sweepRequest, monoSide: "right" });
-        const combinedPayload = combineGuidedMonoSweepPayload(leftPayload, rightPayload);
+        const rightPayload = await invokeSweepFrRaw({
+          ...sweepRequest,
+          monoSide: "right",
+        });
+        const combinedPayload = combineGuidedMonoSweepPayload(
+          leftPayload,
+          rightPayload,
+        );
         const normalized = {
           ...combinedPayload,
-          timestamp: legacyTimestamp(combinedPayload.timestamp)
+          timestamp: legacyTimestamp(combinedPayload.timestamp),
         };
         setSweepLastResult(normalized);
         appendResult(normalized);
@@ -978,7 +1080,7 @@ export function usePawdioLabController() {
       setInputMonitor((prev) => ({
         ...prev,
         monitoring: true,
-        status: "Monitoring input..."
+        status: "Monitoring input...",
       }));
       appendLog("[monitor] started");
     } catch (err) {
@@ -993,7 +1095,7 @@ export function usePawdioLabController() {
       setInputMonitor((prev) => ({
         ...prev,
         monitoring: false,
-        status: "Monitoring stopped."
+        status: "Monitoring stopped.",
       }));
       appendLog("[monitor] stopped");
     } catch (err) {
@@ -1020,7 +1122,7 @@ export function usePawdioLabController() {
       setPinkNoisePlaying(true);
       setInputMonitor((prev) => ({
         ...prev,
-        status: prev.monitoring ? prev.status : "Playing pink noise..."
+        status: prev.monitoring ? prev.status : "Playing pink noise...",
       }));
       appendLog("[pink-noise] started");
     } catch (err) {
@@ -1035,7 +1137,7 @@ export function usePawdioLabController() {
       setPinkNoisePlaying(false);
       setInputMonitor((prev) => ({
         ...prev,
-        status: prev.monitoring ? prev.status : "Pink noise stopped."
+        status: prev.monitoring ? prev.status : "Pink noise stopped.",
       }));
       appendLog("[pink-noise] stopped");
     } catch (err) {
@@ -1053,16 +1155,24 @@ export function usePawdioLabController() {
     setInputMonitor((prev) => ({
       ...prev,
       peakDbfs: prev.currentDbfs,
-      clipCount: 0
+      clipCount: 0,
     }));
   }
 
   async function runBalanceTest() {
-    await runPayloadTest("run_balance_test", balanceRequest, "[BALANCE] running");
+    await runPayloadTest(
+      "run_balance_test",
+      balanceRequest,
+      "[BALANCE] running",
+    );
   }
 
   async function runCrosstalkTest() {
-    await runPayloadTest("run_crosstalk_test", crosstalkRequest, "[CROSSTALK] running");
+    await runPayloadTest(
+      "run_crosstalk_test",
+      crosstalkRequest,
+      "[CROSSTALK] running",
+    );
   }
 
   async function runThdTest() {
@@ -1077,7 +1187,11 @@ export function usePawdioLabController() {
   }
 
   async function runIsolationTest() {
-    await runPayloadTest("run_isolation_test", isolationRequest, "[ISOLATION] running");
+    await runPayloadTest(
+      "run_isolation_test",
+      isolationRequest,
+      "[ISOLATION] running",
+    );
   }
 
   async function exportLatencyReport() {
@@ -1091,7 +1205,7 @@ export function usePawdioLabController() {
       const path = await invoke<string>("export_latency_report", {
         request: latest.request,
         report: latest.report,
-        suite: latencyExportSuite
+        suite: latencyExportSuite,
       });
       appendLog(`[latency] report saved -> ${path}`);
     } catch (err) {
@@ -1112,7 +1226,7 @@ export function usePawdioLabController() {
       triggerDownload(
         `${JSON.stringify(sweepLastResult, null, 2)}\n`,
         filename,
-        "application/json;charset=utf-8"
+        "application/json;charset=utf-8",
       );
       appendLog(`[sweep_fr] exported LAST JSON -> ${filename}`);
     } catch (err) {
@@ -1136,14 +1250,16 @@ export function usePawdioLabController() {
       const bundle = {
         generatedAt: new Date().toISOString(),
         count: sweepResults.length,
-        results: sweepResults
+        results: sweepResults,
       };
       triggerDownload(
         `${JSON.stringify(bundle, null, 2)}\n`,
         filename,
-        "application/json;charset=utf-8"
+        "application/json;charset=utf-8",
       );
-      appendLog(`[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${filename}`);
+      appendLog(
+        `[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${filename}`,
+      );
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1167,12 +1283,18 @@ export function usePawdioLabController() {
       const filename = `squiglink_avg_${exportTimestampTag()}.txt`;
       const lines = [
         "# PawdioLab Frequency Response - Average (L+R)",
-        "# Frequency(Hz)\tAmplitude(dB)"
+        "# Frequency(Hz)\tAmplitude(dB)",
       ];
       for (let index = 0; index < curve.freqs.length; index += 1) {
-        lines.push(`${curve.freqs[index].toFixed(2)}\t${curve.mags[index].toFixed(3)}`);
+        lines.push(
+          `${curve.freqs[index].toFixed(2)}\t${curve.mags[index].toFixed(3)}`,
+        );
       }
-      triggerDownload(`${lines.join("\n")}\n`, filename, "text/plain;charset=utf-8");
+      triggerDownload(
+        `${lines.join("\n")}\n`,
+        filename,
+        "text/plain;charset=utf-8",
+      );
       appendLog(`[sweep_fr] exported LAST Squiglink -> ${filename}`);
     } catch (err) {
       setError(String(err));
@@ -1186,7 +1308,7 @@ export function usePawdioLabController() {
       const selected = await open({
         directory: true,
         multiple: false,
-        defaultPath: latencyRequest.outputDir || undefined
+        defaultPath: latencyRequest.outputDir || undefined,
       });
       if (typeof selected === "string" && selected.length > 0) {
         setLatencyRequest((prev) => ({ ...prev, outputDir: selected }));
@@ -1204,7 +1326,7 @@ export function usePawdioLabController() {
       const selected = await open({
         directory: true,
         multiple: false,
-        defaultPath: sweepRequest.outputDir || undefined
+        defaultPath: sweepRequest.outputDir || undefined,
       });
       if (typeof selected === "string" && selected.length > 0) {
         setSweepRequest((prev) => ({ ...prev, outputDir: selected }));
@@ -1223,7 +1345,7 @@ export function usePawdioLabController() {
       setInputMonitor((prev) => ({
         ...prev,
         monitoring: false,
-        status: "Monitoring stopped."
+        status: "Monitoring stopped.",
       }));
       appendLog("[runtime] stop requested");
     } catch (err) {
@@ -1263,7 +1385,7 @@ export function usePawdioLabController() {
       const parsed = JSON.parse(raw) as LatencyCalibration;
       if (parsed && typeof parsed === "object") {
         setLatencyCalibration({
-          perSoundOffsetsMs: parsed.perSoundOffsetsMs ?? {}
+          perSoundOffsetsMs: parsed.perSoundOffsetsMs ?? {},
         });
       }
     } catch {
@@ -1273,7 +1395,10 @@ export function usePawdioLabController() {
 
   useEffect(() => {
     try {
-      localStorage.setItem(CALIBRATION_STORAGE_KEY, JSON.stringify(latencyCalibration));
+      localStorage.setItem(
+        CALIBRATION_STORAGE_KEY,
+        JSON.stringify(latencyCalibration),
+      );
     } catch {
       // ignore storage write issues
     }
@@ -1296,7 +1421,7 @@ export function usePawdioLabController() {
       crosstalkRequest,
       thdRequest,
       thdToneText,
-      isolationRequest
+      isolationRequest,
     };
     try {
       localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(snapshot));
@@ -1313,7 +1438,7 @@ export function usePawdioLabController() {
     crosstalkRequest,
     thdRequest,
     thdToneText,
-    isolationRequest
+    isolationRequest,
   ]);
 
   useEffect(() => {
@@ -1339,11 +1464,14 @@ export function usePawdioLabController() {
 
     listen<TestProgress>("test-progress", (event) => {
       appendLog(`[${event.payload.test}] ${event.payload.message}`);
-      if (event.payload.test === "monitor" && event.payload.message.toLowerCase().includes("error")) {
+      if (
+        event.payload.test === "monitor" &&
+        event.payload.message.toLowerCase().includes("error")
+      ) {
         setInputMonitor((prev) => ({
           ...prev,
           monitoring: false,
-          status: "Monitor error. Check input device/sample rate."
+          status: "Monitor error. Check input device/sample rate.",
         }));
       }
       if (
@@ -1353,7 +1481,7 @@ export function usePawdioLabController() {
         setPinkNoisePlaying(false);
         setInputMonitor((prev) => ({
           ...prev,
-          status: "Pink noise error. Check output device/sample rate."
+          status: "Pink noise error. Check output device/sample rate.",
         }));
       }
     })
@@ -1377,13 +1505,15 @@ export function usePawdioLabController() {
           clipCount: clips,
           splEstimate: current + 94,
           roughFrHz:
-            Array.isArray(event.payload.roughFrHz) && event.payload.roughFrHz.length > 0
+            Array.isArray(event.payload.roughFrHz) &&
+            event.payload.roughFrHz.length > 0
               ? event.payload.roughFrHz
               : prev.roughFrHz,
           roughFrDb:
-            Array.isArray(event.payload.roughFrDb) && event.payload.roughFrDb.length > 0
+            Array.isArray(event.payload.roughFrDb) &&
+            event.payload.roughFrDb.length > 0
               ? event.payload.roughFrDb
-              : prev.roughFrDb
+              : prev.roughFrDb,
         };
       });
     })
@@ -1466,7 +1596,7 @@ export function usePawdioLabController() {
     stopTest,
     copyLogs,
     clearLogs,
-    clearResults
+    clearResults,
   };
 }
 
