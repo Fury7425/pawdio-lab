@@ -91,6 +91,8 @@ pub struct LatencyTestRequest {
     pub record_margin_secs: f32,
     #[serde(default)]
     pub output_dir: Option<String>,
+    #[serde(default)]
+    pub run_tag: Option<String>,
     #[serde(default = "default_true")]
     pub save_per_sound_plot: bool,
     #[serde(default = "default_true")]
@@ -109,6 +111,7 @@ impl Default for LatencyTestRequest {
             repeats: 5,
             record_margin_secs: 1.0,
             output_dir: None,
+            run_tag: None,
             save_per_sound_plot: true,
             save_overall_bar_chart: true,
             calibrated_offset_ms: 0.0,
@@ -476,13 +479,13 @@ impl AudioEngine {
             timestamp_utc: timestamp_string(),
         };
 
-        let run_tag = timestamp_filename();
+        let run_tag = resolve_run_tag(request.run_tag.as_deref());
         let output_dir = resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag);
         if request.save_per_sound_plot {
             if let (Some(rec), Some(reference), Some(avg_delay)) =
                 (first_recorded.as_ref(), first_reference.as_ref(), report.average_delay_ms)
             {
-                if let Ok(path) = latency_plot_path(&output_dir, &preset_key) {
+                if let Ok(path) = latency_plot_path(&output_dir, &preset_key, &run_tag) {
                     if save_latency_plot(
                         &path,
                         rec,
@@ -510,7 +513,7 @@ impl AudioEngine {
         }
 
         if request.save_overall_bar_chart && !valid.is_empty() {
-            if let Ok(path) = overall_bar_path(&output_dir) {
+            if let Ok(path) = overall_bar_path(&output_dir, &run_tag) {
                 let bars = vec![(preset_name.clone(), valid.clone())];
                 if save_overall_bar_chart(&path, &bars).is_ok() {
                     let _ = app.emit(
@@ -536,7 +539,7 @@ impl AudioEngine {
         report: &LatencyTestReport,
         item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let run_tag = timestamp_filename();
+        let run_tag = resolve_run_tag(request.run_tag.as_deref());
         let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
         ensure_output_dir(&output_dir)?;
         let path = output_dir.join(format!("latency_report_{run_tag}.txt"));
@@ -550,7 +553,11 @@ impl AudioEngine {
         suite: &[LatencyExportEntry],
         item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let run_tag = timestamp_filename();
+        let run_tag = request
+            .run_tag
+            .as_deref()
+            .or_else(|| suite.iter().find_map(|entry| entry.request.run_tag.as_deref()));
+        let run_tag = resolve_run_tag(run_tag);
         let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
         ensure_output_dir(&output_dir)?;
         let path = output_dir.join(format!("latency_report_{run_tag}.txt"));
@@ -564,7 +571,11 @@ impl AudioEngine {
         suite: &[LatencyExportEntry],
         item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let run_tag = timestamp_filename();
+        let run_tag = request
+            .run_tag
+            .as_deref()
+            .or_else(|| suite.iter().find_map(|entry| entry.request.run_tag.as_deref()));
+        let run_tag = resolve_run_tag(run_tag);
         let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
         ensure_output_dir(&output_dir)?;
         let path = output_dir.join(format!("overall_bar_{run_tag}.png"));
@@ -1596,7 +1607,7 @@ fn resolve_output_dir(requested: &Option<String>) -> PathBuf {
     candidate.unwrap_or_else(default_output_dir)
 }
 
-fn sanitize_output_name(raw: &str) -> String {
+fn sanitize_component(raw: &str, fallback: &str) -> String {
     let mut out = String::with_capacity(raw.len());
     for ch in raw.trim().chars() {
         let invalid = matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control();
@@ -1608,10 +1619,27 @@ fn sanitize_output_name(raw: &str) -> String {
     }
     let cleaned = out.trim_matches(|c| c == ' ' || c == '.').trim().to_string();
     if cleaned.is_empty() {
-        "item".to_string()
+        fallback.to_string()
     } else {
         cleaned
     }
+}
+
+fn sanitize_output_name(raw: &str) -> String {
+    sanitize_component(raw, "item")
+}
+
+fn sanitize_run_tag(raw: &str) -> String {
+    sanitize_component(raw, "run").replace(' ', "_")
+}
+
+fn resolve_run_tag(requested: Option<&str>) -> String {
+    requested
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(sanitize_run_tag)
+        .filter(|value| value != "run")
+        .unwrap_or_else(timestamp_filename)
 }
 
 fn resolve_measurement_output_dir(requested: &Option<String>, item_name: &str, run_tag: &str) -> PathBuf {
@@ -1675,17 +1703,14 @@ fn latency_preset_identity(signal: TestSignalKind, frequency_hz: f32) -> (String
     }
 }
 
-fn latency_plot_path(output_dir: &Path, preset_key: &str) -> Result<PathBuf, AudioError> {
+fn latency_plot_path(output_dir: &Path, preset_key: &str, run_tag: &str) -> Result<PathBuf, AudioError> {
     ensure_output_dir(output_dir)?;
-    Ok(output_dir.join(format!(
-        "{preset_key}_plot_{}.png",
-        timestamp_filename()
-    )))
+    Ok(output_dir.join(format!("{preset_key}_plot_{run_tag}.png")))
 }
 
-fn overall_bar_path(output_dir: &Path) -> Result<PathBuf, AudioError> {
+fn overall_bar_path(output_dir: &Path, run_tag: &str) -> Result<PathBuf, AudioError> {
     ensure_output_dir(output_dir)?;
-    Ok(output_dir.join(format!("overall_bar_{}.png", timestamp_filename())))
+    Ok(output_dir.join(format!("overall_bar_{run_tag}.png")))
 }
 
 fn latency_bars_from_suite(suite: &[LatencyExportEntry]) -> Vec<(String, Vec<f32>)> {

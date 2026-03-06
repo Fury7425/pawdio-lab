@@ -38,8 +38,12 @@ type LatencyPresetConfig = {
   frequencyHz: number;
 };
 
+type LatencyCommandRequest = LatencyRequest & {
+  runTag?: string;
+};
+
 type LatencyExportEntry = {
-  request: LatencyRequest;
+  request: LatencyCommandRequest;
   report: LatencyReport;
 };
 
@@ -209,8 +213,7 @@ function numberList(value: unknown): number[] {
     .filter((item) => Number.isFinite(item));
 }
 
-function exportTimestampTag(): string {
-  const now = new Date();
+function exportTimestampTag(now = new Date()): string {
   const yyyy = now.getFullYear();
   const mm = String(now.getMonth() + 1).padStart(2, "0");
   const dd = String(now.getDate()).padStart(2, "0");
@@ -218,6 +221,12 @@ function exportTimestampTag(): string {
   const mi = String(now.getMinutes()).padStart(2, "0");
   const ss = String(now.getSeconds()).padStart(2, "0");
   return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
+}
+
+function createLatencyRunTag(): string {
+  const now = new Date();
+  const ms = String(now.getMilliseconds()).padStart(3, "0");
+  return `${exportTimestampTag(now)}_${ms}`;
 }
 
 function triggerDownload(content: string, filename: string, mimeType: string): void {
@@ -640,12 +649,12 @@ export function usePawdioLabController() {
     }
   }
 
-  async function invokeLatencyRaw(request: LatencyRequest): Promise<LatencyReport> {
+  async function invokeLatencyRaw(request: LatencyCommandRequest): Promise<LatencyReport> {
     return invoke<LatencyReport>("run_latency_test", { request });
   }
 
   async function runLatencyOnce(
-    request: LatencyRequest,
+    request: LatencyCommandRequest,
     includeResult = true
   ): Promise<LatencyRunResult> {
     const rawReport = await invokeLatencyRaw(request);
@@ -680,6 +689,18 @@ export function usePawdioLabController() {
     return { report: calibratedReport, calibratedOffsetMs };
   }
 
+  async function saveLatencyTextReport(entries: LatencyExportEntry[]): Promise<string> {
+    if (entries.length === 0) {
+      throw new Error("No latency report to export yet.");
+    }
+    const latest = entries[entries.length - 1];
+    return invoke<string>("export_latency_report", {
+      request: latest.request,
+      report: latest.report,
+      suite: entries
+    });
+  }
+
   async function runLatencyTest() {
     if (running) {
       return;
@@ -708,15 +729,28 @@ export function usePawdioLabController() {
     appendLog(`[latency] started (${latencyRequest.signal})`);
 
     try {
-      const request = { ...latencyRequest };
+      const request: LatencyCommandRequest = {
+        ...latencyRequest,
+        runTag: createLatencyRunTag()
+      };
       const { report, calibratedOffsetMs } = await runLatencyOnce(request, true);
-      setLatencyReport(report);
-      setLatencyExportSuite([
+      const entries: LatencyExportEntry[] = [
         {
           request: { ...request, calibratedOffsetMs },
           report
         }
-      ]);
+      ];
+      setLatencyReport(report);
+      setLatencyExportSuite(entries);
+      if (request.saveTextReport) {
+        try {
+          const path = await saveLatencyTextReport(entries);
+          appendLog(`[latency] report saved -> ${path}`);
+        } catch (reportError) {
+          setError(String(reportError));
+          appendLog(`[error] ${String(reportError)}`);
+        }
+      }
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -758,10 +792,16 @@ export function usePawdioLabController() {
     appendLog(`[latency] preset suite started (${presets.length})`);
 
     try {
+      const suiteRunTag = createLatencyRunTag();
+      const suiteBaseRequest: LatencyCommandRequest = {
+        ...latencyRequest,
+        runTag: suiteRunTag
+      };
       const suiteEntries: LatencyExportEntry[] = [];
       for (const preset of presets) {
-        const request = {
-          ...requestForPreset(latencyRequest, preset),
+        const request: LatencyCommandRequest = {
+          ...requestForPreset(suiteBaseRequest, preset),
+          runTag: suiteRunTag,
           saveOverallBarChart: false
         };
         appendLog(`[latency] ${preset.label} started`);
@@ -770,7 +810,8 @@ export function usePawdioLabController() {
         suiteEntries.push({
           request: {
             ...request,
-            saveOverallBarChart: latencyRequest.saveOverallBarChart,
+            saveOverallBarChart: suiteBaseRequest.saveOverallBarChart,
+            saveTextReport: suiteBaseRequest.saveTextReport,
             calibratedOffsetMs
           },
           report
@@ -781,15 +822,24 @@ export function usePawdioLabController() {
         }
       }
       setLatencyExportSuite(suiteEntries);
-      if (latencyRequest.saveOverallBarChart && suiteEntries.length > 0) {
+      if (suiteBaseRequest.saveOverallBarChart && suiteEntries.length > 0) {
         try {
           const barPath = await invoke<string>("save_latency_overall_bar_chart", {
-            request: { ...latencyRequest, calibratedOffsetMs: 0 },
+            request: { ...suiteBaseRequest, calibratedOffsetMs: 0 },
             suite: suiteEntries
           });
           appendLog(`[latency] overall bar chart saved -> ${barPath}`);
         } catch (barError) {
           appendLog(`[latency] overall bar chart failed: ${String(barError)}`);
+        }
+      }
+      if (suiteBaseRequest.saveTextReport && suiteEntries.length > 0) {
+        try {
+          const path = await saveLatencyTextReport(suiteEntries);
+          appendLog(`[latency] report saved -> ${path}`);
+        } catch (reportError) {
+          setError(String(reportError));
+          appendLog(`[error] ${String(reportError)}`);
         }
       }
       appendLog("[latency] preset suite completed");
@@ -1087,12 +1137,7 @@ export function usePawdioLabController() {
     }
     setError(null);
     try {
-      const latest = latencyExportSuite[latencyExportSuite.length - 1];
-      const path = await invoke<string>("export_latency_report", {
-        request: latest.request,
-        report: latest.report,
-        suite: latencyExportSuite
-      });
+      const path = await saveLatencyTextReport(latencyExportSuite);
       appendLog(`[latency] report saved -> ${path}`);
     } catch (err) {
       setError(String(err));

@@ -146,7 +146,7 @@ export function LatencyPage({
                 type="button"
                 className={`chip-btn ${isRunPresetEnabled(preset.key as keyof typeof runSelection) ? "is-on" : ""}`.trim()}
                 onClick={() =>
-                  setRunSelection((prev) => ({
+                  setRunSelection((prev: PresetSelection) => ({
                     ...prev,
                     [preset.key]: !prev[preset.key as keyof typeof prev]
                   }))
@@ -166,7 +166,7 @@ export function LatencyPage({
               max={20}
               step={1}
               value={request.repeats}
-              onChange={(event) =>
+              onChange={(event: any) =>
                 onChangeRequest({
                   ...request,
                   repeats: Math.max(1, Math.round(toNumber(event.target.value, 5)))
@@ -180,7 +180,7 @@ export function LatencyPage({
             <LabeledNumberInput
               label="Frequency (Hz)"
               value={request.frequencyHz}
-              onChange={(event) =>
+              onChange={(event: any) =>
                 onChangeRequest({ ...request, frequencyHz: toNumber(event.target.value, 1000) })
               }
             />
@@ -188,7 +188,7 @@ export function LatencyPage({
               label="Duration (s)"
               value={request.durationSecs}
               step={0.05}
-              onChange={(event) =>
+              onChange={(event: any) =>
                 onChangeRequest({ ...request, durationSecs: toNumber(event.target.value, 0.5) })
               }
             />
@@ -198,7 +198,7 @@ export function LatencyPage({
               step={0.05}
               min={0}
               max={1}
-              onChange={(event) =>
+              onChange={(event: any) =>
                 onChangeRequest({ ...request, amplitude: toNumber(event.target.value, 0.85) })
               }
             />
@@ -207,18 +207,18 @@ export function LatencyPage({
               value={request.recordMarginSecs}
               step={0.1}
               min={0.1}
-              onChange={(event) =>
+              onChange={(event: any) =>
                 onChangeRequest({ ...request, recordMarginSecs: toNumber(event.target.value, 1) })
               }
             />
           </div>
 
-          <div className="field-grid-2" style={{ marginTop: 12 }}>
+          <div className="field-grid-3" style={{ marginTop: 12 }}>
             <label className="toggle-line">
               <input
                 type="checkbox"
                 checked={request.savePerSoundPlot}
-                onChange={(event) =>
+                onChange={(event: any) =>
                   onChangeRequest({
                     ...request,
                     savePerSoundPlot: event.target.checked
@@ -231,7 +231,7 @@ export function LatencyPage({
               <input
                 type="checkbox"
                 checked={request.saveOverallBarChart}
-                onChange={(event) =>
+                onChange={(event: any) =>
                   onChangeRequest({
                     ...request,
                     saveOverallBarChart: event.target.checked
@@ -239,6 +239,19 @@ export function LatencyPage({
                 }
               />
               Save overall bar chart
+            </label>
+            <label className="toggle-line">
+              <input
+                type="checkbox"
+                checked={request.saveTextReport}
+                onChange={(event: any) =>
+                  onChangeRequest({
+                    ...request,
+                    saveTextReport: event.target.checked
+                  })
+                }
+              />
+              Save text report
             </label>
           </div>
 
@@ -249,7 +262,7 @@ export function LatencyPage({
                 className="skin-input"
                 value={request.outputDir}
                 placeholder="Select output folder"
-                onChange={(event) => onChangeRequest({ ...request, outputDir: event.target.value })}
+                onChange={(event: any) => onChangeRequest({ ...request, outputDir: event.target.value })}
               />
             </label>
             <div className="row-end" style={{ alignItems: "end" }}>
@@ -346,7 +359,7 @@ export function LatencyPage({
                 key={key}
                 type="button"
                 className={`chip-btn ${calibrationMode[key] ? "is-on" : ""}`.trim()}
-                onClick={() => setCalibrationMode((prev) => ({ ...prev, [key]: !prev[key] }))}
+                onClick={() => setCalibrationMode((prev: PresetSelection) => ({ ...prev, [key]: !prev[key] }))}
               >
                 {label}
               </button>
@@ -362,7 +375,7 @@ export function LatencyPage({
               max={20}
               step={1}
               value={calibrationRepeats}
-              onChange={(event) => setCalibrationRepeats(Math.round(toNumber(event.target.value, 5)))}
+              onChange={(event: any) => setCalibrationRepeats(Math.round(toNumber(event.target.value, 5)))}
             />
             <span>{calibrationRepeats}</span>
           </div>
