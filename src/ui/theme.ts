@@ -59,7 +59,12 @@ export function normalizeAccentColor(value: unknown): AccentColor {
       return "Purple";
     }
   }
-  if (value === "Blue" || value === "Teal" || value === "Greyscale" || value === "Purple") {
+  if (
+    value === "Blue" ||
+    value === "Teal" ||
+    value === "Greyscale" ||
+    value === "Purple"
+  ) {
     return value;
   }
   return DEFAULT_ACCENT_COLOR;
@@ -91,7 +96,7 @@ export function readDeviceUiPrefs(): DeviceUiPrefs | null {
     return {
       appearanceMode: normalizeAppearanceMode(record.appearanceMode),
       accentColor: normalizeAccentColor(record.accentColor),
-      inputBitDepth: normalizeInputBitDepth(record.inputBitDepth)
+      inputBitDepth: normalizeInputBitDepth(record.inputBitDepth),
     };
   } catch {
     return null;
@@ -117,10 +122,14 @@ function resolveThemeMode(mode: AppearanceMode): "dark" | "light" {
   if (mode === "Light") {
     return "light";
   }
-  return window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return window.matchMedia("(prefers-color-scheme: dark)").matches
+    ? "dark"
+    : "light";
 }
 
-function toThemeAccent(accentColor: AccentColor): "blue" | "teal" | "greyscale" | "purple" {
+function toThemeAccent(
+  accentColor: AccentColor,
+): "blue" | "teal" | "greyscale" | "purple" {
   if (accentColor === "Teal") {
     return "teal";
   }
@@ -135,7 +144,7 @@ function toThemeAccent(accentColor: AccentColor): "blue" | "teal" | "greyscale" 
 
 export function applyAppearanceTheme(
   appearanceModeValue: unknown,
-  accentColorValue: unknown
+  accentColorValue: unknown,
 ): () => void {
   if (typeof window === "undefined") {
     return () => undefined;
@@ -186,7 +195,10 @@ export function startAppearanceThemeSync(): () => void {
   const refreshThemeFromStorage = () => {
     cleanupTheme();
     const stored = readDeviceUiPrefs();
-    cleanupTheme = applyAppearanceTheme(stored?.appearanceMode, stored?.accentColor);
+    cleanupTheme = applyAppearanceTheme(
+      stored?.appearanceMode,
+      stored?.accentColor,
+    );
   };
 
   const onStorage = (event: StorageEvent) => {

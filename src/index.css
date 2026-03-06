@@ -179,9 +179,22 @@ body {
   margin: 0;
   font-family: "Space Grotesk", "Segoe UI Variable", "Segoe UI", sans-serif;
   background:
-    radial-gradient(circle at 12% -16%, var(--body-bg-overlay-1), transparent 36%),
-    radial-gradient(circle at 88% 8%, var(--body-bg-overlay-2), transparent 30%),
-    linear-gradient(170deg, var(--body-bg-start) 0%, var(--body-bg-mid) 45%, var(--body-bg-end) 100%);
+    radial-gradient(
+      circle at 12% -16%,
+      var(--body-bg-overlay-1),
+      transparent 36%
+    ),
+    radial-gradient(
+      circle at 88% 8%,
+      var(--body-bg-overlay-2),
+      transparent 30%
+    ),
+    linear-gradient(
+      170deg,
+      var(--body-bg-start) 0%,
+      var(--body-bg-mid) 45%,
+      var(--body-bg-end) 100%
+    );
   color: var(--text-main);
 }
 
@@ -198,7 +211,11 @@ body {
 }
 
 .sidebar-shell {
-  background: linear-gradient(160deg, var(--sidebar-bg-start), var(--sidebar-bg-end));
+  background: linear-gradient(
+    160deg,
+    var(--sidebar-bg-start),
+    var(--sidebar-bg-end)
+  );
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
   box-shadow: var(--shadow-panel);
@@ -236,20 +253,35 @@ body {
   font-size: 14px;
   font-weight: 500;
   color: var(--nav-text);
-  background: linear-gradient(180deg, var(--button-accent-top), var(--button-accent-bottom));
+  background: linear-gradient(
+    180deg,
+    var(--button-accent-top),
+    var(--button-accent-bottom)
+  );
   padding: 8px 10px;
   cursor: pointer;
-  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
+  transition:
+    background 120ms ease,
+    border-color 120ms ease,
+    transform 120ms ease;
 }
 
 .nav-btn:hover {
-  background: linear-gradient(180deg, var(--button-accent-hover-top), var(--button-accent-hover-bottom));
+  background: linear-gradient(
+    180deg,
+    var(--button-accent-hover-top),
+    var(--button-accent-hover-bottom)
+  );
   transform: translateY(-1px);
 }
 
 .nav-btn.is-active {
   border-color: var(--accent-strong);
-  background: linear-gradient(180deg, var(--button-accent-active-top), var(--button-accent-active-bottom));
+  background: linear-gradient(
+    180deg,
+    var(--button-accent-active-top),
+    var(--button-accent-active-bottom)
+  );
   color: #ffffff;
 }
 
@@ -351,7 +383,9 @@ body {
   background-position:
     calc(100% - 18px) calc(50% - 3px),
     calc(100% - 12px) calc(50% - 3px);
-  background-size: 6px 6px, 6px 6px;
+  background-size:
+    6px 6px,
+    6px 6px;
   background-repeat: no-repeat;
 }
 
@@ -379,9 +413,16 @@ body {
   font-weight: 600;
   padding: 8px 16px;
   color: var(--button-text);
-  background: linear-gradient(180deg, var(--button-accent-top), var(--button-accent-bottom));
+  background: linear-gradient(
+    180deg,
+    var(--button-accent-top),
+    var(--button-accent-bottom)
+  );
   cursor: pointer;
-  transition: transform 120ms ease, filter 120ms ease, border-color 120ms ease;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease,
+    border-color 120ms ease;
 }
 
 .skin-btn:hover:not(:disabled) {
@@ -395,12 +436,20 @@ body {
 }
 
 .skin-btn.secondary {
-  background: linear-gradient(180deg, var(--secondary-button-top), var(--secondary-button-bottom));
+  background: linear-gradient(
+    180deg,
+    var(--secondary-button-top),
+    var(--secondary-button-bottom)
+  );
   border-color: var(--secondary-button-border);
 }
 
 .skin-btn.danger {
-  background: linear-gradient(180deg, var(--danger-button-top), var(--danger-button-bottom));
+  background: linear-gradient(
+    180deg,
+    var(--danger-button-top),
+    var(--danger-button-bottom)
+  );
 }
 
 .chip-row {
@@ -421,7 +470,11 @@ body {
 }
 
 .chip-btn.is-on {
-  background: linear-gradient(180deg, var(--button-accent-top), var(--button-accent-bottom));
+  background: linear-gradient(
+    180deg,
+    var(--button-accent-top),
+    var(--button-accent-bottom)
+  );
   border-color: var(--accent-strong);
   color: #f5f8ff;
 }
@@ -452,7 +505,11 @@ body {
 }
 
 .metric-card {
-  background: linear-gradient(180deg, var(--metric-bg-start), var(--metric-bg-end));
+  background: linear-gradient(
+    180deg,
+    var(--metric-bg-start),
+    var(--metric-bg-end)
+  );
   border: 1px solid var(--metric-border);
   border-radius: 8px;
   padding: 10px 12px;
@@ -473,7 +530,11 @@ body {
 .scroll-box {
   border: 1px solid var(--scroll-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, var(--scroll-bg-start), var(--scroll-bg-end));
+  background: linear-gradient(
+    180deg,
+    var(--scroll-bg-start),
+    var(--scroll-bg-end)
+  );
   min-height: 140px;
   max-height: 280px;
   overflow: auto;
@@ -492,7 +553,11 @@ body {
 .placeholder-box {
   border: 1px solid var(--placeholder-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, var(--placeholder-bg-start), var(--placeholder-bg-end));
+  background: linear-gradient(
+    180deg,
+    var(--placeholder-bg-start),
+    var(--placeholder-bg-end)
+  );
   min-height: 140px;
 }
 
@@ -500,7 +565,11 @@ body {
   position: relative;
   border: 1px solid var(--level-border);
   border-radius: 8px;
-  background: linear-gradient(180deg, var(--level-bg-start), var(--level-bg-end));
+  background: linear-gradient(
+    180deg,
+    var(--level-bg-start),
+    var(--level-bg-end)
+  );
   min-height: 96px;
   padding: 10px;
   overflow: hidden;
@@ -554,7 +623,9 @@ body {
   min-width: 2px;
   border-radius: 2px 2px 0 0;
   background: linear-gradient(180deg, var(--accent-strong), var(--accent-dim));
-  transition: height 80ms linear, background 120ms ease;
+  transition:
+    height 80ms linear,
+    background 120ms ease;
 }
 
 .level-meter-bar.is-warm {

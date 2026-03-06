@@ -66,7 +66,9 @@ function assertArgValue(name, value) {
 }
 
 function isSemver(version) {
-  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(version);
+  return /^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/.test(
+    version,
+  );
 }
 
 function updateCargoPackageVersion(cargoToml, version) {
@@ -82,7 +84,7 @@ function updateCargoPackageVersion(cargoToml, version) {
 
   const updatedPackageBlock = packageBlock.replace(
     /^version\s*=\s*"[^"]*"$/m,
-    `version = "${version}"`
+    `version = "${version}"`,
   );
 
   return cargoToml.replace(packageBlock, updatedPackageBlock);
@@ -109,7 +111,7 @@ try {
     assertArgValue("--version", options.version);
     if (!isSemver(options.version)) {
       throw new Error(
-        `Invalid version "${options.version}". Expected semantic version like 1.0.0`
+        `Invalid version "${options.version}". Expected semantic version like 1.0.0`,
       );
     }
   }
@@ -161,7 +163,10 @@ try {
     writeFileSync(tauriConfigPath, toPrettyJson(tauriConfig), "utf8");
 
     if (options.version) {
-      const updatedCargoToml = updateCargoPackageVersion(cargoToml, options.version);
+      const updatedCargoToml = updateCargoPackageVersion(
+        cargoToml,
+        options.version,
+      );
       writeFileSync(cargoTomlPath, updatedCargoToml, "utf8");
     }
   }

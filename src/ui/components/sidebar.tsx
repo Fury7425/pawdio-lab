@@ -15,7 +15,7 @@ export function Sidebar({
   experimentalEnabled,
   onSelectPage,
   onRefreshDevices,
-  onStopTest
+  onStopTest,
 }: SidebarProps) {
   const visiblePages = experimentalEnabled
     ? pageItems
@@ -44,10 +44,19 @@ export function Sidebar({
           <span className={`status-dot ${running ? "running" : "idle"}`} />
           {running ? "Running" : "Idle"}
         </span>
-        <button type="button" className="skin-btn secondary" onClick={onRefreshDevices}>
+        <button
+          type="button"
+          className="skin-btn secondary"
+          onClick={onRefreshDevices}
+        >
           Refresh Devices
         </button>
-        <button type="button" className="skin-btn danger" disabled={!running} onClick={onStopTest}>
+        <button
+          type="button"
+          className="skin-btn danger"
+          disabled={!running}
+          onClick={onStopTest}
+        >
           Stop Test
         </button>
       </div>

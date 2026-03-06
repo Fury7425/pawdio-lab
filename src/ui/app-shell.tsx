@@ -45,14 +45,20 @@ export function PawdioLabApp() {
               calibrationText={controller.calibrationText}
               running={controller.running}
               progressPercent={controller.latencyProgressPercent}
-              onRunSelected={(keys) => run(controller.runLatencySelectedTests(keys))}
+              onRunSelected={(keys) =>
+                run(controller.runLatencySelectedTests(keys))
+              }
               onRunAll={() => run(controller.runLatencyAllTests())}
               onSaveReport={() => run(controller.exportLatencyReport())}
-              onBrowseOutputFolder={() => run(controller.browseLatencyOutputFolder())}
+              onBrowseOutputFolder={() =>
+                run(controller.browseLatencyOutputFolder())
+              }
               onCalibrateSelected={(keys, repeats) =>
                 run(controller.calibrateLatencySelected(keys, repeats))
               }
-              onCalibrateAll={(repeats) => run(controller.calibrateLatencyAllPresets(repeats))}
+              onCalibrateAll={(repeats) =>
+                run(controller.calibrateLatencyAllPresets(repeats))
+              }
             />
           )}
 
@@ -62,7 +68,9 @@ export function PawdioLabApp() {
               onChangeRequest={controller.setSweepRequest}
               running={controller.running}
               onRun={() => run(controller.runSweepFrTest())}
-              onBrowseOutputFolder={() => run(controller.browseSweepOutputFolder())}
+              onBrowseOutputFolder={() =>
+                run(controller.browseSweepOutputFolder())
+              }
               lastResult={controller.sweepLastResult}
               monitor={controller.inputMonitor}
               pinkNoisePlaying={controller.pinkNoisePlaying}
@@ -72,32 +80,37 @@ export function PawdioLabApp() {
               onStopPinkNoise={() => run(controller.stopPinkNoise())}
               onResetPeak={() => run(controller.resetInputMonitorPeak())}
               hasSweepResult={controller.sweepLastResult !== null}
-              hasSweepHistory={controller.results.some((entry) => entry.payload.test === "sweep_fr")}
+              hasSweepHistory={controller.results.some(
+                (entry) => entry.payload.test === "sweep_fr",
+              )}
               onExportLastJson={() => run(controller.exportSweepLastJson())}
               onExportAllJson={() => run(controller.exportSweepAllJson())}
-              onExportLastSquiglink={() => run(controller.exportSweepLastSquiglink())}
+              onExportLastSquiglink={() =>
+                run(controller.exportSweepLastSquiglink())
+              }
             />
           )}
 
-          {controller.activePage === "experimental" && controller.experimentalEnabled && (
-            <ExperimentalPage
-              running={controller.running}
-              balanceRequest={controller.balanceRequest}
-              onChangeBalance={controller.setBalanceRequest}
-              crosstalkRequest={controller.crosstalkRequest}
-              onChangeCrosstalk={controller.setCrosstalkRequest}
-              thdRequest={controller.thdRequest}
-              thdToneText={controller.thdToneText}
-              onChangeThdRequest={controller.setThdRequest}
-              onChangeThdToneText={controller.setThdToneText}
-              isolationRequest={controller.isolationRequest}
-              onChangeIsolation={controller.setIsolationRequest}
-              onRunBalance={() => run(controller.runBalanceTest())}
-              onRunCrosstalk={() => run(controller.runCrosstalkTest())}
-              onRunThd={() => run(controller.runThdTest())}
-              onRunIsolation={() => run(controller.runIsolationTest())}
-            />
-          )}
+          {controller.activePage === "experimental" &&
+            controller.experimentalEnabled && (
+              <ExperimentalPage
+                running={controller.running}
+                balanceRequest={controller.balanceRequest}
+                onChangeBalance={controller.setBalanceRequest}
+                crosstalkRequest={controller.crosstalkRequest}
+                onChangeCrosstalk={controller.setCrosstalkRequest}
+                thdRequest={controller.thdRequest}
+                thdToneText={controller.thdToneText}
+                onChangeThdRequest={controller.setThdRequest}
+                onChangeThdToneText={controller.setThdToneText}
+                isolationRequest={controller.isolationRequest}
+                onChangeIsolation={controller.setIsolationRequest}
+                onRunBalance={() => run(controller.runBalanceTest())}
+                onRunCrosstalk={() => run(controller.runCrosstalkTest())}
+                onRunThd={() => run(controller.runThdTest())}
+                onRunIsolation={() => run(controller.runIsolationTest())}
+              />
+            )}
 
           {controller.activePage === "devices" && (
             <DevicesPage

@@ -15,16 +15,14 @@ export default defineConfig({
       ? {
           protocol: "ws",
           host,
-          port: 1421
+          port: 1421,
         }
-      : undefined
+      : undefined,
   },
   build: {
     target:
-      process.env.TAURI_ENV_PLATFORM === "windows"
-        ? "chrome105"
-        : "safari13",
+      process.env.TAURI_ENV_PLATFORM === "windows" ? "chrome105" : "safari13",
     minify: process.env.TAURI_DEBUG ? false : "esbuild",
-    sourcemap: !!process.env.TAURI_DEBUG
-  }
+    sourcemap: !!process.env.TAURI_DEBUG,
+  },
 });
