@@ -4,9 +4,10 @@
   uses: yanovation/delete-old-actions@v1
   with:
     # GitHub token
-    token: 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
+    token: {{ secrets.GITHUB_TOKEN }}
     # Delete workflow runs older than this many days
     days-ago: 45
     # If set to true, only logs what would be deleted
     dry-run: # optional, default is false
-
+    # Number of most recent runs per workflow to retain
+    keep-latest: # optional, default is 0
