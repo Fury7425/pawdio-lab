@@ -8,6 +8,7 @@
     "dev:tauri": "tauri dev",
     "build": "tsc && vite build",
     "preview": "vite preview",
+    "format": "prettier --write .",
     "tauri": "tauri",
     "tauri:build": "tauri build",
     "release:set": "node scripts/set-release-meta.mjs",
