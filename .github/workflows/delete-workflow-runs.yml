@@ -10,5 +10,5 @@
     # If set to true, only logs what would be deleted
     dry-run: # optional, default is false
     # Number of most recent runs per workflow to retain
-    keep-latest: 5
+    keep-latest: 2
           
