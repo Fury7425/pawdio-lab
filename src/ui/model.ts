@@ -37,7 +37,6 @@ export type LatencyRequest = {
   outputDir: string;
   savePerSoundPlot: boolean;
   saveOverallBarChart: boolean;
-  saveTextReport: boolean;
   calibratedOffsetMs: number;
 };
 
@@ -148,7 +147,6 @@ export const defaultLatencyRequest: LatencyRequest = {
   outputDir: "",
   savePerSoundPlot: true,
   saveOverallBarChart: true,
-  saveTextReport: true,
   calibratedOffsetMs: 0
 };
 

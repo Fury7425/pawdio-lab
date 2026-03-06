@@ -147,12 +147,12 @@ export function SweepFrPage({
             <LabeledNumberInput
               label="Start Freq (Hz)"
               value={request.f0}
-              onChange={(event: any) => onChangeRequest({ ...request, f0: toNumber(event.target.value, 20) })}
+              onChange={(event) => onChangeRequest({ ...request, f0: toNumber(event.target.value, 20) })}
             />
             <LabeledNumberInput
               label="End Freq (Hz)"
               value={request.f1}
-              onChange={(event: any) =>
+              onChange={(event) =>
                 onChangeRequest({ ...request, f1: toNumber(event.target.value, 20000) })
               }
             />
@@ -160,7 +160,7 @@ export function SweepFrPage({
               label="Duration (s)"
               value={request.durationSecs}
               step={0.1}
-              onChange={(event: any) =>
+              onChange={(event) =>
                 onChangeRequest({ ...request, durationSecs: toNumber(event.target.value, 6) })
               }
             />
@@ -175,7 +175,7 @@ export function SweepFrPage({
                   max={20}
                   step={1}
                   value={request.repeats}
-                  onChange={(event: any) =>
+                  onChange={(event) =>
                     onChangeRequest({
                       ...request,
                       repeats: Math.max(1, Math.round(toNumber(event.target.value, 1)))
@@ -194,7 +194,7 @@ export function SweepFrPage({
               step={0.05}
               min={0}
               max={1}
-              onChange={(event: any) =>
+              onChange={(event) =>
                 onChangeRequest({ ...request, amplitude: toNumber(event.target.value, 0.5) })
               }
             />
@@ -205,7 +205,7 @@ export function SweepFrPage({
                   <input
                     type="checkbox"
                     checked={request.savePlots}
-                    onChange={(event: any) =>
+                    onChange={(event) =>
                       onChangeRequest({ ...request, savePlots: event.target.checked })
                     }
                   />
@@ -215,7 +215,7 @@ export function SweepFrPage({
                   <input
                     type="checkbox"
                     checked={request.saveSquiglink}
-                    onChange={(event: any) =>
+                    onChange={(event) =>
                       onChangeRequest({ ...request, saveSquiglink: event.target.checked })
                     }
                   />
@@ -225,7 +225,7 @@ export function SweepFrPage({
                   <input
                     type="checkbox"
                     checked={request.monoMode}
-                    onChange={(event: any) =>
+                    onChange={(event) =>
                       onChangeRequest({ ...request, monoMode: event.target.checked })
                     }
                   />
@@ -242,7 +242,7 @@ export function SweepFrPage({
                 className="skin-input"
                 value={request.outputDir}
                 placeholder="Select output folder"
-                onChange={(event: any) => onChangeRequest({ ...request, outputDir: event.target.value })}
+                onChange={(event) => onChangeRequest({ ...request, outputDir: event.target.value })}
               />
             </label>
             <div className="row-end" style={{ alignItems: "end" }}>

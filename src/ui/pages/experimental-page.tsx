@@ -66,7 +66,7 @@ export function ExperimentalPage({
                 className="skin-input"
                 type="number"
                 value={balanceRequest.frequencyHz}
-                onChange={(event: any) =>
+                onChange={(event) =>
                   onChangeBalance({
                     ...balanceRequest,
                     frequencyHz: toNumber(event.target.value, 1000)
@@ -88,7 +88,7 @@ export function ExperimentalPage({
                   className="skin-input"
                   type="number"
                   value={crosstalkRequest.frequencyHz}
-                  onChange={(event: any) =>
+                  onChange={(event) =>
                     onChangeCrosstalk({
                       ...crosstalkRequest,
                       frequencyHz: toNumber(event.target.value, 1000)
@@ -101,7 +101,7 @@ export function ExperimentalPage({
                 <select
                   className="skin-select"
                   value={crosstalkRequest.direction}
-                  onChange={(event: any) =>
+                  onChange={(event) =>
                     onChangeCrosstalk({
                       ...crosstalkRequest,
                       direction: event.target.value as CrosstalkRequest["direction"]
@@ -129,7 +129,7 @@ export function ExperimentalPage({
                 <input
                   className="skin-input"
                   value={thdToneText}
-                  onChange={(event: any) => onChangeThdToneText(event.target.value)}
+                  onChange={(event) => onChangeThdToneText(event.target.value)}
                   placeholder="100, 1000, 6000"
                 />
               </label>
@@ -142,7 +142,7 @@ export function ExperimentalPage({
                   max={1}
                   step={0.05}
                   value={thdRequest.amplitude}
-                  onChange={(event: any) =>
+                  onChange={(event) =>
                     onChangeThdRequest({
                       ...thdRequest,
                       amplitude: toNumber(event.target.value, 0.6)
@@ -170,7 +170,7 @@ export function ExperimentalPage({
                   min={0.1}
                   step={0.1}
                   value={isolationRequest.noiseDurationSecs}
-                  onChange={(event: any) =>
+                  onChange={(event) =>
                     onChangeIsolation({
                       ...isolationRequest,
                       noiseDurationSecs: toNumber(event.target.value, 2)
@@ -187,7 +187,7 @@ export function ExperimentalPage({
                   max={1}
                   step={0.05}
                   value={isolationRequest.amplitude}
-                  onChange={(event: any) =>
+                  onChange={(event) =>
                     onChangeIsolation({
                       ...isolationRequest,
                       amplitude: toNumber(event.target.value, 0.4)

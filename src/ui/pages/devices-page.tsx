@@ -74,8 +74,8 @@ export function DevicesPage({
                 className="skin-input"
                 type="number"
                 value={draft.outputSampleRate}
-                onChange={(event: any) =>
-                  setDraft((prev: AudioSettings) => ({
+                onChange={(event) =>
+                  setDraft((prev) => ({
                     ...prev,
                     outputSampleRate: toNumber(event.target.value, 44100)
                   }))
@@ -88,8 +88,8 @@ export function DevicesPage({
                 className="skin-input"
                 type="number"
                 value={draft.inputSampleRate}
-                onChange={(event: any) =>
-                  setDraft((prev: AudioSettings) => ({
+                onChange={(event) =>
+                  setDraft((prev) => ({
                     ...prev,
                     inputSampleRate: toNumber(event.target.value, 44100)
                   }))
@@ -103,8 +103,8 @@ export function DevicesPage({
               label="Signal Duration (s)"
               value={draft.durationSecs}
               step={0.05}
-              onChange={(event: any) =>
-                setDraft((prev: AudioSettings) => ({
+              onChange={(event) =>
+                setDraft((prev) => ({
                   ...prev,
                   durationSecs: toNumber(event.target.value, 0.5)
                 }))
@@ -115,7 +115,7 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={inputBitDepth}
-                onChange={(event: any) => setInputBitDepth(event.target.value)}
+                onChange={(event) => setInputBitDepth(event.target.value)}
               >
                 <option value="Auto">Auto</option>
                 <option value="16">16</option>
@@ -130,8 +130,8 @@ export function DevicesPage({
               className="skin-input"
               value={draft.itemName}
               placeholder="e.g. HD600, Unit-A, My Headphone"
-              onChange={(event: any) =>
-                setDraft((prev: AudioSettings) => ({
+              onChange={(event) =>
+                setDraft((prev) => ({
                   ...prev,
                   itemName: event.target.value
                 }))
@@ -155,7 +155,7 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={toSelectValue(draft.outputDeviceIndex)}
-                onChange={(event: any) =>
+                onChange={(event) =>
                   commitDeviceSelection({
                     ...draft,
                     outputDeviceIndex: fromSelectValue(event.target.value)
@@ -183,7 +183,7 @@ export function DevicesPage({
             <select
               className="skin-select"
               value={toSelectValue(draft.inputDeviceIndex)}
-              onChange={(event: any) =>
+              onChange={(event) =>
                 commitDeviceSelection({
                   ...draft,
                   inputDeviceIndex: fromSelectValue(event.target.value)
@@ -204,8 +204,8 @@ export function DevicesPage({
             value={draft.chunkSize}
             min={64}
             step={1}
-            onChange={(event: any) =>
-              setDraft((prev: AudioSettings) => ({
+            onChange={(event) =>
+              setDraft((prev) => ({
                 ...prev,
                 chunkSize: Math.max(64, Math.round(toNumber(event.target.value, 1024)))
               }))
@@ -222,7 +222,7 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={appearanceMode}
-                onChange={(event: any) => setAppearanceMode(normalizeAppearanceMode(event.target.value))}
+                onChange={(event) => setAppearanceMode(normalizeAppearanceMode(event.target.value))}
               >
                 <option value="Dark">Dark</option>
                 <option value="Light">Light</option>
@@ -235,7 +235,7 @@ export function DevicesPage({
               <select
                 className="skin-select"
                 value={accentColor}
-                onChange={(event: any) => setAccentColor(normalizeAccentColor(event.target.value))}
+                onChange={(event) => setAccentColor(normalizeAccentColor(event.target.value))}
               >
                 <option value="Blue">Blue</option>
                 <option value="Teal">Teal</option>
@@ -249,7 +249,7 @@ export function DevicesPage({
             <input
               type="checkbox"
               checked={experimentalEnabled}
-              onChange={(event: any) => onChangeExperimentalEnabled(event.target.checked)}
+              onChange={(event) => onChangeExperimentalEnabled(event.target.checked)}
             />
             Enable Experimental Tests
           </label>
