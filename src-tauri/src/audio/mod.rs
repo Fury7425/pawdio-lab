@@ -116,6 +116,7 @@ impl Default for LatencyTestRequest {
             save_per_sound_plot: true,
             save_overall_bar_chart: true,
             calibrated_offset_ms: 0.0,
+            shared_output_dir: None,
         }
     }
 }
