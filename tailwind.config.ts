@@ -1,7 +1,16 @@
 import type { Config } from "tailwindcss";
 
 export default {
-  content: ["./index.html", "./src/**/*.{ts,tsx}"],
+  content: [
+    "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
+    // Explicitly specify for faster content scanning
+    "./src/ui/**/*.{js,ts,jsx,tsx}",
+    "./src/ui/pages/**/*.{js,ts,jsx,tsx}",
+    "./src/ui/components/**/*.{js,ts,jsx,tsx}",
+  ],
+  // Enable safelist for dynamic classes if needed (helps with JIT)
+  safelist: [],
   theme: {
     extend: {
       colors: {
@@ -24,5 +33,7 @@ export default {
       },
     },
   },
+  // Disable dark mode class detection for faster builds
+  darkMode: "class",
   plugins: [],
 } satisfies Config;
