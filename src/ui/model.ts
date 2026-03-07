@@ -135,6 +135,7 @@ export type ResultEntry = {
   payload: TestPayload;
   label?: string;
   savedAt?: number;
+  deviceName?: string;
 };
 
 export type SavedComparison = {

@@ -638,7 +638,18 @@ export function usePawdioLabController() {
   }
 
   function appendResult(payload: TestPayload) {
-    const entry: ResultEntry = { id: nextResultId.current++, payload, savedAt: Date.now() };
+    // Get device name from settings
+    let deviceName = "Unknown Device";
+    if (inventory && settings) {
+      const outputDevice = inventory.outputs.find(d => d.index === settings.outputDeviceIndex);
+      const inputDevice = inventory.inputs.find(d => d.index === settings.inputDeviceIndex);
+      if (outputDevice) {
+        deviceName = outputDevice.name;
+      } else if (inputDevice) {
+        deviceName = inputDevice.name;
+      }
+    }
+    const entry: ResultEntry = { id: nextResultId.current++, payload, savedAt: Date.now(), deviceName };
     setResults((prev) => [...prev, entry]);
     // Auto-save to persistent history
     addToHistory(entry);

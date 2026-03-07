@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { ResultEntry, legacyTimestamp } from "../model";
 
 type DatabasePageProps = {
@@ -7,28 +7,56 @@ type DatabasePageProps = {
   onClearAllResults: () => void;
 };
 
+// Group results by device name
+type DeviceGroup = {
+  deviceName: string;
+  results: ResultEntry[];
+};
+
 export function DatabasePage({
   results,
   onDeleteResult,
   onClearAllResults,
 }: DatabasePageProps) {
+  const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
   const [selectedResultId, setSelectedResultId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
-  const [sortOrder, setSortOrder] = useState<"newest" | "oldest">("newest");
+  const [viewMode, setViewMode] = useState<"text" | "image">("text");
 
-  const selectedResult = results.find((r) => r.id === selectedResultId) || null;
-
-  const filteredResults = results
-    .filter((entry) => {
+  // Group results by device name
+  const deviceGroups: DeviceGroup[] = useMemo(() => {
+    const filtered = results.filter((entry) => {
       if (filterType === "all") return true;
       return entry.payload.test === filterType;
-    })
-    .sort((a, b) => {
-      const timeA = a.savedAt || 0;
-      const timeB = b.savedAt || 0;
-      return sortOrder === "newest" ? timeB - timeA : timeA - timeB;
     });
 
+    // Group by device name
+    const groups: Record<string, ResultEntry[]> = {};
+    for (const entry of filtered) {
+      const deviceName = entry.deviceName || "Unknown Device";
+      if (!groups[deviceName]) {
+        groups[deviceName] = [];
+      }
+      groups[deviceName].push(entry);
+    }
+
+    // Sort devices alphabetically
+    const sortedDevices = Object.keys(groups).sort((a, b) => 
+      a.toLowerCase().localeCompare(b.toLowerCase())
+    );
+
+    return sortedDevices.map((deviceName) => ({
+      deviceName,
+      results: groups[deviceName],
+    }));
+  }, [results, filterType]);
+
+  // Get selected result
+  const selectedResult = useMemo(() => {
+    return results.find((r) => r.id === selectedResultId) || null;
+  }, [results, selectedResultId]);
+
+  // Get test types for filter dropdown
   const testTypes = Array.from(
     new Set(results.map((r) => r.payload.test))
   );
@@ -113,6 +141,31 @@ export function DatabasePage({
     return JSON.stringify(metrics).slice(0, 50);
   };
 
+  // Sort results by date (newest first) for a device
+  const sortByDate = (entries: ResultEntry[]) => {
+    return [...entries].sort((a, b) => {
+      const timeA = a.savedAt || 0;
+      const timeB = b.savedAt || 0;
+      return timeB - timeA; // newest first
+    });
+  };
+
+  // Calculate total results count
+  const totalResults = results.length;
+  const filteredResults = filterType === "all" 
+    ? totalResults 
+    : results.filter(r => r.payload.test === filterType).length;
+
+  // Check if result has image data
+  const hasImageData = (entry: ResultEntry) => {
+    const data = entry.payload.data as Record<string, unknown>;
+    return data && (
+      (Array.isArray(data.freqs) && data.freqs.length > 0) ||
+      (Array.isArray(data.left_mag_db_avg) && data.left_mag_db_avg.length > 0) ||
+      (Array.isArray(data.right_mag_db_avg) && data.right_mag_db_avg.length > 0)
+    );
+  };
+
   return (
     <div className="page-stack">
       <section className="page-card">
@@ -124,7 +177,11 @@ export function DatabasePage({
             <select
               className="skin-select"
               value={filterType}
-              onChange={(e) => setFilterType(e.target.value)}
+              onChange={(e) => {
+                setFilterType(e.target.value);
+                setSelectedDevice(null);
+                setSelectedResultId(null);
+              }}
             >
               <option value="all">All Tests</option>
               {testTypes.map((type) => (
@@ -135,35 +192,58 @@ export function DatabasePage({
             </select>
           </div>
           
-          <div className="db-sort">
-            <label className="field-label">Sort:</label>
-            <select
-              className="skin-select"
-              value={sortOrder}
-              onChange={(e) => setSortOrder(e.target.value as "newest" | "oldest")}
-            >
-              <option value="newest">Newest First</option>
-              <option value="oldest">Oldest First</option>
-            </select>
-          </div>
-          
           <div className="db-stats">
-            <span className="db-count">{filteredResults.length} of {results.length} results</span>
+            <span className="db-count">{filteredResults} of {totalResults} results</span>
           </div>
         </div>
 
         <div className="db-layout">
+          {/* Left Panel - Device List or Test List */}
           <div className="db-list-panel">
-            <div className="db-list">
-              {filteredResults.length === 0 ? (
-                <div className="db-empty">
-                  {results.length === 0 
-                    ? "No saved results yet. Run some tests to populate the database."
-                    : "No results match the current filter."
-                  }
+            {!selectedDevice ? (
+              // Show device list
+              <div className="db-list">
+                {deviceGroups.length === 0 ? (
+                  <div className="db-empty">
+                    {results.length === 0 
+                      ? "No saved results yet. Run some tests to populate the database."
+                      : "No results match the current filter."
+                    }
+                  </div>
+                ) : (
+                  deviceGroups.map((group) => (
+                    <div
+                      key={group.deviceName}
+                      className="db-item db-device-item"
+                      onClick={() => setSelectedDevice(group.deviceName)}
+                    >
+                      <div className="db-item-header">
+                        <span className="db-device-name">{group.deviceName}</span>
+                        <span className="db-count-badge">{group.results.length}</span>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            ) : (
+              // Show test list for selected device
+              <div className="db-list">
+                <div className="db-breadcrumb">
+                  <button 
+                    type="button" 
+                    className="db-back-btn"
+                    onClick={() => {
+                      setSelectedDevice(null);
+                      setSelectedResultId(null);
+                    }}
+                  >
+                    ← Back to Devices
+                  </button>
+                  <span className="db-current-device">{selectedDevice}</span>
                 </div>
-              ) : (
-                filteredResults.map((entry) => (
+                {sortByDate(
+                  deviceGroups.find(g => g.deviceName === selectedDevice)?.results || []
+                ).map((entry) => (
                   <div
                     key={entry.id}
                     className={`db-item ${selectedResultId === entry.id ? "is-selected" : ""}`}
@@ -181,9 +261,9 @@ export function DatabasePage({
                       {getMetricsSummary(entry)}
                     </div>
                   </div>
-                ))
-              )}
-            </div>
+                ))}
+              </div>
+            )}
             
             {results.length > 0 && (
               <div className="db-list-footer">
@@ -198,6 +278,7 @@ export function DatabasePage({
             )}
           </div>
 
+          {/* Right Panel - Result Details */}
           <div className="db-detail-panel">
             {selectedResult ? (
               <>
@@ -206,52 +287,94 @@ export function DatabasePage({
                     {getTestTypeLabel(selectedResult.payload.test)} Result
                     <span className="db-detail-id">#{selectedResult.id}</span>
                   </h3>
-                  <button
-                    type="button"
-                    className="skin-btn danger"
-                    onClick={() => {
-                      onDeleteResult(selectedResult.id);
-                      setSelectedResultId(null);
-                    }}
-                  >
-                    Delete
-                  </button>
+                  <div className="db-detail-actions">
+                    {hasImageData(selectedResult) && (
+                      <div className="db-view-toggle">
+                        <button
+                          type="button"
+                          className={`toggle-btn ${viewMode === "text" ? "active" : ""}`}
+                          onClick={() => setViewMode("text")}
+                        >
+                          Text
+                        </button>
+                        <button
+                          type="button"
+                          className={`toggle-btn ${viewMode === "image" ? "active" : ""}`}
+                          onClick={() => setViewMode("image")}
+                        >
+                          Image
+                        </button>
+                      </div>
+                    )}
+                    <button
+                      type="button"
+                      className="skin-btn danger"
+                      onClick={() => {
+                        onDeleteResult(selectedResult.id);
+                        setSelectedResultId(null);
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </div>
                 </div>
                 
                 <div className="db-detail-content">
-                  <div className="db-detail-section">
-                    <h4>Timestamp</h4>
-                    <p>{formatDate(selectedResult.savedAt || selectedResult.payload.timestamp)}</p>
-                  </div>
-                  
-                  <div className="db-detail-section">
-                    <h4>Parameters</h4>
-                    <pre className="mono-pre">
-                      {JSON.stringify(selectedResult.payload.params, null, 2)}
-                    </pre>
-                  </div>
-                  
-                  <div className="db-detail-section">
-                    <h4>Metrics</h4>
-                    <pre className="mono-pre">
-                      {JSON.stringify(selectedResult.payload.metrics, null, 2)}
-                    </pre>
-                  </div>
-                  
-                  {selectedResult.payload.data &&
-                    Object.keys(selectedResult.payload.data).length > 0 && (
+                  {viewMode === "image" && hasImageData(selectedResult) ? (
+                    <div className="db-detail-section">
+                      <h4>Frequency Response</h4>
+                      <div className="db-image-placeholder">
+                        <p>Frequency response visualization would be rendered here.</p>
+                        <p className="muted-text">
+                          (Chart rendering requires chart library integration)
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
                       <div className="db-detail-section">
-                        <h4>Data</h4>
+                        <h4>Device</h4>
+                        <p>{selectedResult.deviceName || "Unknown Device"}</p>
+                      </div>
+                      
+                      <div className="db-detail-section">
+                        <h4>Timestamp</h4>
+                        <p>{formatDate(selectedResult.savedAt || selectedResult.payload.timestamp)}</p>
+                      </div>
+                      
+                      <div className="db-detail-section">
+                        <h4>Parameters</h4>
                         <pre className="mono-pre">
-                          {JSON.stringify(selectedResult.payload.data, null, 2)}
+                          {JSON.stringify(selectedResult.payload.params, null, 2)}
                         </pre>
                       </div>
-                    )}
+                      
+                      <div className="db-detail-section">
+                        <h4>Metrics</h4>
+                        <pre className="mono-pre">
+                          {JSON.stringify(selectedResult.payload.metrics, null, 2)}
+                        </pre>
+                      </div>
+                      
+                      {selectedResult.payload.data &&
+                        Object.keys(selectedResult.payload.data).length > 0 && (
+                          <div className="db-detail-section">
+                            <h4>Data</h4>
+                            <pre className="mono-pre">
+                              {JSON.stringify(selectedResult.payload.data, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                    </>
+                  )}
                 </div>
               </>
             ) : (
               <div className="db-detail-empty">
-                Select a result from the list to view details
+                {selectedDevice 
+                  ? "Select a test from the list to view details"
+                  : "Select a device from the list to view tests"
+                }
               </div>
             )}
           </div>
@@ -267,13 +390,13 @@ export function DatabasePage({
           flex-wrap: wrap;
         }
         
-        .db-filter, .db-sort {
+        .db-filter {
           display: flex;
           align-items: center;
           gap: 8px;
         }
         
-        .db-filter .field-label, .db-sort .field-label {
+        .db-filter .field-label {
           margin: 0;
         }
         
@@ -339,11 +462,34 @@ export function DatabasePage({
           border-left: 3px solid var(--accent-color);
         }
         
+        .db-device-item {
+          background: var(--card-bg);
+        }
+        
+        .db-device-item:hover {
+          background: var(--hover-bg);
+        }
+        
         .db-item-header {
           display: flex;
           justify-content: space-between;
           align-items: center;
           margin-bottom: 6px;
+        }
+        
+        .db-device-name {
+          font-weight: 600;
+          font-size: 14px;
+          color: var(--text-color);
+        }
+        
+        .db-count-badge {
+          background: var(--accent-color);
+          color: white;
+          font-size: 11px;
+          font-weight: 600;
+          padding: 2px 8px;
+          border-radius: 10px;
         }
         
         .db-badge {
@@ -377,6 +523,35 @@ export function DatabasePage({
           background: var(--card-bg);
         }
         
+        .db-breadcrumb {
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          padding: 12px 16px;
+          border-bottom: 1px solid var(--border-color);
+          background: var(--card-bg);
+        }
+        
+        .db-back-btn {
+          background: none;
+          border: none;
+          color: var(--accent-color);
+          cursor: pointer;
+          font-size: 13px;
+          padding: 4px 8px;
+          border-radius: 4px;
+        }
+        
+        .db-back-btn:hover {
+          background: var(--hover-bg);
+        }
+        
+        .db-current-device {
+          font-weight: 600;
+          font-size: 13px;
+          color: var(--text-color);
+        }
+        
         .skin-btn.danger {
           background: #ef4444;
           color: white;
@@ -402,6 +577,8 @@ export function DatabasePage({
           padding: 12px 16px;
           background: var(--card-bg);
           border-bottom: 1px solid var(--border-color);
+          flex-wrap: wrap;
+          gap: 12px;
         }
         
         .db-detail-title {
@@ -415,6 +592,42 @@ export function DatabasePage({
           color: var(--muted-color);
           font-size: 13px;
           margin-left: 8px;
+        }
+        
+        .db-detail-actions {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+        }
+        
+        .db-view-toggle {
+          display: flex;
+          border: 1px solid var(--border-color);
+          border-radius: 6px;
+          overflow: hidden;
+        }
+        
+        .toggle-btn {
+          padding: 6px 12px;
+          background: var(--bg-color);
+          border: none;
+          color: var(--text-color);
+          font-size: 12px;
+          cursor: pointer;
+          transition: background 0.15s;
+        }
+        
+        .toggle-btn:first-child {
+          border-right: 1px solid var(--border-color);
+        }
+        
+        .toggle-btn.active {
+          background: var(--accent-color);
+          color: white;
+        }
+        
+        .toggle-btn:hover:not(.active) {
+          background: var(--hover-bg);
         }
         
         .db-detail-content {
@@ -460,6 +673,20 @@ export function DatabasePage({
           min-height: 200px;
           color: var(--muted-color);
           font-size: 14px;
+        }
+        
+        .db-image-placeholder {
+          background: var(--code-bg);
+          border-radius: 6px;
+          padding: 32px;
+          text-align: center;
+          color: var(--muted-color);
+        }
+        
+        .db-image-placeholder .muted-text {
+          font-size: 12px;
+          margin-top: 8px;
+          opacity: 0.7;
         }
       `}</style>
     </div>
