@@ -1561,16 +1561,12 @@ export function usePawdioLabController() {
     setResults([]);
   }
 
-  function deleteResult(index: number) {
-    setResults((prev) => prev.filter((_, i) => i !== index));
+  function deleteResult(id: number) {
+    setResults((prev) => prev.filter((entry) => entry.id !== id));
   }
 
-  function restoreResult(index: number) {
-    // Restore from history if needed
-    const history = loadHistory();
-    if (index >= 0 && index < history.length) {
-      setResults((prev) => [...prev, history[index]]);
-    }
+  function restoreResult(entry: ResultEntry) {
+    setResults((prev) => [...prev, entry]);
   }
 
   useEffect(() => {

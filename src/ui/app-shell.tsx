@@ -137,11 +137,14 @@ export function PawdioLabApp() {
 
           {controller.activePage === PageKeyEnum.Results && (
             <ResultsPage
+              results={controller.results}
               resultText={controller.resultText}
               logText={controller.logText}
               onCopyLog={() => run(controller.copyLogs())}
               onClearLog={controller.clearLogs}
               onClearResults={controller.clearResults}
+              onDeleteResult={controller.deleteResult}
+              onRestoreResult={controller.restoreResult}
             />
           )}
         </div>
