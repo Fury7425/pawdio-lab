@@ -410,6 +410,12 @@ fn get_runtime_status(state: State<'_, AppState>) -> RuntimeStatus {
     }
 }
 
+#[tauri::command]
+fn ensure_output_dir(path: String) -> Result<(), String> {
+    std::fs::create_dir_all(&path)
+        .map_err(|e| format!("failed to create directory {}: {}", path, e))
+}
+
 fn main() {
     let app_state = AppState {
         audio: Arc::new(tokio::sync::Mutex::new(AudioEngine::new())),
@@ -425,7 +431,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
-        .invoke_handler(tauri::generate_handler![
+.invoke_handler(tauri::generate_handler![
             list_audio_devices,
             get_audio_settings,
             set_audio_settings,
@@ -444,7 +450,8 @@ fn main() {
             run_isolation_test,
             stop_test,
             stop_latency_test,
-            get_runtime_status
+            get_runtime_status,
+            ensure_output_dir
         ])
         .run(tauri::generate_context!())
         .expect("failed to run pawdio-lab tauri app");

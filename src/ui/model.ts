@@ -53,6 +53,7 @@ export type LatencyRequest = {
   savePerSoundPlot: boolean;
   saveOverallBarChart: boolean;
   calibratedOffsetMs: number;
+  sharedOutputDir?: string;
 };
 
 export type LatencyCalibration = {

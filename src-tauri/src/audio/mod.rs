@@ -97,6 +97,10 @@ pub struct LatencyTestRequest {
     pub save_overall_bar_chart: bool,
     #[serde(default)]
     pub calibrated_offset_ms: f32,
+    /// Optional: when running multiple presets in a suite, pass a pre-created
+    /// output directory to save all results in one folder instead of separate folders
+    #[serde(default)]
+    pub shared_output_dir: Option<String>,
 }
 
 impl Default for LatencyTestRequest {
@@ -477,7 +481,18 @@ impl AudioEngine {
         };
 
         let run_tag = timestamp_filename();
-        let output_dir = resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag);
+        // Use shared_output_dir if provided (for preset suite runs), otherwise resolve normally
+        let output_dir = if let Some(ref shared) = request.shared_output_dir {
+            let shared_path = PathBuf::from(shared);
+            if shared_path.exists() {
+                shared_path
+            } else {
+                // Fall back to normal resolution if shared dir doesn't exist
+                resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag)
+            }
+        } else {
+            resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag)
+        };
         if request.save_per_sound_plot {
             if let (Some(rec), Some(reference), Some(avg_delay)) =
                 (first_recorded.as_ref(), first_reference.as_ref(), report.average_delay_ms)

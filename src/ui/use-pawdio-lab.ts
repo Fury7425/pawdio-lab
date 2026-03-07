@@ -883,7 +883,7 @@ export function usePawdioLabController() {
     }
   }
 
-  async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
+async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
     if (running) {
       return;
     }
@@ -915,12 +915,21 @@ export function usePawdioLabController() {
     setLatencyExportSuite([]);
     appendLog(`[latency] preset suite started (${presets.length})`);
 
+    // Create a shared output directory for all preset results
+    let sharedOutputDir: string | undefined;
+    if (latencyRequest.outputDir) {
+      const timestamp = exportTimestampTag();
+      sharedOutputDir = `${latencyRequest.outputDir}/latency_suite_${timestamp}`;
+      appendLog(`[latency] shared output directory -> ${sharedOutputDir}`);
+    }
+
     try {
       const suiteEntries: LatencyExportEntry[] = [];
       for (const preset of presets) {
         const request = {
           ...requestForPreset(latencyRequest, preset),
           saveOverallBarChart: false,
+          sharedOutputDir,
         };
         appendLog(`[latency] ${preset.label} started`);
         const { report, calibratedOffsetMs } = await runLatencyOnce(
