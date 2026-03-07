@@ -21,6 +21,7 @@ type LatencyPageProps = {
   ) => void;
   onRunAll: () => void;
   onSaveReport: () => void;
+  onExportCsv: () => void;
   onBrowseOutputFolder: () => void;
   onCalibrateSelected: (
     keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">,
@@ -75,6 +76,7 @@ export function LatencyPage({
   onRunSelected,
   onRunAll,
   onSaveReport,
+  onExportCsv,
   onBrowseOutputFolder,
   onCalibrateSelected,
   onCalibrateAll,
@@ -374,6 +376,14 @@ export function LatencyPage({
               onClick={onSaveReport}
             >
               Save Text Report
+            </button>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              disabled={!report || running}
+              onClick={onExportCsv}
+            >
+              Export CSV
             </button>
           </div>
         </section>

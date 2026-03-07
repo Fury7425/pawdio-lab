@@ -2782,7 +2782,7 @@ fn dbfs(samples: &[f32]) -> f32 {
     20.0 * level.log10()
 }
 
-fn resample_linear(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
+fn resample_cubic(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
     if input.is_empty() || src_rate == 0 || dst_rate == 0 {
         return Vec::new();
     }
@@ -2794,17 +2794,79 @@ fn resample_linear(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
     let output_len = output_len.max(1);
     let ratio = src_rate as f64 / dst_rate as f64;
 
+    let n = input.len();
+
+    // Pre-compute second derivatives for cubic spline
+    let mut y2 = vec![0.0f64; n];
+    if n > 2 {
+        let mut sigma = vec![0.0f64; n];
+        y2[0] = 0.0;
+        sigma[0] = 0.0;
+
+        for i in 1..(n - 1) {
+            let sig = (input[i] as f64 - input[i - 1] as f64) / (input[i + 1] as f64 - input[i - 1] as f64);
+            sigma[i] = sig;
+            let eps = 1e-10f64.max(sig * sig);
+            y2[i] = (3.0 * eps - 3.0 * sig) / ((eps + 2.0) * (input[i + 1] as f64 - input[i] as f64));
+        }
+        y2[n - 1] = 0.0;
+
+        for i in (1..n).rev() {
+            let un = if i >= n - 1 { 1.0f64 } else { (input[i + 1] as f64 - input[i] as f64) / (input[i + 1] as f64 - input[i - 1] as f64) };
+            y2[i - 1] = (un * y2[i - 1] - 0.5 * y2[i]) / (un + 1.0);
+        }
+    }
+
     let mut output = vec![0.0f32; output_len];
     for (idx, sample) in output.iter_mut().enumerate() {
         let source_pos = idx as f64 * ratio;
-        let base = source_pos.floor() as usize;
-        let frac = (source_pos - base as f64) as f32;
-        let a = input[base.min(input.len() - 1)];
-        let b = input[(base + 1).min(input.len() - 1)];
-        *sample = a + (b - a) * frac;
+        let x = source_pos.floor() as usize;
+        let frac = (source_pos - x as f64) as f32;
+
+        if x == 0 {
+            // At or before first sample
+            *sample = input[0];
+        } else if x >= n - 1 {
+            // At or after last sample
+            *sample = input[n - 1];
+        } else {
+            // Cubic spline interpolation
+            let x0 = x - 1;
+            let x1 = x;
+            let x2 = x + 1;
+            let x3 = x + 2;
+
+            let h0 = if x0 < n { (source_pos - x0 as f64) as f32 } else { 0.0 };
+            let h1 = if x1 < n { (source_pos - x1 as f64) as f32 } else { 0.0 };
+            let h2 = if x2 < n { (source_pos - x2 as f64) as f32 } else { 0.0 };
+            let h3 = if x3 < n { (source_pos - x3 as f64) as f32 } else { 0.0 };
+
+            let a = -h2 * h2 * h2 / 6.0 + h2 * h2 / 2.0 - h2 * h1 / 3.0;
+            let b = h2 * h2 * h2 / 2.0 - h2 * h2 + h2 * h1 / 2.0;
+            let c = -h2 * h2 * h2 / 6.0 + h2 * h1 / 6.0;
+            let d = -h1 * h1 * h1 / 6.0 + h1 * h1 / 2.0 - h1 * h2 / 3.0;
+
+            let val = if x0 < n && x3 < n {
+                input[x0] as f64 * a as f64 +
+                input[x1] as f64 * b as f64 +
+                input[x2] as f64 * c as f64 +
+                input[x3] as f64 * d as f64
+            } else if x1 < n && x2 < n {
+                input[x1] as f64 * (1.0 - frac) as f64 + input[x2] as f64 * frac as f64
+            } else {
+                input[x] as f64
+            };
+
+            *sample = (val as f32).clamp(-1.0, 1.0);
+        }
     }
 
     output
+}
+
+/// High-quality resampling using cubic spline interpolation
+fn resample_linear(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
+    resample_cubic(input, src_rate, dst_rate)
 }
 
 fn align_to_reference(

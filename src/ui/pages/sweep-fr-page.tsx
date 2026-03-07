@@ -37,6 +37,7 @@ type SweepFrPageProps = {
   onExportLastJson: () => void;
   onExportAllJson: () => void;
   onExportLastSquiglink: () => void;
+  onExportLastCsv: () => void;
 };
 
 export function SweepFrPage({
@@ -58,6 +59,7 @@ export function SweepFrPage({
   onExportLastJson,
   onExportAllJson,
   onExportLastSquiglink,
+  onExportLastCsv,
 }: SweepFrPageProps) {
   const [meterHistory, setMeterHistory] = useState<number[]>(() =>
     Array.from({ length: 48 }, () => 0),
@@ -506,6 +508,14 @@ export function SweepFrPage({
               onClick={onExportLastSquiglink}
             >
               Export LAST to Squiglink
+            </button>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              disabled={running || !hasSweepResult}
+              onClick={onExportLastCsv}
+            >
+              Export LAST (CSV)
             </button>
           </div>
         </section>

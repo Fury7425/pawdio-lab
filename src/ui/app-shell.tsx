@@ -51,6 +51,7 @@ export function PawdioLabApp() {
               }
               onRunAll={() => run(controller.runLatencyAllTests())}
               onSaveReport={() => run(controller.exportLatencyReport())}
+              onExportCsv={() => run(controller.exportLatencyCsv())}
               onBrowseOutputFolder={() =>
                 run(controller.browseLatencyOutputFolder())
               }
@@ -89,6 +90,7 @@ export function PawdioLabApp() {
               onExportLastSquiglink={() =>
                 run(controller.exportSweepLastSquiglink())
               }
+              onExportLastCsv={() => run(controller.exportSweepLastCsv())}
             />
           )}
 

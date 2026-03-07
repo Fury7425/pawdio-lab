@@ -130,6 +130,16 @@ export type TestProgress = {
 export type ResultEntry = {
   id: number;
   payload: TestPayload;
+  label?: string;
+  savedAt?: number;
+};
+
+export type SavedComparison = {
+  id: string;
+  name: string;
+  leftId: number;
+  rightId: number;
+  createdAt: number;
 };
 
 export const pageItems: Array<{ key: PageKey; label: string }> = [

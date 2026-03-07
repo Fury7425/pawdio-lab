@@ -14,6 +14,7 @@ import {
   PageKey,
   ResultEntry,
   RuntimeStatus,
+  SavedComparison,
   SweepRequest,
   TestPayload,
   TestProgress,
@@ -69,6 +70,89 @@ type InputMonitorState = {
 
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
 const UI_STATE_STORAGE_KEY = "pawdio-lab-ui-state-v1";
+const HISTORY_STORAGE_KEY = "pawdio-lab-history-v1";
+const COMPARISONS_STORAGE_KEY = "pawdio-lab-comparisons-v1";
+
+// History/Database helper functions
+function loadHistory(): ResultEntry[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as ResultEntry[];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(history: ResultEntry[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function addToHistory(entry: ResultEntry): void {
+  const history = loadHistory();
+  history.unshift(entry); // Add to beginning (newest first)
+  // Keep only last 100 entries
+  const trimmed = history.slice(0, 100);
+  saveHistory(trimmed);
+}
+
+function deleteFromHistory(id: number): void {
+  const history = loadHistory();
+  const filtered = history.filter(entry => entry.id !== id);
+  saveHistory(filtered);
+}
+
+function clearHistory(): void {
+  saveHistory([]);
+}
+
+function loadComparisons(): SavedComparison[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(COMPARISONS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed as SavedComparison[];
+  } catch {
+    return [];
+  }
+}
+
+function saveComparisons(comparisons: SavedComparison[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(COMPARISONS_STORAGE_KEY, JSON.stringify(comparisons));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function addComparison(leftId: number, rightId: number, name: string): void {
+  const comparisons = loadComparisons();
+  comparisons.push({
+    id: `comp_${Date.now()}`,
+    name,
+    leftId,
+    rightId,
+    createdAt: Date.now()
+  });
+  saveComparisons(comparisons);
+}
+
+function deleteComparison(id: string): void {
+  const comparisons = loadComparisons();
+  const filtered = comparisons.filter(c => c.id !== id);
+  saveComparisons(filtered);
+}
 
 const LATENCY_PRESETS: LatencyPresetConfig[] = [
   {
@@ -554,7 +638,10 @@ export function usePawdioLabController() {
   }
 
   function appendResult(payload: TestPayload) {
-    setResults((prev) => [...prev, { id: nextResultId.current++, payload }]);
+    const entry: ResultEntry = { id: nextResultId.current++, payload, savedAt: Date.now() };
+    setResults((prev) => [...prev, entry]);
+    // Auto-save to persistent history
+    addToHistory(entry);
     appendLog(`[${payload.test}] result recorded`);
     const fileEntries = Object.entries(payload.files ?? {});
     for (const [key, value] of fileEntries) {
@@ -1302,6 +1389,108 @@ export function usePawdioLabController() {
     }
   }
 
+  async function exportSweepLastCsv() {
+    if (!sweepLastResult) {
+      setError("No Sweep FR result to export yet.");
+      return;
+    }
+
+    const data = recordOrEmpty(sweepLastResult.data);
+    const freqs = numberList(data.freqs);
+    if (freqs.length === 0) {
+      setError("Sweep FR result does not include exportable curve data.");
+      return;
+    }
+
+    setError(null);
+    try {
+      const filename = `sweep_fr_${exportTimestampTag()}.csv`;
+      
+      const leftAvg = numberList(data.left_mag_db_avg);
+      const rightAvg = numberList(data.right_mag_db_avg);
+      const leftAll = numberCurveList(data.left_mag_db_all);
+      const rightAll = numberCurveList(data.right_mag_db_all);
+      
+      let header = "Frequency(Hz)";
+      if (leftAvg.length > 0) header += ",Left_Avg(dB)";
+      if (rightAvg.length > 0) header += ",Right_Avg(dB)";
+      for (let i = 0; i < leftAll.length; i++) header += `,Left_Sweep_${i+1}(dB)`;
+      for (let i = 0; i < rightAll.length; i++) header += `,Right_Sweep_${i+1}(dB)`;
+      
+      const lines = [header];
+      
+      const numRows = Math.min(
+        freqs.length,
+        leftAvg.length,
+        rightAvg.length,
+        ...leftAll.map(c => c.length),
+        ...rightAll.map(c => c.length)
+      );
+      
+      for (let i = 0; i < numRows; i++) {
+        let row = freqs[i].toFixed(2);
+        if (leftAvg.length > i) row += `,${leftAvg[i].toFixed(3)}`;
+        if (rightAvg.length > i) row += `,${rightAvg[i].toFixed(3)}`;
+        for (const curve of leftAll) {
+          if (curve.length > i) row += `,${curve[i].toFixed(3)}`;
+        }
+        for (const curve of rightAll) {
+          if (curve.length > i) row += `,${curve[i].toFixed(3)}`;
+        }
+        lines.push(row);
+      }
+      
+      triggerDownload(
+        `${lines.join("\n")}\n`,
+        filename,
+        "text/csv;charset=utf-8",
+      );
+      appendLog(`[sweep_fr] exported LAST CSV -> ${filename}`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
+  async function exportLatencyCsv() {
+    if (!latencyReport || latencyExportSuite.length === 0) {
+      setError("No latency report to export yet.");
+      return;
+    }
+
+    setError(null);
+    try {
+      const filename = `latency_${exportTimestampTag()}.csv`;
+      const lines = ["Signal,Frequency(Hz),Iteration,Delay(ms),Average(ms),StdDev(ms)"];
+      
+      for (const entry of latencyExportSuite) {
+        const freq = entry.request.frequencyHz;
+        const signal = entry.request.signal;
+        
+        for (const measurement of entry.report.measurements) {
+          const delay = measurement.delayMs !== null ? measurement.delayMs.toFixed(3) : "";
+          lines.push(`${signal},${freq},${measurement.iteration},${delay},,`);
+        }
+        
+        if (entry.report.averageDelayMs !== null) {
+          const avgIdx = lines.length - entry.report.measurements.length;
+          const std = entry.report.stdDevMs?.toFixed(3) ?? "";
+          lines[avgIdx] += `,${entry.report.averageDelayMs.toFixed(3)},${std}`;
+        }
+      }
+      
+      triggerDownload(
+        `${lines.join("\n")}\n`,
+        filename,
+        "text/csv;charset=utf-8",
+      );
+      appendLog(`[latency] exported CSV -> ${filename}`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
   async function browseLatencyOutputFolder() {
     setError(null);
     try {
@@ -1590,7 +1779,9 @@ export function usePawdioLabController() {
     exportLatencyReport,
     exportSweepLastJson,
     exportSweepAllJson,
-    exportSweepLastSquiglink,
+exportSweepLastSquiglink,
+    exportSweepLastCsv,
+    exportLatencyCsv,
     browseLatencyOutputFolder,
     browseSweepOutputFolder,
     stopTest,
