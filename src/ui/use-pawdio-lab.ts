@@ -1805,4 +1805,4 @@ exportSweepLastSquiglink,
   };
 }
 
-export type PawdioLabController
+export type PawdioLabController = ReturnType<typeof usePawdioLabController>;
