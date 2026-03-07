@@ -41,8 +41,8 @@ export function DatabasePage({
     }
 
     // Sort devices alphabetically
-    const sortedDevices = Object.keys(groups).sort((a, b) => 
-      a.toLowerCase().localeCompare(b.toLowerCase())
+    const sortedDevices = Object.keys(groups).sort((a, b) =>
+      a.toLowerCase().localeCompare(b.toLowerCase()),
     );
 
     return sortedDevices.map((deviceName) => ({
@@ -57,9 +57,7 @@ export function DatabasePage({
   }, [results, selectedResultId]);
 
   // Get test types for filter dropdown
-  const testTypes = Array.from(
-    new Set(results.map((r) => r.payload.test))
-  );
+  const testTypes = Array.from(new Set(results.map((r) => r.payload.test)));
 
   const formatDate = (timestamp: string | number | undefined) => {
     if (!timestamp) return "Unknown";
@@ -97,7 +95,9 @@ export function DatabasePage({
       const std = metrics.std_dev_ms;
       if (avg !== undefined) {
         return `Avg: ${typeof avg === "number" ? avg.toFixed(2) : avg}ms${
-          std !== undefined ? ` ±${typeof std === "number" ? std.toFixed(2) : std}ms` : ""
+          std !== undefined
+            ? ` ±${typeof std === "number" ? std.toFixed(2) : std}ms`
+            : ""
         }`;
       }
     }
@@ -152,17 +152,21 @@ export function DatabasePage({
 
   // Calculate total results count
   const totalResults = results.length;
-  const filteredResults = filterType === "all" 
-    ? totalResults 
-    : results.filter(r => r.payload.test === filterType).length;
+  const filteredResults =
+    filterType === "all"
+      ? totalResults
+      : results.filter((r) => r.payload.test === filterType).length;
 
   // Check if result has image data
   const hasImageData = (entry: ResultEntry) => {
     const data = entry.payload.data as Record<string, unknown>;
-    return data && (
-      (Array.isArray(data.freqs) && data.freqs.length > 0) ||
-      (Array.isArray(data.left_mag_db_avg) && data.left_mag_db_avg.length > 0) ||
-      (Array.isArray(data.right_mag_db_avg) && data.right_mag_db_avg.length > 0)
+    return (
+      data &&
+      ((Array.isArray(data.freqs) && data.freqs.length > 0) ||
+        (Array.isArray(data.left_mag_db_avg) &&
+          data.left_mag_db_avg.length > 0) ||
+        (Array.isArray(data.right_mag_db_avg) &&
+          data.right_mag_db_avg.length > 0))
     );
   };
 
@@ -170,7 +174,7 @@ export function DatabasePage({
     <div className="page-stack">
       <section className="page-card">
         <h2 className="section-heading">Results Database</h2>
-        
+
         <div className="db-controls">
           <div className="db-filter">
             <label className="field-label">Filter by Type:</label>
@@ -191,9 +195,11 @@ export function DatabasePage({
               ))}
             </select>
           </div>
-          
+
           <div className="db-stats">
-            <span className="db-count">{filteredResults} of {totalResults} results</span>
+            <span className="db-count">
+              {filteredResults} of {totalResults} results
+            </span>
           </div>
         </div>
 
@@ -205,10 +211,9 @@ export function DatabasePage({
               <div className="db-list">
                 {deviceGroups.length === 0 ? (
                   <div className="db-empty">
-                    {results.length === 0 
+                    {results.length === 0
                       ? "No saved results yet. Run some tests to populate the database."
-                      : "No results match the current filter."
-                    }
+                      : "No results match the current filter."}
                   </div>
                 ) : (
                   deviceGroups.map((group) => (
@@ -218,8 +223,12 @@ export function DatabasePage({
                       onClick={() => setSelectedDevice(group.deviceName)}
                     >
                       <div className="db-item-header">
-                        <span className="db-device-name">{group.deviceName}</span>
-                        <span className="db-count-badge">{group.results.length}</span>
+                        <span className="db-device-name">
+                          {group.deviceName}
+                        </span>
+                        <span className="db-count-badge">
+                          {group.results.length}
+                        </span>
                       </div>
                     </div>
                   ))
@@ -229,8 +238,8 @@ export function DatabasePage({
               // Show test list for selected device
               <div className="db-list">
                 <div className="db-breadcrumb">
-                  <button 
-                    type="button" 
+                  <button
+                    type="button"
                     className="db-back-btn"
                     onClick={() => {
                       setSelectedDevice(null);
@@ -242,7 +251,8 @@ export function DatabasePage({
                   <span className="db-current-device">{selectedDevice}</span>
                 </div>
                 {sortByDate(
-                  deviceGroups.find(g => g.deviceName === selectedDevice)?.results || []
+                  deviceGroups.find((g) => g.deviceName === selectedDevice)
+                    ?.results || [],
                 ).map((entry) => (
                   <div
                     key={entry.id}
@@ -250,7 +260,9 @@ export function DatabasePage({
                     onClick={() => setSelectedResultId(entry.id)}
                   >
                     <div className="db-item-header">
-                      <span className={`db-badge db-badge-${entry.payload.test}`}>
+                      <span
+                        className={`db-badge db-badge-${entry.payload.test}`}
+                      >
                         {getTestTypeLabel(entry.payload.test)}
                       </span>
                       <span className="db-date">
@@ -264,7 +276,7 @@ export function DatabasePage({
                 ))}
               </div>
             )}
-            
+
             {results.length > 0 && (
               <div className="db-list-footer">
                 <button
@@ -318,13 +330,16 @@ export function DatabasePage({
                     </button>
                   </div>
                 </div>
-                
+
                 <div className="db-detail-content">
                   {viewMode === "image" && hasImageData(selectedResult) ? (
                     <div className="db-detail-section">
                       <h4>Frequency Response</h4>
                       <div className="db-image-placeholder">
-                        <p>Frequency response visualization would be rendered here.</p>
+                        <p>
+                          Frequency response visualization would be rendered
+                          here.
+                        </p>
                         <p className="muted-text">
                           (Chart rendering requires chart library integration)
                         </p>
@@ -336,32 +351,49 @@ export function DatabasePage({
                         <h4>Device</h4>
                         <p>{selectedResult.deviceName || "Unknown Device"}</p>
                       </div>
-                      
+
                       <div className="db-detail-section">
                         <h4>Timestamp</h4>
-                        <p>{formatDate(selectedResult.savedAt || selectedResult.payload.timestamp)}</p>
+                        <p>
+                          {formatDate(
+                            selectedResult.savedAt ||
+                              selectedResult.payload.timestamp,
+                          )}
+                        </p>
                       </div>
-                      
+
                       <div className="db-detail-section">
                         <h4>Parameters</h4>
                         <pre className="mono-pre">
-                          {JSON.stringify(selectedResult.payload.params, null, 2)}
+                          {JSON.stringify(
+                            selectedResult.payload.params,
+                            null,
+                            2,
+                          )}
                         </pre>
                       </div>
-                      
+
                       <div className="db-detail-section">
                         <h4>Metrics</h4>
                         <pre className="mono-pre">
-                          {JSON.stringify(selectedResult.payload.metrics, null, 2)}
+                          {JSON.stringify(
+                            selectedResult.payload.metrics,
+                            null,
+                            2,
+                          )}
                         </pre>
                       </div>
-                      
+
                       {selectedResult.payload.data &&
                         Object.keys(selectedResult.payload.data).length > 0 && (
                           <div className="db-detail-section">
                             <h4>Data</h4>
                             <pre className="mono-pre">
-                              {JSON.stringify(selectedResult.payload.data, null, 2)}
+                              {JSON.stringify(
+                                selectedResult.payload.data,
+                                null,
+                                2,
+                              )}
                             </pre>
                           </div>
                         )}
@@ -371,10 +403,9 @@ export function DatabasePage({
               </>
             ) : (
               <div className="db-detail-empty">
-                {selectedDevice 
+                {selectedDevice
                   ? "Select a test from the list to view details"
-                  : "Select a device from the list to view tests"
-                }
+                  : "Select a device from the list to view tests"}
               </div>
             )}
           </div>
@@ -692,4 +723,3 @@ export function DatabasePage({
     </div>
   );
 }
-

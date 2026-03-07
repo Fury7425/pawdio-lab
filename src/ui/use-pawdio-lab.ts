@@ -106,7 +106,7 @@ function addToHistory(entry: ResultEntry): void {
 
 function deleteFromHistory(id: number): void {
   const history = loadHistory();
-  const filtered = history.filter(entry => entry.id !== id);
+  const filtered = history.filter((entry) => entry.id !== id);
   saveHistory(filtered);
 }
 
@@ -143,14 +143,14 @@ function addComparison(leftId: number, rightId: number, name: string): void {
     name,
     leftId,
     rightId,
-    createdAt: Date.now()
+    createdAt: Date.now(),
   });
   saveComparisons(comparisons);
 }
 
 function deleteComparison(id: string): void {
   const comparisons = loadComparisons();
-  const filtered = comparisons.filter(c => c.id !== id);
+  const filtered = comparisons.filter((c) => c.id !== id);
   saveComparisons(filtered);
 }
 
@@ -646,8 +646,12 @@ export function usePawdioLabController() {
         deviceName = settings.itemName.trim();
       } else if (inventory) {
         // Fall back to actual device name if no custom name provided
-        const outputDevice = inventory.outputs.find(d => d.index === settings.outputDeviceIndex);
-        const inputDevice = inventory.inputs.find(d => d.index === settings.inputDeviceIndex);
+        const outputDevice = inventory.outputs.find(
+          (d) => d.index === settings.outputDeviceIndex,
+        );
+        const inputDevice = inventory.inputs.find(
+          (d) => d.index === settings.inputDeviceIndex,
+        );
         if (outputDevice) {
           deviceName = outputDevice.name;
         } else if (inputDevice) {
@@ -655,7 +659,12 @@ export function usePawdioLabController() {
         }
       }
     }
-    const entry: ResultEntry = { id: nextResultId.current++, payload, savedAt: Date.now(), deviceName };
+    const entry: ResultEntry = {
+      id: nextResultId.current++,
+      payload,
+      savedAt: Date.now(),
+      deviceName,
+    };
     setResults((prev) => [...prev, entry]);
     // Auto-save to persistent history
     addToHistory(entry);
@@ -900,7 +909,7 @@ export function usePawdioLabController() {
     }
   }
 
-async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
+  async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
     if (running) {
       return;
     }
@@ -1431,28 +1440,30 @@ async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
     setError(null);
     try {
       const filename = `sweep_fr_${exportTimestampTag()}.csv`;
-      
+
       const leftAvg = numberList(data.left_mag_db_avg);
       const rightAvg = numberList(data.right_mag_db_avg);
       const leftAll = numberCurveList(data.left_mag_db_all);
       const rightAll = numberCurveList(data.right_mag_db_all);
-      
+
       let header = "Frequency(Hz)";
       if (leftAvg.length > 0) header += ",Left_Avg(dB)";
       if (rightAvg.length > 0) header += ",Right_Avg(dB)";
-      for (let i = 0; i < leftAll.length; i++) header += `,Left_Sweep_${i+1}(dB)`;
-      for (let i = 0; i < rightAll.length; i++) header += `,Right_Sweep_${i+1}(dB)`;
-      
+      for (let i = 0; i < leftAll.length; i++)
+        header += `,Left_Sweep_${i + 1}(dB)`;
+      for (let i = 0; i < rightAll.length; i++)
+        header += `,Right_Sweep_${i + 1}(dB)`;
+
       const lines = [header];
-      
+
       const numRows = Math.min(
         freqs.length,
         leftAvg.length,
         rightAvg.length,
-        ...leftAll.map(c => c.length),
-        ...rightAll.map(c => c.length)
+        ...leftAll.map((c) => c.length),
+        ...rightAll.map((c) => c.length),
       );
-      
+
       for (let i = 0; i < numRows; i++) {
         let row = freqs[i].toFixed(2);
         if (leftAvg.length > i) row += `,${leftAvg[i].toFixed(3)}`;
@@ -1465,7 +1476,7 @@ async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
         }
         lines.push(row);
       }
-      
+
       triggerDownload(
         `${lines.join("\n")}\n`,
         filename,
@@ -1487,24 +1498,27 @@ async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
     setError(null);
     try {
       const filename = `latency_${exportTimestampTag()}.csv`;
-      const lines = ["Signal,Frequency(Hz),Iteration,Delay(ms),Average(ms),StdDev(ms)"];
-      
+      const lines = [
+        "Signal,Frequency(Hz),Iteration,Delay(ms),Average(ms),StdDev(ms)",
+      ];
+
       for (const entry of latencyExportSuite) {
         const freq = entry.request.frequencyHz;
         const signal = entry.request.signal;
-        
+
         for (const measurement of entry.report.measurements) {
-          const delay = measurement.delayMs !== null ? measurement.delayMs.toFixed(3) : "";
+          const delay =
+            measurement.delayMs !== null ? measurement.delayMs.toFixed(3) : "";
           lines.push(`${signal},${freq},${measurement.iteration},${delay},,`);
         }
-        
+
         if (entry.report.averageDelayMs !== null) {
           const avgIdx = lines.length - entry.report.measurements.length;
           const std = entry.report.stdDevMs?.toFixed(3) ?? "";
           lines[avgIdx] += `,${entry.report.averageDelayMs.toFixed(3)},${std}`;
         }
       }
-      
+
       triggerDownload(
         `${lines.join("\n")}\n`,
         filename,
@@ -1813,7 +1827,7 @@ async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
     exportLatencyReport,
     exportSweepLastJson,
     exportSweepAllJson,
-exportSweepLastSquiglink,
+    exportSweepLastSquiglink,
     exportSweepLastCsv,
     exportLatencyCsv,
     browseLatencyOutputFolder,
