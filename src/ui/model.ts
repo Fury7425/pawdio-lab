@@ -3,7 +3,8 @@ export type PageKey =
   | "sweep_fr"
   | "experimental"
   | "devices"
-  | "results";
+  | "results"
+  | "database";
 
 export enum PageKeyEnum {
   Latency = "latency",
@@ -11,6 +12,7 @@ export enum PageKeyEnum {
   Experimental = "experimental",
   Devices = "devices",
   Results = "results",
+  Database = "database",
 }
 
 export type AudioDeviceInfo = {
@@ -146,6 +148,7 @@ export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "latency", label: "Latency" },
   { key: "sweep_fr", label: "Sweep FR" },
   { key: "devices", label: "Devices / Settings" },
+  { key: "database", label: "Database" },
   { key: "results", label: "Results / Export" },
   { key: "experimental", label: "Experimental Tests" },
 ];

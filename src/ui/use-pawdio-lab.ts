@@ -1561,6 +1561,18 @@ export function usePawdioLabController() {
     setResults([]);
   }
 
+  function deleteResult(index: number) {
+    setResults((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  function restoreResult(index: number) {
+    // Restore from history if needed
+    const history = loadHistory();
+    if (index >= 0 && index < history.length) {
+      setResults((prev) => [...prev, history[index]]);
+    }
+  }
+
   useEffect(() => {
     loadState().catch((err) => setError(String(err)));
   }, []);
@@ -1788,7 +1800,9 @@ exportSweepLastSquiglink,
     copyLogs,
     clearLogs,
     clearResults,
+    deleteResult,
+    restoreResult,
   };
 }
 
-export type PawdioLabController = ReturnType<typeof usePawdioLabController>;
+export type PawdioLabController

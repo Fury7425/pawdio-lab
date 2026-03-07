@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Sidebar } from "./components/sidebar";
+import { DatabasePage } from "./pages/database-page";
 import { DevicesPage } from "./pages/devices-page";
 import { ExperimentalPage } from "./pages/experimental-page";
 import { LatencyPage } from "./pages/latency-page";
@@ -126,6 +127,14 @@ export function PawdioLabApp() {
             />
           )}
 
+          {controller.activePage === PageKeyEnum.Database && (
+            <DatabasePage
+              results={controller.results}
+              onDeleteResult={controller.deleteResult}
+              onClearAllResults={controller.clearResults}
+            />
+          )}
+
           {controller.activePage === PageKeyEnum.Results && (
             <ResultsPage
               resultText={controller.resultText}
@@ -140,3 +149,4 @@ export function PawdioLabApp() {
     </main>
   );
 }
+
