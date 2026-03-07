@@ -638,15 +638,21 @@ export function usePawdioLabController() {
   }
 
   function appendResult(payload: TestPayload) {
-    // Get device name from settings
+    // Get device name from settings - prefer custom item name, fall back to device name
     let deviceName = "Unknown Device";
-    if (inventory && settings) {
-      const outputDevice = inventory.outputs.find(d => d.index === settings.outputDeviceIndex);
-      const inputDevice = inventory.inputs.find(d => d.index === settings.inputDeviceIndex);
-      if (outputDevice) {
-        deviceName = outputDevice.name;
-      } else if (inputDevice) {
-        deviceName = inputDevice.name;
+    if (settings) {
+      // Use the custom item name if provided (this is what users type, e.g., "Headphones", "Speakers")
+      if (settings.itemName && settings.itemName.trim()) {
+        deviceName = settings.itemName.trim();
+      } else if (inventory) {
+        // Fall back to actual device name if no custom name provided
+        const outputDevice = inventory.outputs.find(d => d.index === settings.outputDeviceIndex);
+        const inputDevice = inventory.inputs.find(d => d.index === settings.inputDeviceIndex);
+        if (outputDevice) {
+          deviceName = outputDevice.name;
+        } else if (inputDevice) {
+          deviceName = inputDevice.name;
+        }
       }
     }
     const entry: ResultEntry = { id: nextResultId.current++, payload, savedAt: Date.now(), deviceName };
