@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import { ResultEntry, legacyTimestamp } from "../model";
 
 type DatabasePageProps = {
@@ -13,27 +13,97 @@ type DeviceGroup = {
   results: ResultEntry[];
 };
 
+// Group results by test type for a device
+type TestTypeGroup = {
+  testType: string;
+  results: ResultEntry[];
+  latestTimestamp: number;
+  count: number;
+};
+
+const STORAGE_KEY = "pawdio_lab_database_results";
+
+// Test type constants - centralized for maintainability
+const TEST_TYPES = {
+  LATENCY: "latency",
+  SWEEP_FR: "sweep_fr",
+  BALANCE: "balance",
+  CROSSTALK: "crosstalk",
+  THD: "thd",
+  ISOLATION: "isolation",
+} as const;
+
+type TestTypeKey = typeof TEST_TYPES[keyof typeof TEST_TYPES];
+
+const TEST_TYPE_LABELS: Record<string, string> = {
+  [TEST_TYPES.LATENCY]: "Latency",
+  [TEST_TYPES.SWEEP_FR]: "Sweep FR",
+  [TEST_TYPES.BALANCE]: "Balance",
+  [TEST_TYPES.CROSSTALK]: "Crosstalk",
+  [TEST_TYPES.THD]: "THD",
+  [TEST_TYPES.ISOLATION]: "Isolation",
+};
+
+const UNKNOWN_DEVICE = "Unknown Device";
+
+// Utility to safely escape HTML to prevent XSS
+const escapeHtml = (str: string): string => {
+  const div = document.createElement("div");
+  div.textContent = str;
+  return div.innerHTML;
+};
+
+// Utility to safely render JSON with XSS protection
+const safeStringify = (obj: unknown, maxLength = 200): string => {
+  try {
+    const json = JSON.stringify(obj, null, 2);
+    if (json.length > maxLength) {
+      return escapeHtml(json.slice(0, maxLength)) + "...";
+    }
+    return escapeHtml(json);
+  } catch {
+    return "";
+  }
+};
+
 export function DatabasePage({
   results,
   onDeleteResult,
   onClearAllResults,
 }: DatabasePageProps) {
   const [selectedDevice, setSelectedDevice] = useState<string | null>(null);
+  const [selectedTestTypeGroup, setSelectedTestTypeGroup] = useState<TestTypeGroup | null>(null);
   const [selectedResultId, setSelectedResultId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"text" | "image">("text");
 
-  // Group results by device name
+  // Persist results to localStorage with quota handling
+  useEffect(() => {
+    if (results.length > 0) {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(results));
+      } catch (err) {
+        // Handle quota exceeded or other localStorage errors
+        if (err instanceof DOMException && err.name === "QuotaExceededError") {
+          console.error("localStorage quota exceeded. Consider clearing old results.");
+        } else {
+          console.error("Failed to save results to localStorage:", err);
+        }
+      }
+    }
+  }, [results]);
+
+  // Group results by device name - use useMemo for performance
   const deviceGroups: DeviceGroup[] = useMemo(() => {
     const filtered = results.filter((entry) => {
       if (filterType === "all") return true;
-      return entry.payload.test === filterType;
+      return entry.payload?.test === filterType;
     });
 
     // Group by device name
     const groups: Record<string, ResultEntry[]> = {};
     for (const entry of filtered) {
-      const deviceName = entry.deviceName || "Unknown Device";
+      const deviceName = entry.deviceName || UNKNOWN_DEVICE;
       if (!groups[deviceName]) {
         groups[deviceName] = [];
       }
@@ -51,13 +121,52 @@ export function DatabasePage({
     }));
   }, [results, filterType]);
 
+  // Group results by test type for a specific device - memoized
+  const getTestTypeGroups = useCallback((entries: ResultEntry[]): TestTypeGroup[] => {
+    const groups: Record<string, ResultEntry[]> = {};
+    
+    for (const entry of entries) {
+      const testType = entry.payload?.test || "unknown";
+      if (!groups[testType]) {
+        groups[testType] = [];
+      }
+      groups[testType].push(entry);
+    }
+    
+    return Object.entries(groups).map(([testType, testResults]) => {
+      // Sort by timestamp descending to get the most recent
+      const sorted = [...testResults].sort((a, b) => {
+        const timeA = a.savedAt || 0;
+        const timeB = b.savedAt || 0;
+        return timeB - timeA;
+      });
+      return {
+        testType,
+        results: sorted,
+        latestTimestamp: sorted[0]?.savedAt || 0,
+        count: testResults.length,
+      };
+    }).sort((a, b) => b.latestTimestamp - a.latestTimestamp);
+  }, []);
+
+  // Get test type groups for current device
+  const currentDeviceResults = useMemo(() => {
+    if (!selectedDevice) return [];
+    const group = deviceGroups.find((g) => g.deviceName === selectedDevice);
+    return group?.results || [];
+  }, [selectedDevice, deviceGroups]);
+
+  const testTypeGroups = useMemo(() => {
+    return getTestTypeGroups(currentDeviceResults);
+  }, [currentDeviceResults]);
+
   // Get selected result
   const selectedResult = useMemo(() => {
     return results.find((r) => r.id === selectedResultId) || null;
   }, [results, selectedResultId]);
 
   // Get test types for filter dropdown
-  const testTypes = Array.from(new Set(results.map((r) => r.payload.test)));
+  const testTypes = Array.from(new Set(results.map((r) => r.payload?.test).filter(Boolean)));
 
   const formatDate = (timestamp: string | number | undefined) => {
     if (!timestamp) return "Unknown";
@@ -67,30 +176,19 @@ export function DatabasePage({
     return legacyTimestamp(timestamp);
   };
 
-  const getTestTypeLabel = (test: string) => {
-    switch (test) {
-      case "latency":
-        return "Latency";
-      case "sweep_fr":
-        return "Sweep FR";
-      case "balance":
-        return "Balance";
-      case "crosstalk":
-        return "Crosstalk";
-      case "thd":
-        return "THD";
-      case "isolation":
-        return "Isolation";
-      default:
-        return test;
-    }
-  };
+  // Get test type label - memoized with useCallback
+  const getTestTypeLabel = useCallback((test: string): string => {
+    return TEST_TYPE_LABELS[test] || test;
+  }, []);
 
-  const getMetricsSummary = (entry: ResultEntry) => {
-    const metrics = entry.payload.metrics as Record<string, unknown>;
+  // Format metrics summary - memoized with useCallback
+  const getMetricsSummary = useCallback((entry: ResultEntry): string => {
+    const metrics = entry.payload?.metrics as Record<string, unknown> | undefined;
     if (!metrics) return "";
 
-    if (entry.payload.test === "latency") {
+    const testType = entry.payload?.test;
+    
+    if (testType === TEST_TYPES.LATENCY) {
       const avg = metrics.average_delay_ms;
       const std = metrics.std_dev_ms;
       if (avg !== undefined) {
@@ -102,7 +200,7 @@ export function DatabasePage({
       }
     }
 
-    if (entry.payload.test === "sweep_fr") {
+    if (testType === TEST_TYPES.SWEEP_FR) {
       const left = metrics.delay_ms_left;
       const right = metrics.delay_ms_right;
       if (left !== undefined || right !== undefined) {
@@ -110,28 +208,28 @@ export function DatabasePage({
       }
     }
 
-    if (entry.payload.test === "thd") {
+    if (testType === TEST_TYPES.THD) {
       const thd = metrics.thd_percent;
       if (thd !== undefined) {
         return `THD: ${typeof thd === "number" ? thd.toFixed(3) : thd}%`;
       }
     }
 
-    if (entry.payload.test === "balance") {
+    if (testType === TEST_TYPES.BALANCE) {
       const delta = metrics.l_minus_r_db;
       if (delta !== undefined) {
         return `L-R: ${typeof delta === "number" ? delta.toFixed(2) : delta} dB`;
       }
     }
 
-    if (entry.payload.test === "crosstalk") {
+    if (testType === TEST_TYPES.CROSSTALK) {
       const xt = metrics.crosstalk_db;
       if (xt !== undefined) {
         return `Crosstalk: ${typeof xt === "number" ? xt.toFixed(1) : xt} dB`;
       }
     }
 
-    if (entry.payload.test === "isolation") {
+    if (testType === TEST_TYPES.ISOLATION) {
       const delta = metrics.delta_db;
       if (delta !== undefined) {
         return `Isolation: ${typeof delta === "number" ? delta.toFixed(1) : delta} dB`;
@@ -139,7 +237,20 @@ export function DatabasePage({
     }
 
     return JSON.stringify(metrics).slice(0, 50);
-  };
+  }, []);
+
+  // Check if result has image data - memoized with useCallback
+  const hasImageData = useCallback((entry: ResultEntry): boolean => {
+    const data = entry.payload?.data as Record<string, unknown> | undefined;
+    return Boolean(
+      data &&
+        ((Array.isArray(data.freqs) && data.freqs.length > 0) ||
+          (Array.isArray(data.left_mag_db_avg) &&
+            data.left_mag_db_avg.length > 0) ||
+          (Array.isArray(data.right_mag_db_avg) &&
+            data.right_mag_db_avg.length > 0))
+    );
+  }, []);
 
   // Sort results by date (newest first) for a device
   const sortByDate = (entries: ResultEntry[]) => {
@@ -155,20 +266,7 @@ export function DatabasePage({
   const filteredResults =
     filterType === "all"
       ? totalResults
-      : results.filter((r) => r.payload.test === filterType).length;
-
-  // Check if result has image data
-  const hasImageData = (entry: ResultEntry) => {
-    const data = entry.payload.data as Record<string, unknown>;
-    return (
-      data &&
-      ((Array.isArray(data.freqs) && data.freqs.length > 0) ||
-        (Array.isArray(data.left_mag_db_avg) &&
-          data.left_mag_db_avg.length > 0) ||
-        (Array.isArray(data.right_mag_db_avg) &&
-          data.right_mag_db_avg.length > 0))
-    );
-  };
+      : results.filter((r) => r.payload?.test === filterType).length;
 
   return (
     <div className="page-stack">
@@ -200,6 +298,11 @@ export function DatabasePage({
             <span className="db-count">
               {filteredResults} of {totalResults} results
             </span>
+            {results.length > 0 && (
+              <span className="db-saved-badge" title="Results saved locally">
+                ✓ Saved
+              </span>
+            )}
           </div>
         </div>
 
@@ -234,8 +337,8 @@ export function DatabasePage({
                   ))
                 )}
               </div>
-            ) : (
-              // Show test list for selected device
+            ) : !selectedTestTypeGroup ? (
+              // Show test type groups (grouped by test type)
               <div className="db-list">
                 <div className="db-breadcrumb">
                   <button
@@ -243,6 +346,7 @@ export function DatabasePage({
                     className="db-back-btn"
                     onClick={() => {
                       setSelectedDevice(null);
+                      setSelectedTestTypeGroup(null);
                       setSelectedResultId(null);
                     }}
                   >
@@ -250,23 +354,60 @@ export function DatabasePage({
                   </button>
                   <span className="db-current-device">{selectedDevice}</span>
                 </div>
-                {sortByDate(
-                  deviceGroups.find((g) => g.deviceName === selectedDevice)
-                    ?.results || [],
-                ).map((entry) => (
+                {testTypeGroups.map((group) => (
+                  <div
+                    key={group.testType}
+                    className="db-item db-test-type-item"
+                    onClick={() => setSelectedTestTypeGroup(group)}
+                  >
+                    <div className="db-item-header">
+                      <span
+                        className={`db-badge db-badge-${group.testType}`}
+                      >
+                        {getTestTypeLabel(group.testType)}
+                      </span>
+                      <span className="db-count-small">
+                        {group.count} {group.count === 1 ? "test" : "tests"}
+                      </span>
+                    </div>
+                    <div className="db-item-meta">
+                      <span className="db-date">
+                        Latest: {formatDate(group.latestTimestamp)}
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              // Show individual results for a specific test type
+              <div className="db-list">
+                <div className="db-breadcrumb">
+                  <button
+                    type="button"
+                    className="db-back-btn"
+                    onClick={() => {
+                      setSelectedTestTypeGroup(null);
+                      setSelectedResultId(null);
+                    }}
+                  >
+                    ← Back to {getTestTypeLabel(selectedTestTypeGroup.testType)}
+                  </button>
+                  <span className="db-current-device">
+                    {selectedDevice} - {getTestTypeLabel(selectedTestTypeGroup.testType)}
+                  </span>
+                </div>
+                {sortByDate(selectedTestTypeGroup.results).map((entry, idx) => (
                   <div
                     key={entry.id}
                     className={`db-item ${selectedResultId === entry.id ? "is-selected" : ""}`}
                     onClick={() => setSelectedResultId(entry.id)}
                   >
                     <div className="db-item-header">
-                      <span
-                        className={`db-badge db-badge-${entry.payload.test}`}
-                      >
-                        {getTestTypeLabel(entry.payload.test)}
+                      <span className="db-result-index">
+                        #{selectedTestTypeGroup.results.length - idx}
                       </span>
                       <span className="db-date">
-                        {formatDate(entry.savedAt || entry.payload.timestamp)}
+                        {formatDate(entry.savedAt || entry.payload?.timestamp)}
                       </span>
                     </div>
                     <div className="db-item-metrics">
@@ -296,7 +437,7 @@ export function DatabasePage({
               <>
                 <div className="db-detail-header">
                   <h3 className="db-detail-title">
-                    {getTestTypeLabel(selectedResult.payload.test)} Result
+                    {getTestTypeLabel(selectedResult.payload?.test || "")} Result
                     <span className="db-detail-id">#{selectedResult.id}</span>
                   </h3>
                   <div className="db-detail-actions">
@@ -349,7 +490,7 @@ export function DatabasePage({
                     <>
                       <div className="db-detail-section">
                         <h4>Device</h4>
-                        <p>{selectedResult.deviceName || "Unknown Device"}</p>
+                        <p>{selectedResult.deviceName || UNKNOWN_DEVICE}</p>
                       </div>
 
                       <div className="db-detail-section">
@@ -357,44 +498,35 @@ export function DatabasePage({
                         <p>
                           {formatDate(
                             selectedResult.savedAt ||
-                              selectedResult.payload.timestamp,
+                              selectedResult.payload?.timestamp,
                           )}
                         </p>
                       </div>
 
                       <div className="db-detail-section">
                         <h4>Parameters</h4>
-                        <pre className="mono-pre">
-                          {JSON.stringify(
-                            selectedResult.payload.params,
-                            null,
-                            2,
-                          )}
-                        </pre>
+                        <pre 
+                          className="mono-pre"
+                          dangerouslySetInnerHTML={{ __html: safeStringify(selectedResult.payload?.params, 500) }}
+                        />
                       </div>
 
                       <div className="db-detail-section">
                         <h4>Metrics</h4>
-                        <pre className="mono-pre">
-                          {JSON.stringify(
-                            selectedResult.payload.metrics,
-                            null,
-                            2,
-                          )}
-                        </pre>
+                        <pre 
+                          className="mono-pre"
+                          dangerouslySetInnerHTML={{ __html: safeStringify(selectedResult.payload?.metrics, 500) }}
+                        />
                       </div>
 
-                      {selectedResult.payload.data &&
+                      {selectedResult.payload?.data &&
                         Object.keys(selectedResult.payload.data).length > 0 && (
                           <div className="db-detail-section">
                             <h4>Data</h4>
-                            <pre className="mono-pre">
-                              {JSON.stringify(
-                                selectedResult.payload.data,
-                                null,
-                                2,
-                              )}
-                            </pre>
+                            <pre 
+                              className="mono-pre"
+                              dangerouslySetInnerHTML={{ __html: safeStringify(selectedResult.payload.data, 500) }}
+                            />
                           </div>
                         )}
                     </>
@@ -537,6 +669,37 @@ export function DatabasePage({
         .db-badge-crosstalk { background: #8b5cf6; color: white; }
         .db-badge-thd { background: #ef4444; color: white; }
         .db-badge-isolation { background: #06b6d4; color: white; }
+        
+        .db-count-small {
+          font-size: 11px;
+          color: var(--muted-color);
+        }
+        
+        .db-test-type-item {
+          background: var(--card-bg);
+        }
+        
+        .db-test-type-item:hover {
+          background: var(--hover-bg);
+        }
+        
+        .db-item-meta {
+          margin-top: 4px;
+        }
+        
+        .db-result-index {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--accent-color);
+        }
+        
+        .db-saved-badge {
+          font-size: 11px;
+          color: #10b981;
+          background: rgba(16, 185, 129, 0.1);
+          padding: 2px 8px;
+          border-radius: 4px;
+        }
         
         .db-date {
           font-size: 11px;
