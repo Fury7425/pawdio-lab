@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { convertFileSrc } from "@tauri-apps/api/core";
 import { ResultEntry, legacyTimestamp } from "../model";
 
 type DatabasePageProps = {
@@ -66,6 +67,52 @@ const safeStringify = (obj: unknown, maxLength = 200): string => {
   }
 };
 
+// Image file keys that we want to display in the gallery
+const IMAGE_FILE_KEYS = [
+  "plot_left_avg",
+  "plot_left_all",
+  "plot_right_avg",
+  "plot_right_all",
+  "plot_all",
+  "plot_lr_avg",
+  "plot_avg_all",
+  "overall_bar",
+  "latency_report",
+] as const;
+
+// Display names for image types
+const IMAGE_KEY_LABELS: Record<string, string> = {
+  plot_left_avg: "Left Average",
+  plot_left_all: "Left All Sweeps",
+  plot_right_avg: "Right Average",
+  plot_right_all: "Right All Sweeps",
+  plot_all: "All Sweeps",
+  plot_lr_avg: "L+R Average",
+  plot_avg_all: "Average All",
+  overall_bar: "Overall Bar Chart",
+  latency_report: "Latency Report",
+};
+
+// Extract available image paths from payload.files
+const getImagePaths = (files: Record<string, unknown> | undefined): Array<{ key: string; path: string; label: string }> => {
+  if (!files) return [];
+  
+  const images: Array<{ key: string; path: string; label: string }> = [];
+  
+  for (const key of IMAGE_FILE_KEYS) {
+    const value = files[key];
+    if (typeof value === "string" && value.length > 0) {
+      images.push({
+        key,
+        path: value,
+        label: IMAGE_KEY_LABELS[key] || key,
+      });
+    }
+  }
+  
+  return images;
+};
+
 export function DatabasePage({
   results,
   onDeleteResult,
@@ -76,6 +123,8 @@ export function DatabasePage({
   const [selectedResultId, setSelectedResultId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
   const [viewMode, setViewMode] = useState<"text" | "image">("text");
+  const [loadedImages, setLoadedImages] = useState<Record<string, string>>({});
+  const [imagesLoading, setImagesLoading] = useState<Record<string, boolean>>({});
 
   // Persist results to localStorage with quota handling
   useEffect(() => {
@@ -165,6 +214,39 @@ export function DatabasePage({
     return results.find((r) => r.id === selectedResultId) || null;
   }, [results, selectedResultId]);
 
+  // Load images when switching to image view or when selected result changes
+  useEffect(() => {
+    if (viewMode !== "image" || !selectedResult) {
+      return;
+    }
+
+    const files = selectedResult.payload?.files as Record<string, unknown> | undefined;
+    const imagePaths = getImagePaths(files);
+    
+    if (imagePaths.length === 0) {
+      return;
+    }
+
+    // Load each image
+    const loadImages = async () => {
+      const newLoadedImages: Record<string, string> = {};
+      
+      for (const img of imagePaths) {
+        try {
+          // Convert file path to URL that can be loaded in the browser
+          const src = convertFileSrc(img.path);
+          newLoadedImages[img.key] = src;
+        } catch (err) {
+          console.error(`Failed to load image ${img.key}:`, err);
+        }
+      }
+      
+      setLoadedImages(newLoadedImages);
+    };
+
+    loadImages();
+  }, [viewMode, selectedResult]);
+
   // Get test types for filter dropdown
   const testTypes = Array.from(new Set(results.map((r) => r.payload?.test).filter(Boolean)));
 
@@ -239,8 +321,15 @@ export function DatabasePage({
     return JSON.stringify(metrics).slice(0, 50);
   }, []);
 
-  // Check if result has image data - memoized with useCallback
+  // Check if result has image data (either from data array or from saved plot files)
   const hasImageData = useCallback((entry: ResultEntry): boolean => {
+    // Check for plot files
+    const files = entry.payload?.files as Record<string, unknown> | undefined;
+    if (files && getImagePaths(files).length > 0) {
+      return true;
+    }
+    
+    // Check for raw data that could be plotted
     const data = entry.payload?.data as Record<string, unknown> | undefined;
     return Boolean(
       data &&
@@ -475,16 +564,40 @@ export function DatabasePage({
                 <div className="db-detail-content">
                   {viewMode === "image" && hasImageData(selectedResult) ? (
                     <div className="db-detail-section">
-                      <h4>Frequency Response</h4>
-                      <div className="db-image-placeholder">
-                        <p>
-                          Frequency response visualization would be rendered
-                          here.
-                        </p>
-                        <p className="muted-text">
-                          (Chart rendering requires chart library integration)
-                        </p>
-                      </div>
+                      <h4>Images</h4>
+                      {(() => {
+                        const files = selectedResult.payload?.files as Record<string, unknown> | undefined;
+                        const imagePaths = getImagePaths(files);
+                        
+                        if (imagePaths.length === 0) {
+                          return (
+                            <div className="db-image-placeholder">
+                              <p>No images available for this result.</p>
+                            </div>
+                          );
+                        }
+                        
+                        return (
+                          <div className="db-image-gallery">
+                            {imagePaths.map((img) => (
+                              <div key={img.key} className="db-image-item">
+                                <div className="db-image-label">{img.label}</div>
+                                {loadedImages[img.key] ? (
+                                  <img 
+                                    src={loadedImages[img.key]} 
+                                    alt={img.label}
+                                    className="db-image-img"
+                                  />
+                                ) : (
+                                  <div className="db-image-loading">
+                                    Loading...
+                                  </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   ) : (
                     <>
@@ -881,6 +994,42 @@ export function DatabasePage({
           font-size: 12px;
           margin-top: 8px;
           opacity: 0.7;
+        }
+        
+        .db-image-gallery {
+          display: flex;
+          flex-direction: column;
+          gap: 16px;
+        }
+        
+        .db-image-item {
+          background: var(--card-bg);
+          border: 1px solid var(--border-color);
+          border-radius: 8px;
+          padding: 12px;
+        }
+        
+        .db-image-label {
+          font-size: 12px;
+          font-weight: 600;
+          color: var(--text-color);
+          margin-bottom: 8px;
+        }
+        
+        .db-image-img {
+          max-width: 100%;
+          height: auto;
+          border-radius: 4px;
+          display: block;
+        }
+        
+        .db-image-loading {
+          background: var(--code-bg);
+          border-radius: 4px;
+          padding: 32px;
+          text-align: center;
+          color: var(--muted-color);
+          font-size: 13px;
         }
       `}</style>
     </div>

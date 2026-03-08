@@ -31,6 +31,17 @@ import {
   parseToneList,
 } from "./model";
 
+// Type for database entries from Rust backend
+type DatabaseEntry = {
+  id: string;
+  deviceName: string;
+  timestamp: string;
+  testType: string;
+  folderPath: string;
+  hasPlots: boolean;
+  hasReport: boolean;
+};
+
 type LatencyPresetConfig = {
   uiKey: "beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse";
   storageKey: string;
@@ -83,6 +94,46 @@ function loadHistory(): ResultEntry[] {
     if (!Array.isArray(parsed)) return [];
     return parsed as ResultEntry[];
   } catch {
+    return [];
+  }
+}
+
+// Convert DatabaseEntry from Rust to ResultEntry format
+function databaseEntryToResultEntry(entry: DatabaseEntry): ResultEntry {
+  // Parse timestamp from format like "20250615_143022"
+  let savedAt: number | undefined;
+  try {
+    const ts = entry.timestamp;
+    const parsed = new Date(`${ts.slice(0,4)}-${ts.slice(4,6)}-${ts.slice(6,8)}T${ts.slice(9,11)}:${ts.slice(11,13)}:${ts.slice(13,15)}`);
+    if (!isNaN(parsed.getTime())) {
+      savedAt = parsed.getTime();
+    }
+  } catch {
+    // ignore parsing errors
+  }
+
+  return {
+    id: parseInt(entry.id.split(':')[0]) || Math.floor(Math.random() * 10000),
+    deviceName: entry.deviceName,
+    savedAt: savedAt,
+    payload: {
+      test: entry.testType,
+      timestamp: entry.timestamp,
+      params: { folderPath: entry.folderPath },
+      metrics: {},
+      data: {},
+      files: { hasPlots: entry.hasPlots, hasReport: entry.hasReport },
+    },
+  };
+}
+
+// Scan filesystem for existing test results
+async function scanDatabaseFiles(outputDirs: string[]): Promise<ResultEntry[]> {
+  try {
+    const entries = await invoke<DatabaseEntry[]>("scan_database", { outputDirs });
+    return entries.map(databaseEntryToResultEntry);
+  } catch (err) {
+    console.error("Failed to scan database:", err);
     return [];
   }
 }
@@ -606,6 +657,30 @@ export function usePawdioLabController() {
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultEntry[]>([]);
   const nextResultId = useRef(1);
+
+  // Load results from filesystem on startup
+  useEffect(() => {
+    const loadDatabaseResults = async () => {
+      // Collect all output directories from settings
+      const outputDirs: string[] = [];
+      if (latencyRequest.outputDir) {
+        outputDirs.push(latencyRequest.outputDir);
+      }
+      if (sweepRequest.outputDir) {
+        outputDirs.push(sweepRequest.outputDir);
+      }
+      
+      if (outputDirs.length > 0) {
+        const dbResults = await scanDatabaseFiles(outputDirs);
+        if (dbResults.length > 0) {
+          setResults(dbResults);
+          appendLog(`[database] loaded ${dbResults.length} results from filesystem`);
+        }
+      }
+    };
+    
+    loadDatabaseResults();
+  }, []);
 
   const latencyProgressPercent = useMemo(() => {
     if (latencyProgress.length === 0) {
