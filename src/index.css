@@ -46,6 +46,10 @@
   --danger-button-bottom: #7e313a;
   --select-arrow: #8da7d2;
   --nav-text: #dbe7fd;
+  --nav-item-text: #8fa4c8;
+  --nav-item-hover-bg: rgba(79, 158, 242, 0.07);
+  --nav-item-active-bg: rgba(79, 158, 242, 0.14);
+  --nav-item-active-border: var(--accent-strong);
   --chip-border: rgba(101, 124, 158, 0.6);
   --chip-bg: rgba(39, 47, 64, 0.85);
   --chip-text: #d9e5fa;
@@ -103,6 +107,9 @@
   --secondary-button-bottom: #e5edf8;
   --secondary-button-border: rgba(144, 164, 193, 0.6);
   --select-arrow: #6b82a8;
+  --nav-item-text: #5a6e8a;
+  --nav-item-hover-bg: rgba(42, 116, 199, 0.07);
+  --nav-item-active-bg: rgba(42, 116, 199, 0.12);
   --chip-border: rgba(146, 167, 196, 0.72);
   --chip-bg: rgba(237, 244, 252, 0.95);
   --chip-text: #27425f;
@@ -136,6 +143,8 @@
   --button-accent-hover-bottom: #2d9199;
   --button-accent-active-top: #4ec3cb;
   --button-accent-active-bottom: #329ea7;
+  --nav-item-active-bg: rgba(78, 195, 203, 0.14);
+  --nav-item-hover-bg: rgba(78, 195, 203, 0.07);
 }
 
 :root[data-accent="greyscale"] {
@@ -149,6 +158,8 @@
   --button-accent-hover-bottom: #667384;
   --button-accent-active-top: #9da8b8;
   --button-accent-active-bottom: #748192;
+  --nav-item-active-bg: rgba(164, 175, 189, 0.14);
+  --nav-item-hover-bg: rgba(164, 175, 189, 0.07);
 }
 
 :root[data-accent="purple"] {
@@ -162,6 +173,8 @@
   --button-accent-hover-bottom: #725fc1;
   --button-accent-active-top: #a48cf4;
   --button-accent-active-bottom: #816ad8;
+  --nav-item-active-bg: rgba(164, 140, 244, 0.14);
+  --nav-item-hover-bg: rgba(164, 140, 244, 0.07);
 }
 
 * {
@@ -205,8 +218,8 @@ body {
 
 .app-layout {
   display: grid;
-  grid-template-columns: minmax(220px, 380px) minmax(0, 1fr);
-  gap: 14px;
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+  gap: 12px;
   height: calc(100vh - 20px);
 }
 
@@ -219,78 +232,75 @@ body {
   border: 1px solid var(--sidebar-border);
   border-radius: 10px;
   box-shadow: var(--shadow-panel);
-  padding: 18px 12px;
+  padding: 20px 14px 16px;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 
 .sidebar-title {
-  font-size: 34px;
+  font-size: 22px;
   font-weight: 700;
   letter-spacing: -0.02em;
   margin: 0;
+  color: var(--text-strong);
 }
 
 .sidebar-subtitle {
-  margin: 0;
+  margin: 3px 0 0;
   color: var(--text-muted);
-  font-size: 13px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .sidebar-nav {
-  margin-top: 10px;
+  margin-top: 16px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 2px;
 }
 
 .nav-btn {
   width: 100%;
-  border: 1px solid transparent;
-  border-radius: 7px;
+  border: none;
+  border-left: 3px solid transparent;
+  border-radius: 6px;
   font: inherit;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--nav-text);
-  background: linear-gradient(
-    180deg,
-    var(--button-accent-top),
-    var(--button-accent-bottom)
-  );
-  padding: 8px 10px;
+  color: var(--nav-item-text);
+  background: transparent;
+  padding: 8px 10px 8px 9px;
   cursor: pointer;
+  text-align: left;
   transition:
-    background 120ms ease,
-    border-color 120ms ease,
-    transform 120ms ease;
+    background 100ms ease,
+    color 100ms ease,
+    border-color 100ms ease;
 }
 
 .nav-btn:hover {
-  background: linear-gradient(
-    180deg,
-    var(--button-accent-hover-top),
-    var(--button-accent-hover-bottom)
-  );
-  transform: translateY(-1px);
+  background: var(--nav-item-hover-bg);
+  color: var(--text-main);
 }
 
 .nav-btn.is-active {
-  border-color: var(--accent-strong);
-  background: linear-gradient(
-    180deg,
-    var(--button-accent-active-top),
-    var(--button-accent-active-bottom)
-  );
-  color: #ffffff;
+  border-left-color: var(--nav-item-active-border);
+  background: var(--nav-item-active-bg);
+  color: var(--accent-strong);
+  font-weight: 600;
 }
 
 .sidebar-footer {
   margin-top: auto;
   padding-top: 12px;
+  border-top: 1px solid var(--section-divider);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .main-column {
@@ -312,25 +322,47 @@ body {
   border: 1px solid var(--card-border);
   border-radius: 10px;
   box-shadow: var(--shadow-panel);
-  padding: 14px;
+  padding: 20px;
+}
+
+.page-section {
+  padding-top: 20px;
+}
+
+.page-section:first-child {
+  padding-top: 0;
 }
 
 .section-heading {
-  font-size: 17px;
+  font-size: 15px;
   font-weight: 700;
-  margin: 0 0 10px;
+  margin: 0 0 16px;
+  color: var(--text-strong);
+  letter-spacing: -0.01em;
 }
 
 .section-subheading {
-  font-size: 15px;
-  font-weight: 700;
-  margin: 0 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
 }
 
 .section-divider {
   border: 0;
   border-top: 1px solid var(--section-divider);
-  margin: 10px 0 12px;
+  margin: 18px 0 0;
+}
+
+.section-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 .field-row {
@@ -346,19 +378,19 @@ body {
 
 .field-grid-2 {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .field-grid-3 {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .field-grid-4 {
   display: grid;
-  gap: 10px;
+  gap: 12px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
@@ -653,6 +685,7 @@ body {
   gap: 6px;
   font-size: 12px;
   color: var(--status-text);
+  flex: 1;
 }
 
 .status-dot {
@@ -675,10 +708,26 @@ body {
   gap: 8px;
 }
 
+.action-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 14px;
+}
+
 .muted {
   color: var(--text-muted);
   font-size: 13px;
+  margin: 0;
 }
+
+/* Spacing utilities */
+.mt-8  { margin-top: 8px; }
+.mt-10 { margin-top: 10px; }
+.mt-12 { margin-top: 12px; }
+.mt-16 { margin-top: 16px; }
+.mb-12 { margin-bottom: 12px; }
 
 @media (max-width: 1280px) {
   .field-grid-4 {

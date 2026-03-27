@@ -70,7 +70,7 @@ export function DevicesPage({
       <section className="page-card">
         <h2 className="section-heading">Devices / Settings</h2>
 
-        <section className="page-card">
+        <section className="page-section">
           <h3 className="section-subheading">Signal Settings</h3>
 
           <div className="field-grid-2">
@@ -104,7 +104,7 @@ export function DevicesPage({
             </label>
           </div>
 
-          <div className="field-grid-2" style={{ marginTop: 10 }}>
+          <div className="field-grid-2 mt-10">
             <LabeledNumberInput
               label="Signal Duration (s)"
               value={draft.durationSecs}
@@ -130,7 +130,8 @@ export function DevicesPage({
               </select>
             </label>
           </div>
-          <label className="field-row" style={{ marginTop: 10 }}>
+
+          <label className="field-row mt-10">
             <span className="field-label">Item Name</span>
             <input
               className="skin-input"
@@ -145,7 +146,7 @@ export function DevicesPage({
             />
           </label>
 
-          <div className="row-end" style={{ marginTop: 12 }}>
+          <div className="row-end mt-12">
             <button
               type="button"
               className="skin-btn"
@@ -156,7 +157,8 @@ export function DevicesPage({
           </div>
         </section>
 
-        <section className="page-card" style={{ marginTop: 12 }}>
+        <hr className="section-divider" />
+        <section className="page-section">
           <h3 className="section-subheading">Audio Devices</h3>
 
           <div className="field-grid-4">
@@ -188,12 +190,12 @@ export function DevicesPage({
                 className="skin-btn secondary"
                 onClick={onRefreshDevices}
               >
-                Refresh Devices
+                Refresh
               </button>
             </div>
           </div>
 
-          <label className="field-row" style={{ marginTop: 10 }}>
+          <label className="field-row mt-10">
             <span className="field-label">Input Device</span>
             <select
               className="skin-select"
@@ -232,7 +234,8 @@ export function DevicesPage({
           />
         </section>
 
-        <section className="page-card" style={{ marginTop: 12 }}>
+        <hr className="section-divider" />
+        <section className="page-section">
           <h3 className="section-subheading">Appearance</h3>
 
           <div className="field-grid-2">
@@ -268,7 +271,7 @@ export function DevicesPage({
             </label>
           </div>
 
-          <label className="toggle-line" style={{ marginTop: 10 }}>
+          <label className="toggle-line mt-10">
             <input
               type="checkbox"
               checked={experimentalEnabled}
