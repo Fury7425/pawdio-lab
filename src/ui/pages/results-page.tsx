@@ -1,25 +1,13 @@
-import { ResultEntry } from "../model";
-
 type ResultsPageProps = {
-  resultText: string;
   logText: string;
-  results: import("../model").ResultEntry[];
   onCopyLog: () => void;
   onClearLog: () => void;
-  onClearResults: () => void;
-  onDeleteResult: (id: number) => void;
-  onRestoreResult: (entry: import("../model").ResultEntry) => void;
 };
 
 export function ResultsPage({
-  resultText: _resultText,
   logText,
-  results: _results,
   onCopyLog,
   onClearLog,
-  onClearResults: _onClearResults,
-  onDeleteResult: _onDeleteResult,
-  onRestoreResult: _onRestoreResult,
 }: ResultsPageProps) {
   return (
     <div className="page-stack">

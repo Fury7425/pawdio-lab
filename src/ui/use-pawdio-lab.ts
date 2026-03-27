@@ -14,7 +14,6 @@ import {
   PageKey,
   ResultEntry,
   RuntimeStatus,
-  SavedComparison,
   SweepRequest,
   TestPayload,
   TestProgress,
@@ -32,16 +31,6 @@ import {
 } from "./model";
 
 // Type for database entries from Rust backend
-type DatabaseEntry = {
-  id: string;
-  deviceName: string;
-  timestamp: string;
-  testType: string;
-  folderPath: string;
-  hasPlots: boolean;
-  hasReport: boolean;
-};
-
 type LatencyPresetConfig = {
   uiKey: "beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse";
   storageKey: string;
@@ -81,129 +70,6 @@ type InputMonitorState = {
 
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
 const UI_STATE_STORAGE_KEY = "pawdio-lab-ui-state-v1";
-const HISTORY_STORAGE_KEY = "pawdio-lab-history-v1";
-const COMPARISONS_STORAGE_KEY = "pawdio-lab-comparisons-v1";
-
-// History/Database helper functions
-function loadHistory(): ResultEntry[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(HISTORY_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as ResultEntry[];
-  } catch {
-    return [];
-  }
-}
-
-// Convert DatabaseEntry from Rust to ResultEntry format
-function databaseEntryToResultEntry(entry: DatabaseEntry): ResultEntry {
-  // Parse timestamp from format like "20250615_143022"
-  let savedAt: number | undefined;
-  try {
-    const ts = entry.timestamp;
-    const parsed = new Date(`${ts.slice(0,4)}-${ts.slice(4,6)}-${ts.slice(6,8)}T${ts.slice(9,11)}:${ts.slice(11,13)}:${ts.slice(13,15)}`);
-    if (!isNaN(parsed.getTime())) {
-      savedAt = parsed.getTime();
-    }
-  } catch {
-    // ignore parsing errors
-  }
-
-  return {
-    id: parseInt(entry.id.split(':')[0]) || Math.floor(Math.random() * 10000),
-    deviceName: entry.deviceName,
-    savedAt: savedAt,
-    payload: {
-      test: entry.testType,
-      timestamp: entry.timestamp,
-      params: { folderPath: entry.folderPath },
-      metrics: {},
-      data: {},
-      files: { hasPlots: entry.hasPlots, hasReport: entry.hasReport },
-    },
-  };
-}
-
-// Scan filesystem for existing test results
-async function scanDatabaseFiles(outputDirs: string[]): Promise<ResultEntry[]> {
-  try {
-    const entries = await invoke<DatabaseEntry[]>("scan_database", { outputDirs });
-    return entries.map(databaseEntryToResultEntry);
-  } catch (err) {
-    console.error("Failed to scan database:", err);
-    return [];
-  }
-}
-
-function saveHistory(history: ResultEntry[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(HISTORY_STORAGE_KEY, JSON.stringify(history));
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function addToHistory(entry: ResultEntry): void {
-  const history = loadHistory();
-  history.unshift(entry); // Add to beginning (newest first)
-  // Keep only last 100 entries
-  const trimmed = history.slice(0, 100);
-  saveHistory(trimmed);
-}
-
-function deleteFromHistory(id: number): void {
-  const history = loadHistory();
-  const filtered = history.filter((entry) => entry.id !== id);
-  saveHistory(filtered);
-}
-
-function clearHistory(): void {
-  saveHistory([]);
-}
-
-function loadComparisons(): SavedComparison[] {
-  if (typeof window === "undefined") return [];
-  try {
-    const raw = localStorage.getItem(COMPARISONS_STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed as SavedComparison[];
-  } catch {
-    return [];
-  }
-}
-
-function saveComparisons(comparisons: SavedComparison[]): void {
-  if (typeof window === "undefined") return;
-  try {
-    localStorage.setItem(COMPARISONS_STORAGE_KEY, JSON.stringify(comparisons));
-  } catch {
-    // ignore storage errors
-  }
-}
-
-function addComparison(leftId: number, rightId: number, name: string): void {
-  const comparisons = loadComparisons();
-  comparisons.push({
-    id: `comp_${Date.now()}`,
-    name,
-    leftId,
-    rightId,
-    createdAt: Date.now(),
-  });
-  saveComparisons(comparisons);
-}
-
-function deleteComparison(id: string): void {
-  const comparisons = loadComparisons();
-  const filtered = comparisons.filter((c) => c.id !== id);
-  saveComparisons(filtered);
-}
 
 const LATENCY_PRESETS: LatencyPresetConfig[] = [
   {
@@ -666,29 +532,6 @@ export function usePawdioLabController() {
   const [results, setResults] = useState<ResultEntry[]>([]);
   const nextResultId = useRef(1);
 
-  // Load results from filesystem on startup
-  useEffect(() => {
-    const loadDatabaseResults = async () => {
-      // Collect all output directories from settings
-      const outputDirs: string[] = [];
-      if (latencyRequest.outputDir) {
-        outputDirs.push(latencyRequest.outputDir);
-      }
-      if (sweepRequest.outputDir) {
-        outputDirs.push(sweepRequest.outputDir);
-      }
-      
-      if (outputDirs.length > 0) {
-        const dbResults = await scanDatabaseFiles(outputDirs);
-        if (dbResults.length > 0) {
-          setResults(dbResults);
-          appendLog(`[database] loaded ${dbResults.length} results from filesystem`);
-        }
-      }
-    };
-    
-    loadDatabaseResults();
-  }, []);
 
   const latencyProgressPercent = useMemo(() => {
     if (latencyProgress.length === 0) {
@@ -700,11 +543,6 @@ export function usePawdioLabController() {
 
   const logText = useMemo(() => logs.join("\n"), [logs]);
 
-  const resultText = useMemo(() => {
-    return results
-      .map((entry) => JSON.stringify(entry.payload, null, 2))
-      .join("\n\n");
-  }, [results]);
 
   const calibrationText = useMemo(() => {
     const ordered = LATENCY_PRESETS.map((preset) => {
@@ -749,8 +587,6 @@ export function usePawdioLabController() {
       deviceName,
     };
     setResults((prev) => [...prev, entry]);
-    // Auto-save to persistent history
-    addToHistory(entry);
     appendLog(`[${payload.test}] result recorded`);
     const fileEntries = Object.entries(payload.files ?? {});
     for (const [key, value] of fileEntries) {
@@ -1705,17 +1541,6 @@ export function usePawdioLabController() {
     setLogs([]);
   }
 
-  function clearResults() {
-    setResults([]);
-  }
-
-  function deleteResult(id: number) {
-    setResults((prev) => prev.filter((entry) => entry.id !== id));
-  }
-
-  function restoreResult(entry: ResultEntry) {
-    setResults((prev) => [...prev, entry]);
-  }
 
   useEffect(() => {
     loadState().catch((err) => setError(String(err)));
@@ -1921,7 +1746,6 @@ export function usePawdioLabController() {
     logs,
     results,
     logText,
-    resultText,
     latencyProgressPercent,
     loadState,
     commitSettings,
@@ -1946,9 +1770,6 @@ export function usePawdioLabController() {
     stopTest,
     copyLogs,
     clearLogs,
-    clearResults,
-    deleteResult,
-    restoreResult,
   };
 }
 

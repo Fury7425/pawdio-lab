@@ -6,9 +6,9 @@ use std::sync::{
 };
 
 use audio::{
-    AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest, DatabaseEntry, DeviceInventory,
+    AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest, DeviceInventory,
     IsolationRequest, LatencyExportEntry, LatencyTestReport, LatencyTestRequest, SweepFrRequest,
-    TestProgressEvent, TestResultPayload, ThdRequest, scan_database_entries,
+    TestProgressEvent, TestResultPayload, ThdRequest,
 };
 use serde::Serialize;
 use tauri::{Emitter, State};
@@ -416,10 +416,6 @@ fn ensure_output_dir(path: String) -> Result<(), String> {
         .map_err(|e| format!("failed to create directory {}: {}", path, e))
 }
 
-#[tauri::command]
-fn scan_database(output_dirs: Vec<String>) -> Vec<DatabaseEntry> {
-    scan_database_entries(output_dirs)
-}
 
 fn main() {
     let app_state = AppState {
@@ -457,7 +453,6 @@ fn main() {
             stop_latency_test,
             get_runtime_status,
             ensure_output_dir,
-            scan_database
         ])
         .run(tauri::generate_context!())
         .expect("failed to run pawdio-lab tauri app");
