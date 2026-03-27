@@ -633,7 +633,7 @@ export function usePawdioLabController() {
   type MonoConfirmState = {
     message: string;
     resolve: () => void;
-    reject: () => void;
+    reject: (reason?: unknown) => void;
   };
   const [monoConfirmState, setMonoConfirmState] =
     useState<MonoConfirmState | null>(null);
