@@ -74,7 +74,7 @@ export function ExperimentalPage({
                 }
               />
             </label>
-            <div className="row-end" style={{ marginTop: 12 }}>
+            <div className="row-end mt-12">
               <RunButton disabled={running} onClick={onRunBalance} />
             </div>
           </section>
@@ -114,17 +114,17 @@ export function ExperimentalPage({
                 </select>
               </label>
             </div>
-            <div className="row-end" style={{ marginTop: 12 }}>
+            <div className="row-end mt-12">
               <RunButton disabled={running} onClick={onRunCrosstalk} />
             </div>
           </section>
 
           <section className="page-card">
             <h3 className="section-subheading">THD</h3>
-            <p className="muted" style={{ marginTop: 0 }}>
+            <p className="muted">
               Runs 100 / 1k / 6k Hz distortion measurements.
             </p>
-            <div className="field-grid-2" style={{ marginTop: 10 }}>
+            <div className="field-grid-2 mt-10">
               <label className="field-row">
                 <span className="field-label">Tones (Hz)</span>
                 <input
@@ -152,17 +152,17 @@ export function ExperimentalPage({
                 />
               </label>
             </div>
-            <div className="row-end" style={{ marginTop: 12 }}>
+            <div className="row-end mt-12">
               <RunButton disabled={running} onClick={onRunThd} />
             </div>
           </section>
 
           <section className="page-card">
             <h3 className="section-subheading">Isolation</h3>
-            <p className="muted" style={{ marginTop: 0 }}>
+            <p className="muted">
               Measures inside to outside isolation.
             </p>
-            <div className="field-grid-2" style={{ marginTop: 10 }}>
+            <div className="field-grid-2 mt-10">
               <label className="field-row">
                 <span className="field-label">Noise Duration (s)</span>
                 <input
@@ -197,16 +197,17 @@ export function ExperimentalPage({
                 />
               </label>
             </div>
-            <div className="row-end" style={{ marginTop: 12 }}>
+            <div className="row-end mt-12">
               <RunButton disabled={running} onClick={onRunIsolation} />
             </div>
           </section>
         </div>
 
-        <section className="page-card" style={{ marginTop: 12 }}>
+        <hr className="section-divider" />
+        <section className="page-section">
           <h3 className="section-subheading">Experimental Results</h3>
           <div className="placeholder-box" style={{ minHeight: 220 }} />
-          <div className="row-end" style={{ marginTop: 12 }}>
+          <div className="row-end mt-12">
             <button type="button" className="skin-btn secondary" disabled>
               Export LAST (JSON)
             </button>

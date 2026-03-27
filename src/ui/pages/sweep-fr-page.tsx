@@ -172,10 +172,11 @@ export function SweepFrPage({
           </div>
         </div>
       )}
+
       <section className="page-card">
         <h2 className="section-heading">Sweep Frequency Response</h2>
 
-        <section className="page-card">
+        <section className="page-section">
           <h3 className="section-subheading">Sweep Settings</h3>
 
           <div className="field-grid-4">
@@ -236,7 +237,7 @@ export function SweepFrPage({
             </div>
           </div>
 
-          <div className="field-grid-2" style={{ marginTop: 12 }}>
+          <div className="field-grid-2 mt-12">
             <LabeledNumberInput
               label="Amplitude"
               value={request.amplitude}
@@ -296,7 +297,7 @@ export function SweepFrPage({
             </div>
           </div>
 
-          <div className="field-grid-4" style={{ marginTop: 12 }}>
+          <div className="field-grid-4 mt-12">
             <label className="field-row" style={{ gridColumn: "span 3" }}>
               <span className="field-label">Output Folder</span>
               <input
@@ -328,180 +329,175 @@ export function SweepFrPage({
           </div>
         </section>
 
-        <div className="field-grid-2" style={{ marginTop: 12 }}>
-          <section className="page-card">
-            <h3 className="section-subheading">Input Level Monitor</h3>
-            <p className="muted" style={{ marginTop: 0 }}>
-              {monitor.status}
-            </p>
-            <div className="level-meter" style={{ marginBottom: 12 }}>
-              <div className="level-meter-grid" />
-              <div className="level-meter-bars">
-                {meterHistory.map((level, index) => (
-                  <span
-                    key={`meter-${index}`}
-                    className={`level-meter-bar ${
-                      level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
-                    }`.trim()}
-                    style={{
-                      height: `${Math.max(8, level * 100)}%`,
-                    }}
-                  />
-                ))}
-              </div>
-              <span
-                className="level-meter-peak"
-                style={{ left: `${peakNorm * 100}%` }}
-              />
-            </div>
-            <div className="field-grid-3">
-              <div className="field-row">
-                <span className="field-label">Current Level</span>
-                <strong>{monitor.currentDbfs.toFixed(1)} dBFS</strong>
-              </div>
-              <div className="field-row">
-                <span className="field-label">Peak Level</span>
-                <strong>{monitor.peakDbfs.toFixed(1)} dBFS</strong>
-              </div>
-              <div className="field-row">
-                <span className="field-label">SPL Estimate</span>
-                <strong>{monitor.splEstimate.toFixed(1)} dB SPL</strong>
-              </div>
-            </div>
-            {monitor.clipCount > 0 && (
-              <p className="muted" style={{ color: "#ff8e8e", marginTop: 8 }}>
-                Clipping detected ({monitor.clipCount})
-              </p>
-            )}
-            <div
-              style={{
-                display: "flex",
-                gap: 8,
-                marginTop: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <button
-                type="button"
-                className="skin-btn secondary"
-                onClick={monitor.monitoring ? onStopMonitor : onStartMonitor}
-              >
-                {monitor.monitoring ? "Stop Monitoring" : "Start Monitoring"}
-              </button>
-              <button
-                type="button"
-                className="skin-btn secondary"
-                disabled={running}
-                onClick={pinkNoisePlaying ? onStopPinkNoise : onStartPinkNoise}
-              >
-                {pinkNoisePlaying ? "Stop Pink Noise" : "Play Pink Noise"}
-              </button>
-              <button
-                type="button"
-                className="skin-btn secondary"
-                onClick={onResetPeak}
-              >
-                Reset Peak
-              </button>
-            </div>
-          </section>
-
-          <section className="page-card live-rough-card">
-            <h3 className="section-subheading">Live Rough FR (Pink Noise)</h3>
-            <p className="muted" style={{ marginTop: 0 }}>
-              {pinkNoisePlaying
-                ? "Live preview running"
-                : "Start Pink Noise + Monitoring"}
-            </p>
-            <div className="level-meter live-rough-meter">
-              <svg viewBox="0 0 200 100" className="live-rough-svg">
-                <line
-                  x1="0"
-                  y1="10"
-                  x2="200"
-                  y2="10"
-                  stroke="var(--level-grid)"
-                  strokeWidth="0.6"
-                />
-                <line
-                  x1="0"
-                  y1="50"
-                  x2="200"
-                  y2="50"
-                  stroke="var(--level-grid)"
-                  strokeWidth="1"
-                />
-                <line
-                  x1="0"
-                  y1="90"
-                  x2="200"
-                  y2="90"
-                  stroke="var(--level-grid)"
-                  strokeWidth="0.6"
-                />
-                {(roughFrGraph?.xGuides ?? []).map((guide) => (
-                  <g key={`guide-${guide.label}-${guide.x.toFixed(2)}`}>
-                    <line
-                      x1={guide.x}
-                      y1="8"
-                      x2={guide.x}
-                      y2="92"
-                      stroke="var(--level-grid)"
-                      strokeWidth="0.45"
+        <hr className="section-divider" />
+        <section className="page-section">
+          <div className="field-grid-2">
+            <section className="page-card">
+              <h3 className="section-subheading">Input Level Monitor</h3>
+              <p className="muted">{monitor.status}</p>
+              <div className="level-meter mb-12">
+                <div className="level-meter-grid" />
+                <div className="level-meter-bars">
+                  {meterHistory.map((level, index) => (
+                    <span
+                      key={`meter-${index}`}
+                      className={`level-meter-bar ${
+                        level > 0.92 ? "is-hot" : level > 0.72 ? "is-warm" : ""
+                      }`.trim()}
+                      style={{
+                        height: `${Math.max(8, level * 100)}%`,
+                      }}
                     />
+                  ))}
+                </div>
+                <span
+                  className="level-meter-peak"
+                  style={{ left: `${peakNorm * 100}%` }}
+                />
+              </div>
+              <div className="field-grid-3">
+                <div className="field-row">
+                  <span className="field-label">Current Level</span>
+                  <strong>{monitor.currentDbfs.toFixed(1)} dBFS</strong>
+                </div>
+                <div className="field-row">
+                  <span className="field-label">Peak Level</span>
+                  <strong>{monitor.peakDbfs.toFixed(1)} dBFS</strong>
+                </div>
+                <div className="field-row">
+                  <span className="field-label">SPL Estimate</span>
+                  <strong>{monitor.splEstimate.toFixed(1)} dB SPL</strong>
+                </div>
+              </div>
+              {monitor.clipCount > 0 && (
+                <p className="muted mt-8" style={{ color: "#ff8e8e" }}>
+                  Clipping detected ({monitor.clipCount})
+                </p>
+              )}
+              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  onClick={monitor.monitoring ? onStopMonitor : onStartMonitor}
+                >
+                  {monitor.monitoring ? "Stop Monitoring" : "Start Monitoring"}
+                </button>
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  disabled={running}
+                  onClick={pinkNoisePlaying ? onStopPinkNoise : onStartPinkNoise}
+                >
+                  {pinkNoisePlaying ? "Stop Pink Noise" : "Play Pink Noise"}
+                </button>
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  onClick={onResetPeak}
+                >
+                  Reset Peak
+                </button>
+              </div>
+            </section>
+
+            <section className="page-card live-rough-card">
+              <h3 className="section-subheading">Live Rough FR (Pink Noise)</h3>
+              <p className="muted">
+                {pinkNoisePlaying
+                  ? "Live preview running"
+                  : "Start Pink Noise + Monitoring"}
+              </p>
+              <div className="level-meter live-rough-meter">
+                <svg viewBox="0 0 200 100" className="live-rough-svg">
+                  <line
+                    x1="0"
+                    y1="10"
+                    x2="200"
+                    y2="10"
+                    stroke="var(--level-grid)"
+                    strokeWidth="0.6"
+                  />
+                  <line
+                    x1="0"
+                    y1="50"
+                    x2="200"
+                    y2="50"
+                    stroke="var(--level-grid)"
+                    strokeWidth="1"
+                  />
+                  <line
+                    x1="0"
+                    y1="90"
+                    x2="200"
+                    y2="90"
+                    stroke="var(--level-grid)"
+                    strokeWidth="0.6"
+                  />
+                  {(roughFrGraph?.xGuides ?? []).map((guide) => (
+                    <g key={`guide-${guide.label}-${guide.x.toFixed(2)}`}>
+                      <line
+                        x1={guide.x}
+                        y1="8"
+                        x2={guide.x}
+                        y2="92"
+                        stroke="var(--level-grid)"
+                        strokeWidth="0.45"
+                      />
+                      <text
+                        x={guide.x}
+                        y="98"
+                        textAnchor="middle"
+                        fontSize="7"
+                        fill="var(--text-muted)"
+                      >
+                        {guide.label}
+                      </text>
+                    </g>
+                  ))}
+                  <text x="4" y="12" fontSize="7" fill="var(--text-muted)">
+                    +18 dB
+                  </text>
+                  <text x="4" y="52" fontSize="7" fill="var(--text-muted)">
+                    0 dB
+                  </text>
+                  <text x="4" y="92" fontSize="7" fill="var(--text-muted)">
+                    -18 dB
+                  </text>
+                  {pinkNoisePlaying && roughFrGraph ? (
+                    <>
+                      <path
+                        d={roughFrGraph.areaPath}
+                        fill="var(--accent-dim)"
+                        opacity="0.2"
+                      />
+                      <path
+                        d={roughFrGraph.linePath}
+                        fill="none"
+                        stroke="var(--accent-strong)"
+                        strokeWidth="2"
+                        strokeLinejoin="round"
+                        strokeLinecap="round"
+                      />
+                    </>
+                  ) : (
                     <text
-                      x={guide.x}
-                      y="98"
+                      x="100"
+                      y="54"
                       textAnchor="middle"
-                      fontSize="7"
+                      fontSize="8"
                       fill="var(--text-muted)"
                     >
-                      {guide.label}
+                      Waiting for live data
                     </text>
-                  </g>
-                ))}
-                <text x="4" y="12" fontSize="7" fill="var(--text-muted)">
-                  +18 dB
-                </text>
-                <text x="4" y="52" fontSize="7" fill="var(--text-muted)">
-                  0 dB
-                </text>
-                <text x="4" y="92" fontSize="7" fill="var(--text-muted)">
-                  -18 dB
-                </text>
-                {pinkNoisePlaying && roughFrGraph ? (
-                  <>
-                    <path
-                      d={roughFrGraph.areaPath}
-                      fill="var(--accent-dim)"
-                      opacity="0.2"
-                    />
-                    <path
-                      d={roughFrGraph.linePath}
-                      fill="none"
-                      stroke="var(--accent-strong)"
-                      strokeWidth="2"
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                    />
-                  </>
-                ) : (
-                  <text
-                    x="100"
-                    y="54"
-                    textAnchor="middle"
-                    fontSize="8"
-                    fill="var(--text-muted)"
-                  >
-                    Waiting for live data
-                  </text>
-                )}
-              </svg>
-            </div>
-          </section>
-        </div>
+                  )}
+                </svg>
+              </div>
+            </section>
+          </div>
+        </section>
 
-        <section className="page-card" style={{ marginTop: 12 }}>
+        <hr className="section-divider" />
+        <section className="page-section">
           <h3 className="section-subheading">Sweep FR Results</h3>
           <div
             className="scroll-box"
@@ -513,7 +509,7 @@ export function SweepFrPage({
                 : "No sweep result yet. Run Sweep to populate this panel."}
             </pre>
           </div>
-          <div className="row-end" style={{ marginTop: 12 }}>
+          <div className="row-end mt-12">
             <button
               type="button"
               className="skin-btn secondary"

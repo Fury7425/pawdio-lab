@@ -176,7 +176,7 @@ export function LatencyPage({
       <section className="page-card">
         <h2 className="section-heading">Latency</h2>
 
-        <section className="page-card">
+        <section className="page-section">
           <h3 className="section-subheading">Run Delay Tests</h3>
 
           <div className="chip-row">
@@ -197,7 +197,7 @@ export function LatencyPage({
             ))}
           </div>
 
-          <div className="range-line" style={{ marginTop: 12 }}>
+          <div className="range-line mt-12">
             <span className="field-label">Repeats</span>
             <input
               className="skin-range"
@@ -219,7 +219,7 @@ export function LatencyPage({
             <span>{request.repeats}</span>
           </div>
 
-          <div className="field-grid-4" style={{ marginTop: 12 }}>
+          <div className="field-grid-4 mt-12">
             <LabeledNumberInput
               label="Frequency (Hz)"
               value={request.frequencyHz}
@@ -268,7 +268,7 @@ export function LatencyPage({
             />
           </div>
 
-          <div className="field-grid-2" style={{ marginTop: 12 }}>
+          <div className="field-grid-2 mt-12">
             <label className="toggle-line">
               <input
                 type="checkbox"
@@ -297,7 +297,7 @@ export function LatencyPage({
             </label>
           </div>
 
-          <div className="field-grid-4" style={{ marginTop: 12 }}>
+          <div className="field-grid-4 mt-12">
             <label className="field-row" style={{ gridColumn: "span 3" }}>
               <span className="field-label">Output Folder</span>
               <input
@@ -320,15 +320,7 @@ export function LatencyPage({
             </div>
           </div>
 
-          <div
-            style={{
-              marginTop: 12,
-              display: "flex",
-              justifyContent: "space-between",
-              gap: 10,
-              flexWrap: "wrap",
-            }}
-          >
+          <div className="action-row">
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
@@ -369,26 +361,29 @@ export function LatencyPage({
                 Run ALL
               </button>
             </div>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              disabled={!report || running}
-              onClick={onSaveReport}
-            >
-              Save Text Report
-            </button>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              disabled={!report || running}
-              onClick={onExportCsv}
-            >
-              Export CSV
-            </button>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                disabled={!report || running}
+                onClick={onSaveReport}
+              >
+                Save Text Report
+              </button>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                disabled={!report || running}
+                onClick={onExportCsv}
+              >
+                Export CSV
+              </button>
+            </div>
           </div>
         </section>
 
-        <section className="page-card" style={{ marginTop: 12 }}>
+        <hr className="section-divider" />
+        <section className="page-section">
           <h3 className="section-subheading">Results Summary</h3>
 
           <div className="metric-grid">
@@ -408,7 +403,7 @@ export function LatencyPage({
             </article>
           </div>
 
-          <div style={{ marginTop: 10 }}>
+          <div className="mt-10">
             <p className="field-label">
               Detailed Breakdown | Progress {progressPercent}% | Signal{" "}
               {request.signal}
@@ -419,7 +414,8 @@ export function LatencyPage({
           </div>
         </section>
 
-        <section className="page-card" style={{ marginTop: 12 }}>
+        <hr className="section-divider" />
+        <section className="page-section">
           <h3 className="section-subheading">Calibration</h3>
 
           <div className="chip-row">
@@ -445,7 +441,7 @@ export function LatencyPage({
             ))}
           </div>
 
-          <div className="range-line" style={{ marginTop: 12 }}>
+          <div className="range-line mt-12">
             <span className="field-label">Repeats</span>
             <input
               className="skin-range"
@@ -463,7 +459,7 @@ export function LatencyPage({
             <span>{calibrationRepeats}</span>
           </div>
 
-          <div className="field-grid-2" style={{ marginTop: 12 }}>
+          <div className="field-grid-2 mt-12">
             <button
               type="button"
               className="skin-btn secondary"
@@ -494,7 +490,7 @@ export function LatencyPage({
             </button>
           </div>
 
-          <div style={{ marginTop: 10 }}>
+          <div className="mt-10">
             <p className="field-label">Calibration Offsets</p>
             <div className="scroll-box">
               <pre className="mono-pre">{calibrationText}</pre>
