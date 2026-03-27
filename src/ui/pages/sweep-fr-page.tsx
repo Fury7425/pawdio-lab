@@ -27,6 +27,9 @@ type SweepFrPageProps = {
     roughFrDb: number[];
   };
   pinkNoisePlaying: boolean;
+  monoConfirmMessage: string | null;
+  onMonoConfirmOk: () => void;
+  onMonoConfirmCancel: () => void;
   onStartMonitor: () => void;
   onStopMonitor: () => void;
   onStartPinkNoise: () => void;
@@ -49,6 +52,9 @@ export function SweepFrPage({
   lastResult,
   monitor,
   pinkNoisePlaying,
+  monoConfirmMessage,
+  onMonoConfirmOk,
+  onMonoConfirmCancel,
   onStartMonitor,
   onStopMonitor,
   onStartPinkNoise,
@@ -77,8 +83,8 @@ export function SweepFrPage({
     ) {
       return null;
     }
-    const minHz = Math.max(1, freqs[0]);
-    const maxHz = Math.max(minHz + 1, freqs[freqs.length - 1]);
+    const minHz = 20;
+    const maxHz = 20000;
     const minLog = Math.log10(minHz);
     const maxLog = Math.log10(maxHz);
     const spanLog = Math.max(1e-6, maxLog - minLog);
@@ -119,7 +125,7 @@ export function SweepFrPage({
     const last = points[points.length - 1];
     linePath += ` T ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
 
-    const xGuides = [20, 100, 1000, 10000]
+    const xGuides = [20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000]
       .map((freq) => {
         const x = ((Math.log10(freq) - minLog) / spanLog) * 200;
         if (!Number.isFinite(x) || x < 0 || x > 200) {
@@ -143,6 +149,29 @@ export function SweepFrPage({
 
   return (
     <div className="page-stack">
+      {monoConfirmMessage && (
+        <div className="modal-overlay">
+          <div className="modal-box">
+            <p className="modal-message">{monoConfirmMessage}</p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={onMonoConfirmCancel}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="skin-btn"
+                onClick={onMonoConfirmOk}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <section className="page-card">
         <h2 className="section-heading">Sweep Frequency Response</h2>
 

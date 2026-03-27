@@ -630,6 +630,14 @@ export function usePawdioLabController() {
   );
   const [pinkNoisePlaying, setPinkNoisePlaying] = useState(false);
 
+  type MonoConfirmState = {
+    message: string;
+    resolve: () => void;
+    reject: () => void;
+  };
+  const [monoConfirmState, setMonoConfirmState] =
+    useState<MonoConfirmState | null>(null);
+
   const [balanceRequest, setBalanceRequest] = useState(
     mergeWithDefaults(defaultBalanceRequest, persistedUiState?.balanceRequest),
   );
@@ -789,17 +797,16 @@ export function usePawdioLabController() {
       ) {
         merged.inputDeviceIndex = null;
       }
-      if (
-        merged.outputDeviceIndex === null &&
-        devices.defaultOutputIndex !== null
-      ) {
+      // Always update to current system defaults on device refresh
+      if (devices.defaultOutputIndex !== null) {
         merged.outputDeviceIndex = devices.defaultOutputIndex;
+      } else if (merged.outputDeviceIndex === null) {
+        merged.outputDeviceIndex = null;
       }
-      if (
-        merged.inputDeviceIndex === null &&
-        devices.defaultInputIndex !== null
-      ) {
+      if (devices.defaultInputIndex !== null) {
         merged.inputDeviceIndex = devices.defaultInputIndex;
+      } else if (merged.inputDeviceIndex === null) {
+        merged.inputDeviceIndex = null;
       }
       const committed = await invoke<AudioSettings>("set_audio_settings", {
         settings: merged,
@@ -1016,12 +1023,14 @@ export function usePawdioLabController() {
     setLatencyExportSuite([]);
     appendLog(`[latency] preset suite started (${presets.length})`);
 
-    // Create a shared output directory for all preset results
+    // Use a shared run tag so all presets land in the same output folder
+    const sharedRunTag = exportTimestampTag();
     let sharedOutputDir: string | undefined;
     if (latencyRequest.outputDir) {
-      const timestamp = exportTimestampTag();
-      sharedOutputDir = `${latencyRequest.outputDir}/latency_suite_${timestamp}`;
+      sharedOutputDir = `${latencyRequest.outputDir}/latency_suite_${sharedRunTag}`;
       appendLog(`[latency] shared output directory -> ${sharedOutputDir}`);
+    } else {
+      appendLog(`[latency] shared run tag -> ${sharedRunTag}`);
     }
 
     try {
@@ -1031,6 +1040,7 @@ export function usePawdioLabController() {
           ...requestForPreset(latencyRequest, preset),
           saveOverallBarChart: false,
           sharedOutputDir,
+          sharedRunTag,
         };
         appendLog(`[latency] ${preset.label} started`);
         const { report, calibratedOffsetMs } = await runLatencyOnce(
@@ -1165,19 +1175,40 @@ export function usePawdioLabController() {
     return invoke<TestPayload>("run_sweep_fr_test", { request });
   }
 
+  function requestMonoConfirm(message: string): Promise<void> {
+    return new Promise<void>((resolve, reject) => {
+      setMonoConfirmState({ message, resolve, reject });
+    });
+  }
+
+  function confirmMonoDialog() {
+    if (monoConfirmState) {
+      monoConfirmState.resolve();
+      setMonoConfirmState(null);
+    }
+  }
+
+  function cancelMonoDialog() {
+    if (monoConfirmState) {
+      monoConfirmState.reject(new Error("cancelled"));
+      setMonoConfirmState(null);
+    }
+  }
+
   async function runSweepFrTest() {
     if (running) {
       return;
     }
     const monoGuided = sweepRequest.monoMode;
-    if (
-      monoGuided &&
-      !window.confirm(
-        "Mono mode: place the LEFT side on the measurement position, then click OK to run the LEFT sweep.",
-      )
-    ) {
-      appendLog("[SWEEP FR] mono run cancelled before LEFT sweep");
-      return;
+    if (monoGuided) {
+      try {
+        await requestMonoConfirm(
+          "Mono mode: place the LEFT earphone/driver on the measurement position, then click OK to run the LEFT sweep.",
+        );
+      } catch {
+        appendLog("[SWEEP FR] mono run cancelled before LEFT sweep");
+        return;
+      }
     }
     try {
       await invoke("stop_input_monitor");
@@ -1212,17 +1243,21 @@ export function usePawdioLabController() {
         setSweepLastResult(normalized);
         appendResult(normalized);
       } else {
+        const sharedRunTag = exportTimestampTag();
         appendLog("[SWEEP FR] running LEFT sweep");
         const leftPayload = await invokeSweepFrRaw({
           ...sweepRequest,
           monoSide: "left",
+          sharedRunTag,
         });
         appendLog("[SWEEP FR] LEFT sweep complete");
 
-        const proceedRight = window.confirm(
-          "Now place the RIGHT side on the measurement position, then click OK to run the RIGHT sweep.",
-        );
-        if (!proceedRight) {
+        setRunning(false);
+        try {
+          await requestMonoConfirm(
+            "Now place the RIGHT earphone/driver on the measurement position, then click OK to run the RIGHT sweep.",
+          );
+        } catch {
           const leftOnly = {
             ...leftPayload,
             timestamp: legacyTimestamp(leftPayload.timestamp),
@@ -1232,11 +1267,13 @@ export function usePawdioLabController() {
           appendLog("[SWEEP FR] mono run stopped after LEFT sweep");
           return;
         }
+        setRunning(true);
 
         appendLog("[SWEEP FR] running RIGHT sweep");
         const rightPayload = await invokeSweepFrRaw({
           ...sweepRequest,
           monoSide: "right",
+          sharedRunTag,
         });
         const combinedPayload = combineGuidedMonoSweepPayload(
           leftPayload,
@@ -1867,6 +1904,9 @@ export function usePawdioLabController() {
     sweepLastResult,
     inputMonitor,
     pinkNoisePlaying,
+    monoConfirmState,
+    confirmMonoDialog,
+    cancelMonoDialog,
     startInputMonitor,
     stopInputMonitor,
     startPinkNoise,

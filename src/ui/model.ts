@@ -54,6 +54,7 @@ export type LatencyRequest = {
   saveOverallBarChart: boolean;
   calibratedOffsetMs: number;
   sharedOutputDir?: string;
+  sharedRunTag?: string;
 };
 
 export type LatencyCalibration = {
@@ -70,6 +71,7 @@ export type SweepRequest = {
   savePlots: boolean;
   saveSquiglink: boolean;
   monoMode: boolean;
+  sharedRunTag?: string;
 };
 
 export type BalanceRequest = {
