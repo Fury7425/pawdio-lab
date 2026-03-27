@@ -234,6 +234,10 @@ pub struct LatencyTestRequest {
     /// output directory to save all results in one folder instead of separate folders
     #[serde(default)]
     pub shared_output_dir: Option<String>,
+    /// Optional: shared run tag (timestamp string) so all presets in a suite
+    /// resolve to the same output folder without needing a pre-existing directory.
+    #[serde(default)]
+    pub shared_run_tag: Option<String>,
 }
 
 impl Default for LatencyTestRequest {
@@ -250,6 +254,7 @@ impl Default for LatencyTestRequest {
             save_overall_bar_chart: true,
             calibrated_offset_ms: 0.0,
             shared_output_dir: None,
+            shared_run_tag: None,
         }
     }
 }
@@ -272,6 +277,10 @@ pub struct SweepFrRequest {
     pub mono_mode: bool,
     #[serde(default)]
     pub mono_side: Option<SweepMonoSide>,
+    /// When running guided mono sweep (L then R), pass the same tag to both
+    /// calls so they share one output folder instead of creating separate ones.
+    #[serde(default)]
+    pub shared_run_tag: Option<String>,
 }
 
 impl Default for SweepFrRequest {
@@ -614,16 +623,14 @@ impl AudioEngine {
             timestamp_utc: timestamp_string(),
         };
 
-        let run_tag = timestamp_filename();
-        // Use shared_output_dir if provided (for preset suite runs), otherwise resolve normally
+        // Prefer shared_run_tag (same folder for all presets in a suite), then
+        // shared_output_dir (legacy full-path approach), then generate a new tag.
+        let run_tag = request.shared_run_tag.clone()
+            .unwrap_or_else(timestamp_filename);
         let output_dir = if let Some(ref shared) = request.shared_output_dir {
             let shared_path = PathBuf::from(shared);
-            if shared_path.exists() {
-                shared_path
-            } else {
-                // Fall back to normal resolution if shared dir doesn't exist
-                resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag)
-            }
+            ensure_output_dir(&shared_path)?;
+            shared_path
         } else {
             resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag)
         };
@@ -1021,7 +1028,8 @@ impl AudioEngine {
             }),
             files: {
                 let mut files = serde_json::Map::<String, Value>::new();
-                let ts = timestamp_filename();
+                let ts = request.shared_run_tag.clone()
+                    .unwrap_or_else(timestamp_filename);
                 let output_dir = resolve_measurement_output_dir(&request.output_dir, &item_name, &ts);
 
                 if request.save_plots {

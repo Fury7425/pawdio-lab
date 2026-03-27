@@ -77,6 +77,11 @@ export function PawdioLabApp() {
               lastResult={controller.sweepLastResult}
               monitor={controller.inputMonitor}
               pinkNoisePlaying={controller.pinkNoisePlaying}
+              monoConfirmMessage={
+                controller.monoConfirmState?.message ?? null
+              }
+              onMonoConfirmOk={controller.confirmMonoDialog}
+              onMonoConfirmCancel={controller.cancelMonoDialog}
               onStartMonitor={() => run(controller.startInputMonitor())}
               onStopMonitor={() => run(controller.stopInputMonitor())}
               onStartPinkNoise={() => run(controller.startPinkNoise())}
