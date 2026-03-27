@@ -797,16 +797,12 @@ export function usePawdioLabController() {
       ) {
         merged.inputDeviceIndex = null;
       }
-      // Always update to current system defaults on device refresh
-      if (devices.defaultOutputIndex !== null) {
+      // Only fall back to system default if no device is currently selected
+      if (merged.outputDeviceIndex === null && devices.defaultOutputIndex !== null) {
         merged.outputDeviceIndex = devices.defaultOutputIndex;
-      } else if (merged.outputDeviceIndex === null) {
-        merged.outputDeviceIndex = null;
       }
-      if (devices.defaultInputIndex !== null) {
+      if (merged.inputDeviceIndex === null && devices.defaultInputIndex !== null) {
         merged.inputDeviceIndex = devices.defaultInputIndex;
-      } else if (merged.inputDeviceIndex === null) {
-        merged.inputDeviceIndex = null;
       }
       const committed = await invoke<AudioSettings>("set_audio_settings", {
         settings: merged,
