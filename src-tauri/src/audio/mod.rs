@@ -296,6 +296,7 @@ impl Default for SweepFrRequest {
             save_squiglink: true,
             mono_mode: false,
             mono_side: None,
+            shared_run_tag: None,
         }
     }
 }
