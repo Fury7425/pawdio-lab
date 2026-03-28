@@ -7,7 +7,7 @@ import {
 } from "lucide-react";
 import { pageItems, PageKey } from "../model";
 
-const PAGE_ICONS: Record<PageKey, React.ComponentType<{ size?: number }>> = {
+const PAGE_ICONS: Record<PageKey, React.ComponentType<{ size?: number | string }>> = {
   latency: Timer,
   sweep_fr: AudioWaveform,
   devices: Settings,
