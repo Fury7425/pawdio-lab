@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { AudioWaveform } from "lucide-react";
 import { SweepRequest, toNumber } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
+import { DropdownMenu } from "../components/dropdown-menu";
 
 type SweepFrPageProps = {
   request: SweepRequest;
@@ -503,45 +505,110 @@ export function SweepFrPage({
             className="scroll-box"
             style={{ minHeight: 468, maxHeight: 468 }}
           >
-            <pre className="mono-pre">
-              {lastResult
-                ? JSON.stringify(lastResult, null, 2)
-                : "No sweep result yet. Run Sweep to populate this panel."}
-            </pre>
+            {lastResult ? (
+              <div>
+                <div className="result-header">
+                  <h4>{lastResult.test}</h4>
+                  <time>{lastResult.timestamp}</time>
+                </div>
+
+                {lastResult.metrics &&
+                  Object.keys(lastResult.metrics).length > 0 && (
+                    <>
+                      <p className="section-subheading" style={{ marginTop: 12 }}>
+                        Metrics
+                      </p>
+                      <div className="metric-grid">
+                        {Object.entries(lastResult.metrics).map(
+                          ([key, value]) => (
+                            <article key={key} className="metric-card">
+                              <p className="metric-label">{key}</p>
+                              <p className="metric-value" style={{ fontSize: 16 }}>
+                                {typeof value === "number"
+                                  ? value.toFixed(2)
+                                  : String(value)}
+                              </p>
+                            </article>
+                          ),
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                {lastResult.params &&
+                  Object.keys(lastResult.params).length > 0 && (
+                    <>
+                      <p
+                        className="section-subheading"
+                        style={{ marginTop: 14 }}
+                      >
+                        Parameters
+                      </p>
+                      <dl className="kv-grid">
+                        {Object.entries(lastResult.params).map(
+                          ([key, value]) => (
+                            <span key={key} style={{ display: "contents" }}>
+                              <dt>{key}</dt>
+                              <dd>{String(value)}</dd>
+                            </span>
+                          ),
+                        )}
+                      </dl>
+                    </>
+                  )}
+
+                <details className="raw-json-details">
+                  <summary>Raw JSON</summary>
+                  <pre className="mono-pre" style={{ marginTop: 8 }}>
+                    {JSON.stringify(lastResult, null, 2)}
+                  </pre>
+                </details>
+              </div>
+            ) : (
+              <div className="empty-state" style={{ minHeight: 400 }}>
+                <AudioWaveform size={32} />
+                <span>Run a sweep to see results here</span>
+              </div>
+            )}
           </div>
           <div className="row-end mt-12">
-            <button
-              type="button"
-              className="skin-btn secondary"
-              disabled={running || !hasSweepResult}
-              onClick={onExportLastJson}
+            <DropdownMenu
+              label="Export"
+              disabled={running || (!hasSweepResult && !hasSweepHistory)}
             >
-              Export LAST (JSON)
-            </button>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              disabled={running || !hasSweepHistory}
-              onClick={onExportAllJson}
-            >
-              Export ALL (JSON)
-            </button>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              disabled={running || !hasSweepResult}
-              onClick={onExportLastSquiglink}
-            >
-              Export LAST to Squiglink
-            </button>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              disabled={running || !hasSweepResult}
-              onClick={onExportLastCsv}
-            >
-              Export LAST (CSV)
-            </button>
+              <button
+                type="button"
+                className="dropdown-item"
+                disabled={running || !hasSweepResult}
+                onClick={onExportLastJson}
+              >
+                Export LAST (JSON)
+              </button>
+              <button
+                type="button"
+                className="dropdown-item"
+                disabled={running || !hasSweepHistory}
+                onClick={onExportAllJson}
+              >
+                Export ALL (JSON)
+              </button>
+              <button
+                type="button"
+                className="dropdown-item"
+                disabled={running || !hasSweepResult}
+                onClick={onExportLastSquiglink}
+              >
+                Export LAST to Squiglink
+              </button>
+              <button
+                type="button"
+                className="dropdown-item"
+                disabled={running || !hasSweepResult}
+                onClick={onExportLastCsv}
+              >
+                Export LAST (CSV)
+              </button>
+            </DropdownMenu>
           </div>
         </section>
       </section>

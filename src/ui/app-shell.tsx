@@ -29,7 +29,7 @@ export function PawdioLabApp() {
           onStopTest={() => run(controller.stopTest())}
         />
 
-        <div className="main-column">
+        <div className="main-column" key={controller.activePage}>
           {controller.error && (
             <section className="page-card">
               <h2 className="section-heading">Runtime Error</h2>

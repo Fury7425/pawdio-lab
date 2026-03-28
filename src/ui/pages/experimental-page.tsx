@@ -1,4 +1,5 @@
 import { ButtonHTMLAttributes } from "react";
+import { FlaskConical } from "lucide-react";
 import {
   BalanceRequest,
   CrosstalkRequest,
@@ -206,7 +207,12 @@ export function ExperimentalPage({
         <hr className="section-divider" />
         <section className="page-section">
           <h3 className="section-subheading">Experimental Results</h3>
-          <div className="placeholder-box" style={{ minHeight: 220 }} />
+          <div className="placeholder-box" style={{ minHeight: 220 }}>
+            <div className="empty-state">
+              <FlaskConical size={28} />
+              <span>Run an experimental test to see results</span>
+            </div>
+          </div>
           <div className="row-end mt-12">
             <button type="button" className="skin-btn secondary" disabled>
               Export LAST (JSON)

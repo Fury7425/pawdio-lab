@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Clock } from "lucide-react";
 import {
   LatencyProgress,
   LatencyReport,
@@ -7,6 +8,14 @@ import {
   toNumber,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
+import { DropdownMenu } from "../components/dropdown-menu";
+
+function metricTier(ms: number | null | undefined): string {
+  if (ms == null) return "";
+  if (ms < 15) return "metric-good";
+  if (ms < 40) return "metric-warn";
+  return "metric-bad";
+}
 
 type LatencyPageProps = {
   request: LatencyRequest;
@@ -119,7 +128,7 @@ export function LatencyPage({
 
   const breakdownText = useMemo(() => {
     if (progressRows.length === 0) {
-      return "Waiting for latency data...";
+      return null;
     }
 
     return progressRows
@@ -361,10 +370,10 @@ export function LatencyPage({
                 Run ALL
               </button>
             </div>
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <DropdownMenu label="Export" disabled={!report || running}>
               <button
                 type="button"
-                className="skin-btn secondary"
+                className="dropdown-item"
                 disabled={!report || running}
                 onClick={onSaveReport}
               >
@@ -372,13 +381,13 @@ export function LatencyPage({
               </button>
               <button
                 type="button"
-                className="skin-btn secondary"
+                className="dropdown-item"
                 disabled={!report || running}
                 onClick={onExportCsv}
               >
                 Export CSV
               </button>
-            </div>
+            </DropdownMenu>
           </div>
         </section>
 
@@ -387,29 +396,45 @@ export function LatencyPage({
           <h3 className="section-subheading">Results Summary</h3>
 
           <div className="metric-grid">
-            <article className="metric-card">
+            <article className={`metric-card ${metricTier(report?.averageDelayMs)}`}>
               <p className="metric-label">Average (ms)</p>
               <p className="metric-value">
                 {fmtMs(report?.averageDelayMs ?? null)}
               </p>
             </article>
-            <article className="metric-card">
+            <article className={`metric-card ${metricTier(report?.stdDevMs)}`}>
               <p className="metric-label">Std Dev (ms)</p>
               <p className="metric-value">{fmtMs(report?.stdDevMs ?? null)}</p>
             </article>
-            <article className="metric-card">
+            <article className={`metric-card ${metricTier(lastDelay)}`}>
               <p className="metric-label">Last (ms)</p>
               <p className="metric-value">{fmtMs(lastDelay)}</p>
             </article>
           </div>
 
           <div className="mt-10">
-            <p className="field-label">
-              Detailed Breakdown | Progress {progressPercent}% | Signal{" "}
-              {request.signal}
+            <p className="field-label" style={{ marginBottom: 6 }}>
+              Progress {progressPercent}% | Signal {request.signal}
             </p>
+            <div className="progress-track">
+              <div
+                className={`progress-fill${running ? " is-running" : ""}`}
+                style={{ width: `${progressPercent}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="mt-10">
+            <p className="field-label">Detailed Breakdown</p>
             <div className="scroll-box">
-              <pre className="mono-pre">{breakdownText}</pre>
+              {breakdownText ? (
+                <pre className="mono-pre">{breakdownText}</pre>
+              ) : (
+                <div className="empty-state">
+                  <Clock size={28} />
+                  <span>Run a test to see latency breakdown</span>
+                </div>
+              )}
             </div>
           </div>
         </section>

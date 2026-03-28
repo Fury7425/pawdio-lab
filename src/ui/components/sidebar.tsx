@@ -1,4 +1,19 @@
+import {
+  Timer,
+  AudioWaveform,
+  Settings,
+  FileText,
+  FlaskConical,
+} from "lucide-react";
 import { pageItems, PageKey } from "../model";
+
+const PAGE_ICONS: Record<PageKey, React.ComponentType<{ size?: number }>> = {
+  latency: Timer,
+  sweep_fr: AudioWaveform,
+  devices: Settings,
+  results: FileText,
+  experimental: FlaskConical,
+};
 
 type SidebarProps = {
   activePage: PageKey;
@@ -26,16 +41,20 @@ export function Sidebar({
       <p className="sidebar-subtitle">Audio Diagnostics</p>
 
       <nav className="sidebar-nav" aria-label="Primary">
-        {visiblePages.map((item) => (
-          <button
-            key={item.key}
-            type="button"
-            className={`nav-btn${activePage === item.key ? " is-active" : ""}`}
-            onClick={() => onSelectPage(item.key)}
-          >
-            {item.label}
-          </button>
-        ))}
+        {visiblePages.map((item) => {
+          const Icon = PAGE_ICONS[item.key];
+          return (
+            <button
+              key={item.key}
+              type="button"
+              className={`nav-btn${activePage === item.key ? " is-active" : ""}`}
+              onClick={() => onSelectPage(item.key)}
+            >
+              <Icon size={16} />
+              {item.label}
+            </button>
+          );
+        })}
       </nav>
 
       <div className="sidebar-footer">
