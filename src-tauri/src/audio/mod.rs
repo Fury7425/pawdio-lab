@@ -341,6 +341,8 @@ pub enum AudioError {
     FileExport(String),
     #[error("latency test cancelled")]
     Cancelled,
+    #[error("recording failed: {0}")]
+    RecordingError(String),
 }
 
 pub struct AudioEngine {
@@ -867,6 +869,21 @@ impl AudioEngine {
         let avg_delay_r = average_option(&delays_r);
         let has_left_data = mags_l.iter().any(|curve| !curve.is_empty());
         let has_right_data = mags_r.iter().any(|curve| !curve.is_empty());
+
+        if request.mono_mode {
+            let expected_left = mono_side != SweepMonoSide::Right;
+            let expected_right = mono_side != SweepMonoSide::Left;
+            if expected_left && !has_left_data {
+                return Err(AudioError::RecordingError(
+                    "Mono left sweep captured no audio. Check device and connections.".into(),
+                ));
+            }
+            if expected_right && !has_right_data {
+                return Err(AudioError::RecordingError(
+                    "Mono right sweep captured no audio. Check device and connections.".into(),
+                ));
+            }
+        }
 
         Ok(TestResultPayload {
             test: "sweep_fr".to_string(),
@@ -1585,19 +1602,20 @@ fn mixdown_channels(channels: &[Vec<f32>]) -> Vec<f32> {
     let frames = channels
         .iter()
         .map(|channel| channel.len())
-        .min()
+        .max()
         .unwrap_or(0);
     if frames == 0 {
         return Vec::new();
     }
 
     let mut mono = Vec::with_capacity(frames);
+    let n = channels.len() as f32;
     for idx in 0..frames {
-        let mut sum = 0.0f32;
-        for channel in channels {
-            sum += channel[idx];
-        }
-        mono.push(sum / channels.len() as f32);
+        let sum: f32 = channels
+            .iter()
+            .map(|channel| channel.get(idx).copied().unwrap_or(0.0))
+            .sum();
+        mono.push(sum / n);
     }
     mono
 }
