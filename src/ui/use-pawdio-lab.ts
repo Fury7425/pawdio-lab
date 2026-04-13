@@ -1111,9 +1111,45 @@ export function usePawdioLabController() {
           leftPayload,
           rightPayload,
         );
+
+        // Write squiglink_both by combining left+right avg data.
+        // Derive the path from the left sweep's squiglink_left file.
+        let squiglinkBothPath: string | undefined;
+        const leftSquiglinkPath = String(
+          leftPayload.files?.squiglink_left ?? "",
+        );
+        if (leftSquiglinkPath) {
+          const bothPath = leftSquiglinkPath.replace(
+            "squiglink_left_",
+            "squiglink_both_",
+          );
+          const freqs = numberList((leftPayload.data as any)?.freqs);
+          const leftDb = numberList(
+            (leftPayload.data as any)?.left_mag_db_avg,
+          );
+          const rightDb = numberList(
+            (rightPayload.data as any)?.right_mag_db_avg,
+          );
+          if (freqs.length && leftDb.length && rightDb.length) {
+            await invoke("write_squiglink_combined", {
+              outputPath: bothPath,
+              freqs,
+              leftDb,
+              rightDb,
+            }).catch(() => undefined);
+            squiglinkBothPath = bothPath;
+          }
+        }
+
         const normalized = {
           ...combinedPayload,
           timestamp: legacyTimestamp(combinedPayload.timestamp),
+          ...(squiglinkBothPath && {
+            files: {
+              ...combinedPayload.files,
+              squiglink_both: squiglinkBothPath,
+            },
+          }),
         };
         setSweepLastResult(normalized);
         appendResult(normalized);

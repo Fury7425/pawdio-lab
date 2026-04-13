@@ -416,6 +416,22 @@ fn ensure_output_dir(path: String) -> Result<(), String> {
         .map_err(|e| format!("failed to create directory {}: {}", path, e))
 }
 
+#[tauri::command]
+fn write_squiglink_combined(
+    output_path: String,
+    freqs: Vec<f32>,
+    left_db: Vec<f32>,
+    right_db: Vec<f32>,
+) -> Result<(), String> {
+    audio::write_squiglink_both_file(
+        &std::path::Path::new(&output_path),
+        &freqs,
+        &left_db,
+        &right_db,
+    )
+    .map_err(|e| e.to_string())
+}
+
 
 fn main() {
     let app_state = AppState {
@@ -453,6 +469,7 @@ fn main() {
             stop_latency_test,
             get_runtime_status,
             ensure_output_dir,
+            write_squiglink_combined,
         ])
         .run(tauri::generate_context!())
         .expect("failed to run pawdio-lab tauri app");

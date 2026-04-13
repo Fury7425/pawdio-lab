@@ -2701,65 +2701,83 @@ fn save_squiglink_files(
     right_db: &[f32],
     avg_db: &[f32],
 ) -> Result<Vec<(String, String)>, AudioError> {
-    let left_path = output_dir.join(format!("squiglink_left_{timestamp}.txt"));
-    let right_path = output_dir.join(format!("squiglink_right_{timestamp}.txt"));
-    let avg_path = output_dir.join(format!("squiglink_avg_{timestamp}.txt"));
-    let both_path = output_dir.join(format!("squiglink_both_{timestamp}.txt"));
+    let mut result = Vec::new();
 
-    let mut left = File::create(&left_path).map_err(|err| {
-        AudioError::FileExport(format!("failed to create {}: {err}", left_path.display()))
-    })?;
-    writeln!(left, "# PawdioLab Frequency Response - Left Channel")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", left_path.display())))?;
-    writeln!(left, "# Frequency(Hz)\tAmplitude(dB)")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", left_path.display())))?;
-    for (freq, amp) in freqs.iter().zip(left_db.iter()) {
-        writeln!(left, "{freq:.2}\t{amp:.3}")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", left_path.display())))?;
+    if !left_db.is_empty() {
+        let path = output_dir.join(format!("squiglink_left_{timestamp}.txt"));
+        let mut f = File::create(&path).map_err(|err| {
+            AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
+        })?;
+        writeln!(f, "# PawdioLab Frequency Response - Left Channel")
+            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)")
+            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        for (freq, amp) in freqs.iter().zip(left_db.iter()) {
+            writeln!(f, "{freq:.2}\t{amp:.3}")
+                .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        }
+        result.push(("squiglink_left".to_string(), path.display().to_string()));
     }
 
-    let mut right = File::create(&right_path).map_err(|err| {
-        AudioError::FileExport(format!("failed to create {}: {err}", right_path.display()))
-    })?;
-    writeln!(right, "# PawdioLab Frequency Response - Right Channel")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", right_path.display())))?;
-    writeln!(right, "# Frequency(Hz)\tAmplitude(dB)")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", right_path.display())))?;
-    for (freq, amp) in freqs.iter().zip(right_db.iter()) {
-        writeln!(right, "{freq:.2}\t{amp:.3}")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", right_path.display())))?;
+    if !right_db.is_empty() {
+        let path = output_dir.join(format!("squiglink_right_{timestamp}.txt"));
+        let mut f = File::create(&path).map_err(|err| {
+            AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
+        })?;
+        writeln!(f, "# PawdioLab Frequency Response - Right Channel")
+            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)")
+            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        for (freq, amp) in freqs.iter().zip(right_db.iter()) {
+            writeln!(f, "{freq:.2}\t{amp:.3}")
+                .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        }
+        result.push(("squiglink_right".to_string(), path.display().to_string()));
     }
 
-    let mut avg = File::create(&avg_path).map_err(|err| {
-        AudioError::FileExport(format!("failed to create {}: {err}", avg_path.display()))
-    })?;
-    writeln!(avg, "# PawdioLab Frequency Response - Average (L+R)")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", avg_path.display())))?;
-    writeln!(avg, "# Frequency(Hz)\tAmplitude(dB)")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", avg_path.display())))?;
-    for (freq, amp) in freqs.iter().zip(avg_db.iter()) {
-        writeln!(avg, "{freq:.2}\t{amp:.3}")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", avg_path.display())))?;
+    if !avg_db.is_empty() {
+        let path = output_dir.join(format!("squiglink_avg_{timestamp}.txt"));
+        let mut f = File::create(&path).map_err(|err| {
+            AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
+        })?;
+        writeln!(f, "# PawdioLab Frequency Response - Average (L+R)")
+            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)")
+            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        for (freq, amp) in freqs.iter().zip(avg_db.iter()) {
+            writeln!(f, "{freq:.2}\t{amp:.3}")
+                .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        }
+        result.push(("squiglink_avg".to_string(), path.display().to_string()));
     }
 
-    let mut both = File::create(&both_path).map_err(|err| {
-        AudioError::FileExport(format!("failed to create {}: {err}", both_path.display()))
+    if !left_db.is_empty() && !right_db.is_empty() {
+        let path = output_dir.join(format!("squiglink_both_{timestamp}.txt"));
+        write_squiglink_both_file(&path, freqs, left_db, right_db)?;
+        result.push(("squiglink_both".to_string(), path.display().to_string()));
+    }
+
+    Ok(result)
+}
+
+pub fn write_squiglink_both_file(
+    path: &Path,
+    freqs: &[f32],
+    left_db: &[f32],
+    right_db: &[f32],
+) -> Result<(), AudioError> {
+    let mut f = File::create(path).map_err(|err| {
+        AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
     })?;
-    writeln!(both, "# PawdioLab Frequency Response - Both Channels")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", both_path.display())))?;
-    writeln!(both, "# Frequency(Hz)\tLeft(dB)\tRight(dB)")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", both_path.display())))?;
+    writeln!(f, "# PawdioLab Frequency Response - Both Channels")
+        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+    writeln!(f, "# Frequency(Hz)\tLeft(dB)\tRight(dB)")
+        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
     for ((freq, left), right) in freqs.iter().zip(left_db.iter()).zip(right_db.iter()) {
-        writeln!(both, "{freq:.2}\t{left:.3}\t{right:.3}")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", both_path.display())))?;
+        writeln!(f, "{freq:.2}\t{left:.3}\t{right:.3}")
+            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
     }
-
-    Ok(vec![
-        ("squiglink_left".to_string(), left_path.display().to_string()),
-        ("squiglink_right".to_string(), right_path.display().to_string()),
-        ("squiglink_avg".to_string(), avg_path.display().to_string()),
-        ("squiglink_both".to_string(), both_path.display().to_string()),
-    ])
+    Ok(())
 }
 
 fn timestamp_string() -> String {
