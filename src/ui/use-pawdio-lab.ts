@@ -132,6 +132,7 @@ type PersistedUiState = {
   settings?: Partial<AudioSettings>;
   latencyRequest?: Partial<LatencyRequest>;
   sweepRequest?: Partial<SweepRequest>;
+  ancRequest?: Partial<AncRequest>;
   balanceRequest?: Partial<typeof defaultBalanceRequest>;
   crosstalkRequest?: Partial<CrosstalkRequest>;
   thdRequest?: Partial<ThdRequest>;
@@ -494,6 +495,10 @@ export function usePawdioLabController() {
   const [sweepRequest, setSweepRequest] = useState<SweepRequest>(
     mergeWithDefaults(defaultSweepRequest, persistedUiState?.sweepRequest),
   );
+
+  const [ancRequest, setAncRequest] = useState<AncRequest>(
+    mergeWithDefaults(defaultAncRequest, persistedUiState?.ancRequest),
+  );
   const [sweepLastResult, setSweepLastResult] = useState<TestPayload | null>(
     null,
   );
@@ -534,7 +539,6 @@ export function usePawdioLabController() {
     ),
   );
 
-  const [ancRequest, setAncRequest] = useState<AncRequest>(defaultAncRequest);
   const [ancSelectedModes, setAncSelectedModes] = useState<AncModeKey[]>([
     "reference",
     "anc",
@@ -1776,6 +1780,7 @@ export function usePawdioLabController() {
       settings,
       latencyRequest,
       sweepRequest,
+      ancRequest,
       balanceRequest,
       crosstalkRequest,
       thdRequest,
@@ -1793,6 +1798,7 @@ export function usePawdioLabController() {
     settings,
     latencyRequest,
     sweepRequest,
+    ancRequest,
     balanceRequest,
     crosstalkRequest,
     thdRequest,
