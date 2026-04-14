@@ -3,6 +3,11 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  ANC_MODE_ORDERED,
+  AncCaptures,
+  AncModeKey,
+  AncRequest,
+  AncSnapshot,
   AudioSettings,
   CrosstalkRequest,
   DeviceInventory,
@@ -18,6 +23,7 @@ import {
   TestPayload,
   TestProgress,
   ThdRequest,
+  defaultAncRequest,
   defaultBalanceRequest,
   defaultCrosstalkRequest,
   defaultIsolationRequest,
@@ -527,6 +533,18 @@ export function usePawdioLabController() {
       persistedUiState?.isolationRequest,
     ),
   );
+
+  const [ancRequest, setAncRequest] = useState<AncRequest>(defaultAncRequest);
+  const [ancSelectedModes, setAncSelectedModes] = useState<AncModeKey[]>([
+    "reference",
+    "anc",
+  ]);
+  const [ancCaptures, setAncCaptures] = useState<AncCaptures>({});
+  const [ancRunQueue, setAncRunQueue] = useState<AncModeKey[]>([]);
+  const [ancCurrentStep, setAncCurrentStep] = useState<AncModeKey | null>(
+    null,
+  );
+  const [ancStepPrompt, setAncStepPrompt] = useState(false);
 
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultEntry[]>([]);
@@ -1547,6 +1565,141 @@ export function usePawdioLabController() {
     }
   }
 
+  function startAncFlow() {
+    const ordered = ANC_MODE_ORDERED.filter((m) =>
+      ancSelectedModes.includes(m),
+    );
+    if (ordered.length === 0) return;
+    setAncRunQueue(ordered.slice(1));
+    setAncCurrentStep(ordered[0]);
+    setAncStepPrompt(true);
+  }
+
+  async function confirmAncStep() {
+    if (!ancCurrentStep) return;
+    setAncStepPrompt(false);
+    const mode = ancCurrentStep;
+    try {
+      const result = await invoke<AncSnapshot>("capture_anc_snapshot", {
+        request: {
+          f0: ancRequest.f0,
+          f1: ancRequest.f1,
+          durationSecs: ancRequest.durationSecs,
+          repeats: ancRequest.repeats,
+          amplitude: ancRequest.amplitude,
+        },
+      });
+      setAncCaptures((prev) => ({ ...prev, [mode]: result }));
+      appendLog(`[anc] captured ${mode} @ ${result.timestamp}`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[anc] error: ${String(err)}`);
+    }
+    setAncRunQueue((q) => {
+      const next = q[0] ?? null;
+      setAncCurrentStep(next);
+      if (next) setAncStepPrompt(true);
+      return q.slice(1);
+    });
+  }
+
+  function cancelAncFlow() {
+    setAncCurrentStep(null);
+    setAncRunQueue([]);
+    setAncStepPrompt(false);
+  }
+
+  function resetAncCaptures() {
+    setAncCaptures({});
+    cancelAncFlow();
+  }
+
+  async function browseAncOutputFolder() {
+    setError(null);
+    try {
+      const selected = await open({
+        directory: true,
+        multiple: false,
+        defaultPath: ancRequest.outputDir || undefined,
+      });
+      if (typeof selected === "string" && selected.length > 0) {
+        setAncRequest((prev) => ({ ...prev, outputDir: selected }));
+        appendLog(`[anc] output folder set -> ${selected}`);
+      }
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[error] ${String(err)}`);
+    }
+  }
+
+  async function exportAncPlots(
+    baseline: AncSnapshot,
+    modesToExport: Array<{ key: AncModeKey; label: string; snapshot: AncSnapshot }>,
+  ) {
+    if (!ancRequest.outputDir) {
+      appendLog("[anc] no output dir set — skipping plot export");
+      return;
+    }
+    try {
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, 19);
+      const modes = modesToExport.map(({ key, label, snapshot }) => ({
+        key,
+        label,
+        attenuationLeft: baseline.magDbLeft.map(
+          (b, i) => b - snapshot.magDbLeft[i],
+        ),
+        attenuationRight: baseline.magDbRight.map(
+          (b, i) => b - snapshot.magDbRight[i],
+        ),
+      }));
+      await invoke("save_anc_plots", {
+        outputDir: ancRequest.outputDir,
+        timestamp,
+        freqs: baseline.freqs,
+        modes,
+      });
+      appendLog(`[anc] plots saved to ${ancRequest.outputDir}`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[anc] export error: ${String(err)}`);
+    }
+  }
+
+  async function exportAncSquiglink(
+    baseline: AncSnapshot,
+    modeKey: AncModeKey,
+    modeLabel: string,
+    snapshot: AncSnapshot,
+  ) {
+    if (!ancRequest.outputDir) {
+      appendLog("[anc] no output dir set");
+      return;
+    }
+    try {
+      const timestamp = new Date()
+        .toISOString()
+        .replace(/[:.]/g, "-")
+        .slice(0, 19);
+      const attenuationDb = baseline.magDbLeft.map(
+        (b, i) => b - snapshot.magDbLeft[i],
+      );
+      const outputPath = `${ancRequest.outputDir}/anc_${modeKey}_${timestamp}.txt`;
+      await invoke("save_anc_squiglink", {
+        outputPath,
+        modeLabel,
+        freqs: baseline.freqs,
+        attenuationDb,
+      });
+      appendLog(`[anc] squiglink saved: anc_${modeKey}_${timestamp}.txt`);
+    } catch (err) {
+      setError(String(err));
+      appendLog(`[anc] squiglink error: ${String(err)}`);
+    }
+  }
+
   async function stopTest() {
     try {
       await invoke("stop_test");
@@ -1779,6 +1932,14 @@ export function usePawdioLabController() {
     setThdToneText,
     isolationRequest,
     setIsolationRequest,
+    ancRequest,
+    setAncRequest,
+    ancSelectedModes,
+    setAncSelectedModes,
+    ancCaptures,
+    ancRunQueue,
+    ancCurrentStep,
+    ancStepPrompt,
     logs,
     results,
     logText,
@@ -1795,6 +1956,13 @@ export function usePawdioLabController() {
     runCrosstalkTest,
     runThdTest,
     runIsolationTest,
+    startAncFlow,
+    confirmAncStep,
+    cancelAncFlow,
+    resetAncCaptures,
+    browseAncOutputFolder,
+    exportAncPlots,
+    exportAncSquiglink,
     exportLatencyReport,
     exportSweepLastJson,
     exportSweepAllJson,

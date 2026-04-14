@@ -1,6 +1,7 @@
 import {
   Timer,
   AudioWaveform,
+  EarOff,
   Settings,
   FileText,
   FlaskConical,
@@ -10,6 +11,7 @@ import { pageItems, PageKey } from "../model";
 const PAGE_ICONS: Record<PageKey, React.ComponentType<{ size?: number | string }>> = {
   latency: Timer,
   sweep_fr: AudioWaveform,
+  anc: EarOff,
   devices: Settings,
   results: FileText,
   experimental: FlaskConical,

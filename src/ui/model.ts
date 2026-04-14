@@ -1,6 +1,7 @@
 export type PageKey =
   | "latency"
   | "sweep_fr"
+  | "anc"
   | "experimental"
   | "devices"
   | "results";
@@ -8,6 +9,7 @@ export type PageKey =
 export enum PageKeyEnum {
   Latency = "latency",
   SweepFr = "sweep_fr",
+  Anc = "anc",
   Experimental = "experimental",
   Devices = "devices",
   Results = "results",
@@ -96,6 +98,77 @@ export type IsolationRequest = {
   amplitude: number;
 };
 
+export type AncModeKey = "true_reference" | "reference" | "anc" | "transparency";
+
+export type AncRequest = {
+  f0: number;
+  f1: number;
+  durationSecs: number;
+  repeats: number;
+  amplitude: number;
+  outputDir: string;
+  savePlots: boolean;
+};
+
+export type AncSnapshot = {
+  freqs: number[];
+  magDbLeft: number[];
+  magDbRight: number[];
+  timestamp: string;
+};
+
+export type AncCaptures = Partial<Record<AncModeKey, AncSnapshot>>;
+
+export const ANC_MODE_ORDERED: AncModeKey[] = [
+  "true_reference",
+  "reference",
+  "anc",
+  "transparency",
+];
+
+export const ANC_MODE_META: Record<
+  AncModeKey,
+  {
+    label: string;
+    detail: string;
+    captureTitle: string;
+    captureDetail: string;
+    color: string;
+  }
+> = {
+  true_reference: {
+    label: "No Headphones",
+    detail: "Mic exposed, nothing worn",
+    captureTitle: "True Reference",
+    captureDetail:
+      "Remove your headphones completely. The mic captures the raw room signal.",
+    color: "var(--gray-8)",
+  },
+  reference: {
+    label: "Passive (ANC off)",
+    detail: "Headphones on, all modes off",
+    captureTitle: "Baseline Capture",
+    captureDetail: "Put on your headphones. Disable ANC and Transparency.",
+    color: "var(--gray-10)",
+  },
+  anc: {
+    label: "ANC Active",
+    detail: "Active noise cancellation on",
+    captureTitle: "Enable ANC",
+    captureDetail:
+      "Turn on Active Noise Cancellation on your headphones, then start.",
+    color: "var(--accent-9)",
+  },
+  transparency: {
+    label: "Transparency",
+    detail: "Passthrough / ambient mode",
+    captureTitle: "Enable Transparency",
+    captureDetail:
+      "Switch to Transparency or Ambient mode on your headphones, then start.",
+    color: "hsl(175, 65%, 45%)",
+  },
+};
+
 export type LatencyProgress = {
   current: number;
   total: number;
@@ -142,10 +215,21 @@ export type ResultEntry = {
 export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "latency", label: "Latency" },
   { key: "sweep_fr", label: "Sweep FR" },
+  { key: "anc", label: "ANC / Transparency" },
   { key: "devices", label: "Devices / Settings" },
   { key: "results", label: "Results / Export" },
   { key: "experimental", label: "Experimental Tests" },
 ];
+
+export const defaultAncRequest: AncRequest = {
+  f0: 20,
+  f1: 20000,
+  durationSecs: 6,
+  repeats: 1,
+  amplitude: 0.5,
+  outputDir: "",
+  savePlots: true,
+};
 
 export const defaultSettings: AudioSettings = {
   outputDeviceIndex: null,

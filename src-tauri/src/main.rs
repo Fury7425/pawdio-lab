@@ -6,9 +6,9 @@ use std::sync::{
 };
 
 use audio::{
-    AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest, DeviceInventory,
-    IsolationRequest, LatencyExportEntry, LatencyTestReport, LatencyTestRequest, SweepFrRequest,
-    TestProgressEvent, TestResultPayload, ThdRequest,
+    AncSnapshot, AncSnapshotRequest, AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest,
+    DeviceInventory, IsolationRequest, LatencyExportEntry, LatencyTestReport, LatencyTestRequest,
+    SweepFrRequest, TestProgressEvent, TestResultPayload, ThdRequest,
 };
 use serde::Serialize;
 use tauri::{Emitter, State};
@@ -164,6 +164,84 @@ async fn run_sweep_fr_test(
         Ok(inner) => inner.map_err(|error| error.to_string()),
         Err(error) => Err(format!("Audio test task join error: {error}")),
     }
+}
+
+#[tauri::command]
+async fn capture_anc_snapshot(
+    app: tauri::AppHandle,
+    state: State<'_, AppState>,
+    request: AncSnapshotRequest,
+) -> Result<AncSnapshot, String> {
+    state.monitor_cancel.store(true, Ordering::SeqCst);
+    state.pink_noise_cancel.store(true, Ordering::SeqCst);
+
+    if state.running.swap(true, Ordering::SeqCst) {
+        return Err("A test is already running.".to_string());
+    }
+
+    state.cancel.store(false, Ordering::SeqCst);
+
+    let settings = {
+        let engine = state.audio.lock().await;
+        engine.settings()
+    };
+    let cancel = state.cancel.clone();
+    let app_handle = app.clone();
+
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        AudioEngine::capture_anc_snapshot(settings, request, cancel, app_handle)
+    });
+
+    let join_result = task.await;
+    state.running.store(false, Ordering::SeqCst);
+
+    match join_result {
+        Ok(inner) => inner.map_err(|error| error.to_string()),
+        Err(error) => Err(format!("Audio task join error: {error}")),
+    }
+}
+
+#[derive(Debug, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AncModeExport {
+    key: String,
+    label: String,
+    attenuation_left: Vec<f32>,
+    attenuation_right: Vec<f32>,
+}
+
+#[tauri::command]
+fn save_anc_plots(
+    output_dir: String,
+    timestamp: String,
+    freqs: Vec<f32>,
+    modes: Vec<AncModeExport>,
+) -> Result<Vec<(String, String)>, String> {
+    let dir = std::path::Path::new(&output_dir);
+    std::fs::create_dir_all(dir)
+        .map_err(|e| format!("failed to create output dir: {e}"))?;
+    let mode_data: Vec<(&str, &str, Vec<f32>, Vec<f32>)> = modes
+        .iter()
+        .map(|m| (m.key.as_str(), m.label.as_str(), m.attenuation_left.clone(), m.attenuation_right.clone()))
+        .collect();
+    audio::save_anc_plots(dir, &timestamp, &freqs, &mode_data)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn save_anc_squiglink(
+    output_path: String,
+    mode_label: String,
+    freqs: Vec<f32>,
+    attenuation_db: Vec<f32>,
+) -> Result<(), String> {
+    audio::save_anc_squiglink(
+        std::path::Path::new(&output_path),
+        &mode_label,
+        &freqs,
+        &attenuation_db,
+    )
+    .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -465,6 +543,9 @@ fn main() {
             run_balance_test,
             run_crosstalk_test,
             run_isolation_test,
+            capture_anc_snapshot,
+            save_anc_plots,
+            save_anc_squiglink,
             stop_test,
             stop_latency_test,
             get_runtime_status,

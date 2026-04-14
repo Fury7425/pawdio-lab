@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Sidebar } from "./components/sidebar";
+import { AncPage } from "./pages/anc-page";
 import { DevicesPage } from "./pages/devices-page";
 import { ExperimentalPage } from "./pages/experimental-page";
 import { LatencyPage } from "./pages/latency-page";
@@ -7,7 +8,7 @@ import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
 import { startAppearanceThemeSync } from "./theme";
 import { usePawdioLabController } from "./use-pawdio-lab";
-import { PageKeyEnum } from "./model";
+import { ANC_MODE_META, ANC_MODE_ORDERED, PageKeyEnum } from "./model";
 
 export function PawdioLabApp() {
   const controller = usePawdioLabController();
@@ -61,6 +62,40 @@ export function PawdioLabApp() {
               onCalibrateAll={(repeats) =>
                 run(controller.calibrateLatencyAllPresets(repeats))
               }
+            />
+          )}
+
+          {controller.activePage === PageKeyEnum.Anc && (
+            <AncPage
+              request={controller.ancRequest}
+              onChangeRequest={controller.setAncRequest}
+              selectedModes={controller.ancSelectedModes}
+              onChangeSelectedModes={controller.setAncSelectedModes}
+              captures={controller.ancCaptures}
+              running={controller.running}
+              stepPrompt={controller.ancStepPrompt}
+              currentStep={controller.ancCurrentStep}
+              totalSteps={controller.ancSelectedModes.length}
+              stepIndex={
+                controller.ancSelectedModes.length -
+                controller.ancRunQueue.length -
+                1
+              }
+              onStart={controller.startAncFlow}
+              onConfirmStep={() => run(controller.confirmAncStep())}
+              onCancelStep={controller.cancelAncFlow}
+              onReset={controller.resetAncCaptures}
+              onBrowseOutputFolder={() =>
+                run(controller.browseAncOutputFolder())
+              }
+              onExportPlots={(baseline, modes) =>
+                run(controller.exportAncPlots(baseline, modes))
+              }
+              onExportSquiglink={(baseline, key, label, snap) =>
+                run(controller.exportAncSquiglink(baseline, key, label, snap))
+              }
+              modeMeta={ANC_MODE_META}
+              modeOrdered={ANC_MODE_ORDERED}
             />
           )}
 

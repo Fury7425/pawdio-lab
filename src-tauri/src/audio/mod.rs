@@ -249,6 +249,25 @@ impl Default for IsolationRequest {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AncSnapshotRequest {
+    pub f0: f32,
+    pub f1: f32,
+    pub duration_secs: f32,
+    pub repeats: u32,
+    pub amplitude: f32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AncSnapshot {
+    pub freqs: Vec<f32>,
+    pub mag_db_left: Vec<f32>,
+    pub mag_db_right: Vec<f32>,
+    pub timestamp: String,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct LatencyProgressEvent {
@@ -1221,6 +1240,70 @@ impl AudioEngine {
             }),
             data: json!({}),
             files: json!({}),
+        })
+    }
+
+    pub fn capture_anc_snapshot(
+        settings: AudioSettings,
+        request: AncSnapshotRequest,
+        cancel: Arc<AtomicBool>,
+        app: AppHandle,
+    ) -> Result<AncSnapshot, AudioError> {
+        let runtime = AudioRuntime::new(settings)?;
+        let f0 = request.f0.max(20.0);
+        let f1 = request.f1.clamp(f0 + 1.0, 20_000.0);
+        let duration = request.duration_secs.clamp(0.5, 20.0);
+        let amplitude = request.amplitude.clamp(0.05, 1.0);
+        let repeats = request.repeats.clamp(1, 8);
+        let grid = logspace(f0, f1, 200);
+        let mut mags_l: Vec<Vec<f32>> = Vec::new();
+        let mut mags_r: Vec<Vec<f32>> = Vec::new();
+
+        for i in 1..=repeats {
+            if cancel.load(Ordering::SeqCst) {
+                break;
+            }
+            let chirp = generate_log_chirp(f0, f1, duration, amplitude, runtime.output_rate);
+            let ref_signal = if runtime.input_rate != runtime.output_rate {
+                resample_linear(&chirp, runtime.output_rate, runtime.input_rate)
+            } else {
+                chirp.clone()
+            };
+            let captured = runtime.play_and_record_channels(
+                chirp,
+                OutputRouting::Both,
+                duration + 0.5,
+            )?;
+            let rec_l = channel_or_mix(&captured, 0);
+            let rec_r = if captured.len() > 1 {
+                channel_or_mix(&captured, 1)
+            } else {
+                rec_l.clone()
+            };
+            let delay_l = find_delay_ms(&rec_l, &ref_signal, runtime.input_rate);
+            let delay_r = find_delay_ms(&rec_r, &ref_signal, runtime.input_rate);
+            let al = align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate);
+            let ar = align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate);
+            mags_l.push(frequency_response_curve(&al, &ref_signal, runtime.input_rate, &grid));
+            mags_r.push(frequency_response_curve(&ar, &ref_signal, runtime.input_rate, &grid));
+            app.emit(
+                "test-progress",
+                TestProgressEvent {
+                    test: "anc_snapshot".to_string(),
+                    current: i,
+                    total: repeats,
+                    value: None,
+                    message: format!("Sweep {i}/{repeats} done"),
+                },
+            )
+            .ok();
+        }
+
+        Ok(AncSnapshot {
+            freqs: grid,
+            mag_db_left: average_curves(&mags_l),
+            mag_db_right: average_curves(&mags_r),
+            timestamp: timestamp_string(),
         })
     }
 }
@@ -2709,6 +2792,224 @@ fn save_sweep_lr_avg_plot(
 
     root.present()
         .map_err(|err| AudioError::FileExport(format!("sweep write {}: {err}", path.display())))
+}
+
+const ANC_PLOT_Y_MIN: f32 = -10.0;
+const ANC_PLOT_Y_MAX: f32 = 40.0;
+
+fn anc_curve_colors(index: usize) -> RGBColor {
+    match index % 4 {
+        0 => RGBColor(13, 73, 176),   // blue — ANC
+        1 => RGBColor(0, 155, 140),   // teal — Transparency
+        2 => RGBColor(120, 120, 120), // gray — Passive/reference
+        _ => RGBColor(180, 80, 30),   // amber — extra
+    }
+}
+
+fn save_anc_single_plot(
+    path: &Path,
+    freqs: &[f32],
+    attenuation_l: &[f32],
+    attenuation_r: &[f32],
+    mode_label: &str,
+) -> Result<(), AudioError> {
+    if freqs.len() < 2 || attenuation_l.is_empty() {
+        return Ok(());
+    }
+    let x_min = freqs.iter().copied().filter(|f| *f > 0.0).fold(f32::INFINITY, f32::min);
+    let x_max = freqs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+
+    let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
+    root.fill(&RGBColor(240, 240, 240))
+        .map_err(|err| AudioError::FileExport(format!("anc background {}: {err}", path.display())))?;
+
+    let title = format!("{mode_label} — Noise Attenuation (dB)");
+    let mut chart = ChartBuilder::on(&root)
+        .margin(28)
+        .caption(title, ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .set_label_area_size(LabelAreaPosition::Left, 100)
+        .set_label_area_size(LabelAreaPosition::Bottom, 84)
+        .build_cartesian_2d((x_min..x_max).log_scale(), ANC_PLOT_Y_MIN..ANC_PLOT_Y_MAX)
+        .map_err(|err| AudioError::FileExport(format!("anc chart {}: {err}", path.display())))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("Frequency (Hz)")
+        .y_desc("Attenuation (dB)")
+        .axis_style(RGBColor(125, 125, 125))
+        .light_line_style(RGBColor(210, 210, 210))
+        .bold_line_style(RGBColor(180, 180, 180))
+        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .x_label_formatter(&|value| {
+            if *value >= 1000.0 { format!("{:.0}k", *value / 1000.0) } else { format!("{value:.0}") }
+        })
+        .draw()
+        .map_err(|err| AudioError::FileExport(format!("anc mesh {}: {err}", path.display())))?;
+
+    // 0 dB reference line
+    chart
+        .draw_series(std::iter::once(PathElement::new(
+            vec![(x_min, 0.0_f32), (x_max, 0.0_f32)],
+            RGBColor(145, 145, 145).mix(0.8).stroke_width(2),
+        )))
+        .map_err(|err| AudioError::FileExport(format!("anc zeroline {}: {err}", path.display())))?;
+
+    // L channel
+    chart
+        .draw_series(LineSeries::new(
+            freqs.iter().zip(attenuation_l.iter()).map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
+            RGBColor(13, 73, 176).stroke_width(5),
+        ))
+        .map_err(|err| AudioError::FileExport(format!("anc left {}: {err}", path.display())))?
+        .label("Left")
+        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(13, 73, 176).stroke_width(5)));
+
+    if !attenuation_r.is_empty() {
+        chart
+            .draw_series(LineSeries::new(
+                freqs.iter().zip(attenuation_r.iter()).map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
+                RGBColor(27, 95, 195).mix(0.6).stroke_width(3),
+            ))
+            .map_err(|err| AudioError::FileExport(format!("anc right {}: {err}", path.display())))?
+            .label("Right")
+            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(27, 95, 195).stroke_width(3)));
+    }
+
+    chart
+        .configure_series_labels()
+        .border_style(RGBColor(170, 170, 170))
+        .background_style(RGBColor(236, 236, 236).mix(0.8))
+        .label_font(("sans-serif", 28).into_font().color(&RGBColor(110, 110, 110)))
+        .draw()
+        .map_err(|err| AudioError::FileExport(format!("anc legend {}: {err}", path.display())))?;
+
+    root.present()
+        .map_err(|err| AudioError::FileExport(format!("anc write {}: {err}", path.display())))
+}
+
+/// curves: slice of (mode_label, attenuation_db) — one entry per mode, L channel only for combined
+fn save_anc_combined_plot(
+    path: &Path,
+    freqs: &[f32],
+    curves: &[(&str, &[f32])],
+) -> Result<(), AudioError> {
+    if freqs.len() < 2 || curves.is_empty() {
+        return Ok(());
+    }
+
+    let x_min = freqs.iter().copied().filter(|f| *f > 0.0).fold(f32::INFINITY, f32::min);
+    let x_max = freqs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
+
+    let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
+    root.fill(&RGBColor(240, 240, 240))
+        .map_err(|err| AudioError::FileExport(format!("anc-combined background {}: {err}", path.display())))?;
+
+    let mut chart = ChartBuilder::on(&root)
+        .margin(28)
+        .caption("ANC / Transparency — Noise Attenuation (dB)", ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .set_label_area_size(LabelAreaPosition::Left, 100)
+        .set_label_area_size(LabelAreaPosition::Bottom, 84)
+        .build_cartesian_2d((x_min..x_max).log_scale(), ANC_PLOT_Y_MIN..ANC_PLOT_Y_MAX)
+        .map_err(|err| AudioError::FileExport(format!("anc-combined chart {}: {err}", path.display())))?;
+
+    chart
+        .configure_mesh()
+        .x_desc("Frequency (Hz)")
+        .y_desc("Attenuation (dB)")
+        .axis_style(RGBColor(125, 125, 125))
+        .light_line_style(RGBColor(210, 210, 210))
+        .bold_line_style(RGBColor(180, 180, 180))
+        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .x_label_formatter(&|value| {
+            if *value >= 1000.0 { format!("{:.0}k", *value / 1000.0) } else { format!("{value:.0}") }
+        })
+        .draw()
+        .map_err(|err| AudioError::FileExport(format!("anc-combined mesh {}: {err}", path.display())))?;
+
+    // 0 dB reference line
+    chart
+        .draw_series(std::iter::once(PathElement::new(
+            vec![(x_min, 0.0_f32), (x_max, 0.0_f32)],
+            RGBColor(145, 145, 145).mix(0.8).stroke_width(2),
+        )))
+        .map_err(|err| AudioError::FileExport(format!("anc-combined zeroline {}: {err}", path.display())))?;
+
+    for (idx, (label, curve)) in curves.iter().enumerate() {
+        let color = anc_curve_colors(idx);
+        chart
+            .draw_series(LineSeries::new(
+                freqs.iter().zip(curve.iter()).map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
+                color.stroke_width(4),
+            ))
+            .map_err(|err| AudioError::FileExport(format!("anc-combined line {}: {err}", path.display())))?
+            .label(*label)
+            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], color.stroke_width(4)));
+    }
+
+    chart
+        .configure_series_labels()
+        .border_style(RGBColor(170, 170, 170))
+        .background_style(RGBColor(236, 236, 236).mix(0.8))
+        .label_font(("sans-serif", 28).into_font().color(&RGBColor(110, 110, 110)))
+        .draw()
+        .map_err(|err| AudioError::FileExport(format!("anc-combined legend {}: {err}", path.display())))?;
+
+    root.present()
+        .map_err(|err| AudioError::FileExport(format!("anc-combined write {}: {err}", path.display())))
+}
+
+/// Public entry: generate per-mode + combined ANC attenuation plots.
+/// modes: slice of (mode_key, label, attenuation_l, attenuation_r)
+/// baseline_freqs: the shared frequency grid from captures
+/// Returns list of (key, file_path) for generated files.
+pub fn save_anc_plots(
+    output_dir: &Path,
+    timestamp: &str,
+    freqs: &[f32],
+    modes: &[(&str, &str, Vec<f32>, Vec<f32>)],
+) -> Result<Vec<(String, String)>, AudioError> {
+    let mut result = Vec::new();
+
+    // Per-mode single plots
+    for (key, label, att_l, att_r) in modes {
+        let filename = format!("anc_{key}_{timestamp}.png");
+        let path = output_dir.join(&filename);
+        save_anc_single_plot(&path, freqs, att_l, att_r, label)?;
+        result.push((format!("plot_{key}"), path.display().to_string()));
+    }
+
+    // Combined plot
+    if modes.len() > 1 {
+        let combined_filename = format!("anc_combined_{timestamp}.png");
+        let combined_path = output_dir.join(&combined_filename);
+        let curve_refs: Vec<(&str, &[f32])> = modes.iter()
+            .map(|(_, label, att_l, _)| (*label, att_l.as_slice()))
+            .collect();
+        save_anc_combined_plot(&combined_path, freqs, &curve_refs)?;
+        result.push(("plot_combined".to_string(), combined_path.display().to_string()));
+    }
+
+    Ok(result)
+}
+
+/// Write a single ANC attenuation squiglink-compatible TXT file.
+pub fn save_anc_squiglink(
+    path: &Path,
+    mode_label: &str,
+    freqs: &[f32],
+    attenuation_db: &[f32],
+) -> Result<(), AudioError> {
+    let mut f = File::create(path)
+        .map_err(|err| AudioError::FileExport(format!("failed to create {}: {err}", path.display())))?;
+    writeln!(f, "# PawdioLab ANC Attenuation — {mode_label}")
+        .map_err(|err| AudioError::FileExport(format!("write {}: {err}", path.display())))?;
+    writeln!(f, "# Frequency(Hz)\tAttenuation(dB)")
+        .map_err(|err| AudioError::FileExport(format!("write {}: {err}", path.display())))?;
+    for (freq, att) in freqs.iter().zip(attenuation_db.iter()) {
+        writeln!(f, "{freq:.2}\t{att:.3}")
+            .map_err(|err| AudioError::FileExport(format!("write {}: {err}", path.display())))?;
+    }
+    Ok(())
 }
 
 fn save_squiglink_files(
