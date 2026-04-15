@@ -126,22 +126,24 @@ export function AncPage({
     (m) => captures[m] !== undefined,
   );
 
+  // negative = ANC cancelling (active quieter than baseline)
+  // positive = mode amplifies vs baseline (transparency overshoot, rare)
   function getAttenuation(snap: AncSnapshot): number[] {
     if (!baseline) return [];
     const bArr = channel === "L" ? baseline.magDbLeft : baseline.magDbRight;
     const aArr = channel === "L" ? snap.magDbLeft : snap.magDbRight;
-    return bArr.map((b, i) => b - aArr[i]);
+    return aArr.map((a, i) => a - bArr[i]);
   }
 
-  // Y-axis: determine range based on which non-baseline modes are captured
+  // Y-axis: +10 top (slight amplification), -40 bottom (strong cancellation)
   const nonBaselineCaptured = modeOrdered.filter(
     (m) => m !== baselineKey && captures[m] !== undefined,
   );
   const hasTransOnly =
     nonBaselineCaptured.length === 1 &&
     nonBaselineCaptured[0] === "transparency";
-  const yMin = hasTransOnly ? -15 : -10;
-  const yMax = hasTransOnly ? 15 : 40;
+  const yMin = hasTransOnly ? -15 : -40;
+  const yMax = hasTransOnly ? 15 : 10;
   const ySpan = yMax - yMin;
 
   function toY(db: number): number {

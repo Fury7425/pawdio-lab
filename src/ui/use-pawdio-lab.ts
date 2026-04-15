@@ -1649,14 +1649,15 @@ export function usePawdioLabController() {
         .toISOString()
         .replace(/[:.]/g, "-")
         .slice(0, 19);
+      // negative = cancelled (active quieter than baseline)
       const modes = modesToExport.map(({ key, label, snapshot }) => ({
         key,
         label,
-        attenuationLeft: baseline.magDbLeft.map(
-          (b, i) => b - snapshot.magDbLeft[i],
+        attenuationLeft: snapshot.magDbLeft.map(
+          (a, i) => a - baseline.magDbLeft[i],
         ),
-        attenuationRight: baseline.magDbRight.map(
-          (b, i) => b - snapshot.magDbRight[i],
+        attenuationRight: snapshot.magDbRight.map(
+          (a, i) => a - baseline.magDbRight[i],
         ),
       }));
       await invoke("save_anc_plots", {
@@ -1687,8 +1688,8 @@ export function usePawdioLabController() {
         .toISOString()
         .replace(/[:.]/g, "-")
         .slice(0, 19);
-      const attenuationDb = baseline.magDbLeft.map(
-        (b, i) => b - snapshot.magDbLeft[i],
+      const attenuationDb = snapshot.magDbLeft.map(
+        (a, i) => a - baseline.magDbLeft[i],
       );
       const outputPath = `${ancRequest.outputDir}/anc_${modeKey}_${timestamp}.txt`;
       await invoke("save_anc_squiglink", {

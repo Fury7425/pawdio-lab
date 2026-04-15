@@ -2794,8 +2794,8 @@ fn save_sweep_lr_avg_plot(
         .map_err(|err| AudioError::FileExport(format!("sweep write {}: {err}", path.display())))
 }
 
-const ANC_PLOT_Y_MIN: f32 = -10.0;
-const ANC_PLOT_Y_MAX: f32 = 40.0;
+const ANC_PLOT_Y_MIN: f32 = -40.0;
+const ANC_PLOT_Y_MAX: f32 = 10.0;
 
 fn anc_curve_colors(index: usize) -> RGBColor {
     match index % 4 {
