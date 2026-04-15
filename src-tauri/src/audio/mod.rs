@@ -1381,18 +1381,29 @@ fn preferred_host() -> Result<Host, AudioError> {
 fn enumerate_output_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)>, AudioError> {
     let mut output_devices = Vec::new();
     for (host_index, device) in host.devices()?.enumerate() {
-        if let Ok(config) = device.default_output_config() {
-            output_devices.push((
-                device.clone(),
-                AudioDeviceInfo {
-                    index: host_index,
-                    name: device.name()?,
-                    is_input: false,
-                    channels: config.channels(),
-                    default_sample_rate: config.sample_rate().0,
-                },
-            ));
-        }
+        // Use supported_output_configs() as the capability gate.
+        // default_output_config() fails for non-default devices on WASAPI/CoreAudio.
+        let first_supported = device
+            .supported_output_configs()
+            .ok()
+            .and_then(|mut iter| iter.next());
+        let Some(first) = first_supported else {
+            continue;
+        };
+        let (channels, default_sample_rate) = match device.default_output_config() {
+            Ok(cfg) => (cfg.channels(), cfg.sample_rate().0),
+            Err(_) => (first.channels(), first.max_sample_rate().0),
+        };
+        output_devices.push((
+            device.clone(),
+            AudioDeviceInfo {
+                index: host_index,
+                name: device.name()?,
+                is_input: false,
+                channels,
+                default_sample_rate,
+            },
+        ));
     }
     Ok(output_devices)
 }
@@ -1400,18 +1411,29 @@ fn enumerate_output_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)
 fn enumerate_input_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)>, AudioError> {
     let mut input_devices = Vec::new();
     for (host_index, device) in host.devices()?.enumerate() {
-        if let Ok(config) = device.default_input_config() {
-            input_devices.push((
-                device.clone(),
-                AudioDeviceInfo {
-                    index: host_index,
-                    name: device.name()?,
-                    is_input: true,
-                    channels: config.channels(),
-                    default_sample_rate: config.sample_rate().0,
-                },
-            ));
-        }
+        // Use supported_input_configs() as the capability gate.
+        // default_input_config() may fail for non-default devices on WASAPI/CoreAudio.
+        let first_supported = device
+            .supported_input_configs()
+            .ok()
+            .and_then(|mut iter| iter.next());
+        let Some(first) = first_supported else {
+            continue;
+        };
+        let (channels, default_sample_rate) = match device.default_input_config() {
+            Ok(cfg) => (cfg.channels(), cfg.sample_rate().0),
+            Err(_) => (first.channels(), first.max_sample_rate().0),
+        };
+        input_devices.push((
+            device.clone(),
+            AudioDeviceInfo {
+                index: host_index,
+                name: device.name()?,
+                is_input: true,
+                channels,
+                default_sample_rate,
+            },
+        ));
     }
     Ok(input_devices)
 }

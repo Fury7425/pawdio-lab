@@ -3,6 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
+  ANC_MODE_META,
   ANC_MODE_ORDERED,
   AncCaptures,
   AncModeKey,
@@ -1583,6 +1584,7 @@ export function usePawdioLabController() {
     if (!ancCurrentStep) return;
     setAncStepPrompt(false);
     const mode = ancCurrentStep;
+    const isLastStep = ancRunQueue.length === 0;
     try {
       const result = await invoke<AncSnapshot>("capture_anc_snapshot", {
         request: {
@@ -1593,8 +1595,38 @@ export function usePawdioLabController() {
           amplitude: ancRequest.amplitude,
         },
       });
-      setAncCaptures((prev) => ({ ...prev, [mode]: result }));
+      const newCaptures = { ...ancCaptures, [mode]: result };
+      setAncCaptures(newCaptures);
       appendLog(`[anc] captured ${mode} @ ${result.timestamp}`);
+
+      // Auto-export when the last mode is captured and an output dir is set
+      if (isLastStep && ancRequest.outputDir && ancRequest.savePlots) {
+        const baselineKey = ANC_MODE_ORDERED.find((m) => newCaptures[m] !== undefined);
+        const baseline = baselineKey ? newCaptures[baselineKey] : undefined;
+        if (baseline && baselineKey) {
+          const exportable = ANC_MODE_ORDERED.filter(
+            (m) => m !== baselineKey && newCaptures[m] !== undefined,
+          );
+          if (exportable.length > 0) {
+            await exportAncPlots(
+              baseline,
+              exportable.map((key) => ({
+                key,
+                label: ANC_MODE_META[key].label,
+                snapshot: newCaptures[key]!,
+              })),
+            );
+            for (const key of exportable) {
+              await exportAncSquiglink(
+                baseline,
+                key,
+                ANC_MODE_META[key].label,
+                newCaptures[key]!,
+              );
+            }
+          }
+        }
+      }
     } catch (err) {
       setError(String(err));
       appendLog(`[anc] error: ${String(err)}`);
