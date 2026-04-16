@@ -1,7 +1,7 @@
 {
   "name": "pawdio-lab",
   "private": true,
-  "version": "1.0.0",
+  "version": "beta-2.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
