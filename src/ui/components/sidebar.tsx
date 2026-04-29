@@ -7,6 +7,7 @@ import {
   FlaskConical,
 } from "lucide-react";
 import { pageItems, PageKey } from "../model";
+import { usePawdioLabContext } from "../pawdio-context";
 
 const PAGE_ICONS: Record<PageKey, React.ComponentType<{ size?: number | string }>> = {
   latency: Timer,
@@ -17,23 +18,9 @@ const PAGE_ICONS: Record<PageKey, React.ComponentType<{ size?: number | string }
   experimental: FlaskConical,
 };
 
-type SidebarProps = {
-  activePage: PageKey;
-  running: boolean;
-  experimentalEnabled: boolean;
-  onSelectPage: (page: PageKey) => void;
-  onRefreshDevices: () => void;
-  onStopTest: () => void;
-};
-
-export function Sidebar({
-  activePage,
-  running,
-  experimentalEnabled,
-  onSelectPage,
-  onStopTest,
-}: SidebarProps) {
-  const visiblePages = experimentalEnabled
+export function Sidebar() {
+  const ctx = usePawdioLabContext();
+  const visiblePages = ctx.experimentalEnabled
     ? pageItems
     : pageItems.filter((item) => item.key !== "experimental");
 
@@ -49,10 +36,12 @@ export function Sidebar({
             <button
               key={item.key}
               type="button"
-              className={`nav-btn${activePage === item.key ? " is-active" : ""}`}
-              onClick={() => onSelectPage(item.key)}
+              className={`nav-btn${ctx.activePage === item.key ? " is-active" : ""}`}
+              aria-pressed={ctx.activePage === item.key}
+              aria-label={item.label}
+              onClick={() => ctx.setActivePage(item.key)}
             >
-              <Icon size={16} />
+              <Icon size={16} aria-hidden="true" />
               {item.label}
             </button>
           );
@@ -60,15 +49,16 @@ export function Sidebar({
       </nav>
 
       <div className="sidebar-footer">
-        <span className="status-pill">
-          <span className={`status-dot ${running ? "running" : "idle"}`} />
-          {running ? "Running" : "Idle"}
+        <span className="status-pill" aria-live="polite" aria-atomic="true">
+          <span className={`status-dot ${ctx.running ? "running" : "idle"}`} aria-hidden="true" />
+          {ctx.running ? "Running" : "Idle"}
         </span>
         <button
           type="button"
           className="skin-btn danger"
-          disabled={!running}
-          onClick={onStopTest}
+          disabled={!ctx.running}
+          aria-label="Stop current test"
+          onClick={() => ctx.run(ctx.stopTest())}
         >
           Stop
         </button>

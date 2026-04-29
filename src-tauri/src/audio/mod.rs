@@ -456,7 +456,7 @@ impl AudioEngine {
             let recorded =
                 runtime.play_and_record_mono(signal.clone(), OutputRouting::Both, duration + margin)?;
             let reference = if runtime.input_rate != runtime.output_rate {
-                resample_linear(&signal, runtime.output_rate, runtime.input_rate)
+                resample_cubic(&signal, runtime.output_rate, runtime.input_rate)
             } else {
                 signal
             };
@@ -573,7 +573,6 @@ impl AudioEngine {
             }
         }
 
-        let _ = app.emit("latency-complete", report.clone());
         Ok(report)
     }
 
@@ -768,7 +767,7 @@ impl AudioEngine {
                 runtime.output_rate,
             );
             let ref_signal = if runtime.input_rate != runtime.output_rate {
-                resample_linear(&chirp, runtime.output_rate, runtime.input_rate)
+                resample_cubic(&chirp, runtime.output_rate, runtime.input_rate)
             } else {
                 chirp.clone()
             };
@@ -1265,7 +1264,7 @@ impl AudioEngine {
             }
             let chirp = generate_log_chirp(f0, f1, duration, amplitude, runtime.output_rate);
             let ref_signal = if runtime.input_rate != runtime.output_rate {
-                resample_linear(&chirp, runtime.output_rate, runtime.input_rate)
+                resample_cubic(&chirp, runtime.output_rate, runtime.input_rate)
             } else {
                 chirp.clone()
             };
@@ -1746,21 +1745,28 @@ fn resolve_output_dir(requested: &Option<String>) -> PathBuf {
 }
 
 fn sanitize_output_name(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for ch in raw.trim().chars() {
+    const WINDOWS_RESERVED: &[&str] = &[
+        "CON", "PRN", "AUX", "NUL",
+        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
+        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+    ];
+    const MAX_NAME_LEN: usize = 200;
+
+    let mut out = String::with_capacity(raw.len().min(MAX_NAME_LEN));
+    for ch in raw.trim().chars().take(MAX_NAME_LEN) {
         let invalid = matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control();
-        if invalid {
-            out.push('_');
-        } else {
-            out.push(ch);
-        }
+        if invalid { out.push('_'); } else { out.push(ch); }
     }
     let cleaned = out.trim_matches(|c| c == ' ' || c == '.').trim().to_string();
     if cleaned.is_empty() {
-        "item".to_string()
-    } else {
-        cleaned
+        return "item".to_string();
     }
+    // Strip any extension before checking reserved names
+    let stem = cleaned.split('.').next().unwrap_or(&cleaned);
+    if WINDOWS_RESERVED.contains(&stem.to_uppercase().as_str()) {
+        return format!("_{cleaned}");
+    }
+    cleaned
 }
 
 fn resolve_measurement_output_dir(requested: &Option<String>, item_name: &str, run_tag: &str) -> PathBuf {
@@ -2381,10 +2387,20 @@ fn save_latency_plot(
         .map_err(|err| AudioError::FileExport(format!("plot write {}: {err}", path.display())))
 }
 
+fn hann_window(len: usize) -> Vec<f32> {
+    // Periodic Hann window: w[i] = 0.5 * (1 - cos(2π·i/N))
+    let len_f = len as f32;
+    (0..len).map(|i| 0.5 * (1.0 - (2.0 * PI * i as f32 / len_f).cos())).collect()
+}
+
 fn cross_correlation_points(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Vec<(f32, f32)> {
     if recorded.is_empty() || reference.is_empty() || sample_rate == 0 {
         return Vec::new();
     }
+
+    // Apply Hann window to reduce spectral leakage before FFT
+    let rec_win = hann_window(recorded.len());
+    let ref_win = hann_window(reference.len());
 
     let n = (recorded.len() + reference.len()).next_power_of_two();
     let mut planner = FftPlanner::<f32>::new();
@@ -2394,13 +2410,19 @@ fn cross_correlation_points(recorded: &[f32], reference: &[f32], sample_rate: u3
     let mut a = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
     let mut b = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
     for (idx, value) in recorded.iter().enumerate() {
-        a[idx].re = *value;
+        a[idx].re = *value * rec_win[idx];
     }
     for (idx, value) in reference.iter().enumerate() {
-        b[idx].re = *value;
+        b[idx].re = *value * ref_win[idx];
     }
     fft.process(&mut a);
     fft.process(&mut b);
+
+    // Normalized cross-correlation: A * conj(B) / sqrt(E_a * E_b)
+    let energy_a: f32 = recorded.iter().zip(&rec_win).map(|(s, w)| (s * w) * (s * w)).sum();
+    let energy_b: f32 = reference.iter().zip(&ref_win).map(|(s, w)| (s * w) * (s * w)).sum();
+    let norm = (energy_a * energy_b).sqrt().max(1e-12);
+
     for (left, right) in a.iter_mut().zip(b.iter()) {
         *left *= right.conj();
     }
@@ -2415,7 +2437,7 @@ fn cross_correlation_points(recorded: &[f32], reference: &[f32], sample_rate: u3
             } else {
                 lag as usize
             };
-            (lag as f32 * 1000.0 / sample_rate as f32, a[idx].re)
+            (lag as f32 * 1000.0 / sample_rate as f32, a[idx].re / norm)
         })
         .collect()
 }
@@ -3189,15 +3211,34 @@ fn resample_cubic(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
         sigma[0] = 0.0;
 
         for i in 1..(n - 1) {
-            let sig = (input[i] as f64 - input[i - 1] as f64) / (input[i + 1] as f64 - input[i - 1] as f64);
+            let denom_sig = input[i + 1] as f64 - input[i - 1] as f64;
+            let sig = if denom_sig.abs() < 1e-12 {
+                0.5 // fallback for flat/duplicated samples
+            } else {
+                (input[i] as f64 - input[i - 1] as f64) / denom_sig
+            };
             sigma[i] = sig;
+            let denom_y2 = input[i + 1] as f64 - input[i] as f64;
             let eps = 1e-10f64.max(sig * sig);
-            y2[i] = (3.0 * eps - 3.0 * sig) / ((eps + 2.0) * (input[i + 1] as f64 - input[i] as f64));
+            y2[i] = if denom_y2.abs() < 1e-12 {
+                0.0
+            } else {
+                (3.0 * eps - 3.0 * sig) / ((eps + 2.0) * denom_y2)
+            };
         }
         y2[n - 1] = 0.0;
 
         for i in (1..n).rev() {
-            let un = if i >= n - 1 { 1.0f64 } else { (input[i + 1] as f64 - input[i] as f64) / (input[i + 1] as f64 - input[i - 1] as f64) };
+            let un = if i >= n - 1 {
+                1.0f64
+            } else {
+                let denom_un = input[i + 1] as f64 - input[i - 1] as f64;
+                if denom_un.abs() < 1e-12 {
+                    0.5
+                } else {
+                    (input[i + 1] as f64 - input[i] as f64) / denom_un
+                }
+            };
             y2[i - 1] = (un * y2[i - 1] - 0.5 * y2[i]) / (un + 1.0);
         }
     }
@@ -3247,11 +3288,6 @@ fn resample_cubic(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
     }
 
     output
-}
-
-/// High-quality resampling using cubic spline interpolation
-fn resample_linear(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
-    resample_cubic(input, src_rate, dst_rate)
 }
 
 fn align_to_reference(
@@ -3319,11 +3355,18 @@ fn magnitude_spectrum(signal: &[f32], n: usize) -> Vec<f32> {
 
     fft.process(&mut buffer);
 
+    // Scale to one-sided amplitude spectrum: 2/N for non-DC/Nyquist bins
+    let scale = 2.0 / n as f32;
     let half = n / 2 + 1;
     buffer
         .into_iter()
         .take(half)
-        .map(|c| (c.re * c.re + c.im * c.im).sqrt())
+        .enumerate()
+        .map(|(i, c)| {
+            let mag = (c.re * c.re + c.im * c.im).sqrt();
+            // DC (i=0) and Nyquist (i=half-1) are not doubled
+            if i == 0 || i == half - 1 { mag / n as f32 } else { mag * scale }
+        })
         .collect()
 }
 
@@ -3334,9 +3377,10 @@ fn compute_thd(samples: &[f32], fundamental_hz: f32, sample_rate: u32, harmonics
 
     let n = samples.len().next_power_of_two().max(1024);
     let mut windowed = vec![0.0f32; samples.len()];
-    let denom = (samples.len().saturating_sub(1)).max(1) as f32;
+    // Periodic Hann window (N denominator, not N-1) so endpoints are non-zero
+    let len_f = samples.len() as f32;
     for (idx, sample) in samples.iter().enumerate() {
-        let w = 0.5 - 0.5 * (2.0 * PI * idx as f32 / denom).cos();
+        let w = 0.5 * (1.0 - (2.0 * PI * idx as f32 / len_f).cos());
         windowed[idx] = *sample * w;
     }
 
@@ -3360,21 +3404,16 @@ fn compute_thd(samples: &[f32], fundamental_hz: f32, sample_rate: u32, harmonics
     (harmonic_power.sqrt() / fund) * 100.0
 }
 
+/// Returns the delay in milliseconds by which `recorded` lags `reference`.
+/// Positive return = recorded arrives after reference (the normal case for output→input latency).
 fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Option<f32> {
     if recorded.is_empty() || reference.is_empty() || sample_rate == 0 {
         return None;
     }
 
-    let rec_peak = recorded
-        .iter()
-        .copied()
-        .fold(0.0f32, |acc, value| acc.max(value.abs()))
-        .max(1e-12);
-    let ref_peak = reference
-        .iter()
-        .copied()
-        .fold(0.0f32, |acc, value| acc.max(value.abs()))
-        .max(1e-12);
+    // Hann-window both signals to reduce spectral leakage before cross-correlation FFT
+    let rec_win = hann_window(recorded.len());
+    let ref_win = hann_window(reference.len());
 
     let n = (recorded.len() + reference.len()).next_power_of_two();
     let mut planner = FftPlanner::<f32>::new();
@@ -3384,11 +3423,15 @@ fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Optio
     let mut a = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
     let mut b = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
 
+    // Normalize by peak amplitude so the correlation is signal-shape-based, not level-based
+    let rec_peak = recorded.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs())).max(1e-12);
+    let ref_peak = reference.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs())).max(1e-12);
+
     for (idx, value) in recorded.iter().enumerate() {
-        a[idx].re = *value / rec_peak;
+        a[idx].re = (*value / rec_peak) * rec_win[idx];
     }
     for (idx, value) in reference.iter().enumerate() {
-        b[idx].re = *value / ref_peak;
+        b[idx].re = (*value / ref_peak) * ref_win[idx];
     }
 
     fft.process(&mut a);
@@ -4204,5 +4247,94 @@ fn read_input_u8(
                 out[ch].push((sample as f32 / u8::MAX as f32) * 2.0 - 1.0);
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::f32::consts::PI;
+
+    #[test]
+    fn hann_window_periodic_first_sample_zero() {
+        // Periodic Hann w[0] = 0.5*(1 - cos(0)) = 0. That's correct and expected.
+        let win = hann_window(8);
+        assert_eq!(win.len(), 8);
+        assert!((win[0] - 0.0).abs() < 1e-6, "w[0] should be 0");
+        // Last sample w[7] = 0.5*(1 - cos(2π*7/8)) ≠ 0 (not 1.0 either but not zero)
+        assert!(win[7] > 0.0, "periodic Hann last sample should be non-zero: {}", win[7]);
+        // All values in [0,1]
+        assert!(win.iter().all(|&w| (0.0..=1.0).contains(&w)));
+    }
+
+    #[test]
+    fn magnitude_spectrum_returns_half_plus_one_bins() {
+        let n = 64usize;
+        let signal: Vec<f32> = (0..n).map(|i| (2.0 * PI * i as f32 / n as f32).sin()).collect();
+        let mag = magnitude_spectrum(&signal, n);
+        assert_eq!(mag.len(), n / 2 + 1);
+    }
+
+    #[test]
+    fn resample_cubic_output_length() {
+        let input: Vec<f32> = (0..100).map(|i| i as f32 / 100.0).collect();
+        let output = resample_cubic(&input, 44100, 48000);
+        let expected = (100.0 * 48000.0 / 44100.0).ceil() as usize;
+        // Allow ±1 for rounding
+        assert!((output.len() as isize - expected as isize).abs() <= 1);
+    }
+
+    #[test]
+    fn find_delay_ms_known_delay() {
+        // Use a sine burst in the middle of each buffer so the Hann window doesn't zero it out
+        let sample_rate = 44100u32;
+        let delay_samples = 10usize;
+        let len = 256usize;
+        let mid = len / 4;
+
+        // Reference: sine burst starting at `mid`
+        let mut reference = vec![0.0f32; len];
+        for k in 0..32 {
+            reference[mid + k] = (2.0 * std::f32::consts::PI * 1000.0 * (mid + k) as f32 / sample_rate as f32).sin();
+        }
+
+        // Recorded is same burst shifted by delay_samples
+        let mut recorded = vec![0.0f32; len];
+        for k in 0..32 {
+            let dst = mid + k + delay_samples;
+            if dst < len {
+                recorded[dst] = reference[mid + k];
+            }
+        }
+
+        let delay_ms = find_delay_ms(&recorded, &reference, sample_rate);
+        let expected_ms = delay_samples as f32 * 1000.0 / sample_rate as f32;
+        let result = delay_ms.expect("should detect delay");
+        assert!(
+            (result - expected_ms).abs() < 0.5,
+            "delay {result:.3}ms expected ~{expected_ms:.3}ms"
+        );
+    }
+
+    #[test]
+    fn resample_cubic_safe_on_duplicated_values() {
+        // Cubic spline divide-by-zero guard: all-same input should not panic
+        let input = vec![0.5f32; 32];
+        let output = resample_cubic(&input, 44100, 48000);
+        assert!(!output.is_empty());
+        assert!(output.iter().all(|v| v.is_finite()));
+    }
+
+    #[test]
+    fn compute_thd_pure_sine_low_distortion() {
+        let sample_rate = 48000u32;
+        let freq = 1000.0f32;
+        let len = 4096usize;
+        let signal: Vec<f32> = (0..len)
+            .map(|i| (2.0 * PI * freq * i as f32 / sample_rate as f32).sin())
+            .collect();
+        let thd = compute_thd(&signal, freq, sample_rate, 5);
+        // A pure sine should have very low THD (< 5%)
+        assert!(thd < 0.05, "pure sine THD {thd:.4} should be < 0.05");
     }
 }

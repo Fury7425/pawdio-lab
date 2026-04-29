@@ -13,6 +13,18 @@ use audio::{
 use serde::Serialize;
 use tauri::{Emitter, State};
 
+/// Reject paths that contain `..` traversal or are not absolute.
+/// All export commands must call this before touching the filesystem.
+fn validate_output_path(path: &std::path::Path) -> Result<(), String> {
+    if path.components().any(|c| c == std::path::Component::ParentDir) {
+        return Err(format!("Invalid path: '{}' contains '..' traversal", path.display()));
+    }
+    if !path.is_absolute() {
+        return Err(format!("Invalid path: '{}' must be absolute", path.display()));
+    }
+    Ok(())
+}
+
 #[derive(Clone)]
 struct AppState {
     audio: Arc<tokio::sync::Mutex<AudioEngine>>,
@@ -218,6 +230,7 @@ fn save_anc_plots(
     modes: Vec<AncModeExport>,
 ) -> Result<Vec<(String, String)>, String> {
     let dir = std::path::Path::new(&output_dir);
+    validate_output_path(dir)?;
     std::fs::create_dir_all(dir)
         .map_err(|e| format!("failed to create output dir: {e}"))?;
     let mode_data: Vec<(&str, &str, Vec<f32>, Vec<f32>)> = modes
@@ -235,8 +248,10 @@ fn save_anc_squiglink(
     freqs: Vec<f32>,
     attenuation_db: Vec<f32>,
 ) -> Result<(), String> {
+    let path = std::path::Path::new(&output_path);
+    validate_output_path(path)?;
     audio::save_anc_squiglink(
-        std::path::Path::new(&output_path),
+        path,
         &mode_label,
         &freqs,
         &attenuation_db,
@@ -266,7 +281,7 @@ async fn start_input_monitor(
 
     tauri::async_runtime::spawn_blocking(move || {
         if let Err(error) = AudioEngine::run_input_monitor(settings, cancel, peak_reset, app_handle.clone()) {
-            let _ = app_handle.emit(
+            if let Err(emit_err) = app_handle.emit(
                 "test-progress",
                 TestProgressEvent {
                     test: "monitor".to_string(),
@@ -275,7 +290,9 @@ async fn start_input_monitor(
                     value: None,
                     message: format!("input monitor error: {error}"),
                 },
-            );
+            ) {
+                eprintln!("Failed to emit monitor error event: {emit_err}");
+            }
         }
         running_flag.store(false, Ordering::SeqCst);
     });
@@ -317,7 +334,7 @@ async fn start_pink_noise(
 
     tauri::async_runtime::spawn_blocking(move || {
         if let Err(error) = AudioEngine::run_pink_noise(settings, cancel) {
-            let _ = app_handle.emit(
+            if let Err(emit_err) = app_handle.emit(
                 "test-progress",
                 TestProgressEvent {
                     test: "pink_noise".to_string(),
@@ -326,7 +343,9 @@ async fn start_pink_noise(
                     value: None,
                     message: format!("pink noise error: {error}"),
                 },
-            );
+            ) {
+                eprintln!("Failed to emit pink noise error event: {emit_err}");
+            }
         }
         running_flag.store(false, Ordering::SeqCst);
     });
@@ -477,11 +496,6 @@ fn stop_test(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-fn stop_latency_test(state: State<'_, AppState>) {
-    state.cancel.store(true, Ordering::SeqCst);
-}
-
-#[tauri::command]
 fn get_runtime_status(state: State<'_, AppState>) -> RuntimeStatus {
     RuntimeStatus {
         running: state.running.load(Ordering::SeqCst),
@@ -490,7 +504,9 @@ fn get_runtime_status(state: State<'_, AppState>) -> RuntimeStatus {
 
 #[tauri::command]
 fn ensure_output_dir(path: String) -> Result<(), String> {
-    std::fs::create_dir_all(&path)
+    let p = std::path::Path::new(&path);
+    validate_output_path(p)?;
+    std::fs::create_dir_all(p)
         .map_err(|e| format!("failed to create directory {}: {}", path, e))
 }
 
@@ -501,8 +517,10 @@ fn write_squiglink_combined(
     left_db: Vec<f32>,
     right_db: Vec<f32>,
 ) -> Result<(), String> {
+    let path = std::path::Path::new(&output_path);
+    validate_output_path(path)?;
     audio::write_squiglink_both_file(
-        &std::path::Path::new(&output_path),
+        path,
         &freqs,
         &left_db,
         &right_db,
@@ -547,11 +565,13 @@ fn main() {
             save_anc_plots,
             save_anc_squiglink,
             stop_test,
-            stop_latency_test,
             get_runtime_status,
             ensure_output_dir,
             write_squiglink_combined,
         ])
         .run(tauri::generate_context!())
-        .expect("failed to run pawdio-lab tauri app");
+        .unwrap_or_else(|err| {
+            eprintln!("Pawdio Lab failed to start: {err}");
+            std::process::exit(1);
+        });
 }

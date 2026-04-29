@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
+import * as ipc from "../ipc/commands";
+import { useDebouncedPersist } from "./hooks/use-debounced-persist";
 import {
   ANC_MODE_META,
   ANC_MODE_ORDERED,
@@ -19,7 +20,6 @@ import {
   LatencyRequest,
   PageKey,
   ResultEntry,
-  RuntimeStatus,
   SweepRequest,
   TestPayload,
   TestProgress,
@@ -621,7 +621,7 @@ export function usePawdioLabController() {
 
   async function refreshRuntimeStatus() {
     try {
-      const status = await invoke<RuntimeStatus>("get_runtime_status");
+      const status = await ipc.getRuntimeStatus();
       setRunning(status.running);
     } catch {
       setRunning(false);
@@ -632,8 +632,8 @@ export function usePawdioLabController() {
     setError(null);
     try {
       const [devices, liveSettings] = await Promise.all([
-        invoke<DeviceInventory>("list_audio_devices"),
-        invoke<AudioSettings>("get_audio_settings"),
+        ipc.listAudioDevices(),
+        ipc.getAudioSettings(),
       ]);
 
       setInventory(devices);
@@ -663,9 +663,7 @@ export function usePawdioLabController() {
       if (merged.inputDeviceIndex === null && devices.defaultInputIndex !== null) {
         merged.inputDeviceIndex = devices.defaultInputIndex;
       }
-      const committed = await invoke<AudioSettings>("set_audio_settings", {
-        settings: merged,
-      });
+      const committed = await ipc.setAudioSettings(merged);
       setSettings(committed);
     } catch (err) {
       setError(String(err));
@@ -697,9 +695,7 @@ export function usePawdioLabController() {
     }
     setSettings(normalized);
     try {
-      const committed = await invoke<AudioSettings>("set_audio_settings", {
-        settings: normalized,
-      });
+      const committed = await ipc.setAudioSettings(normalized);
       setSettings(committed);
     } catch (err) {
       setError(String(err));
@@ -708,7 +704,12 @@ export function usePawdioLabController() {
   }
 
   async function runPayloadTest(
-    command: string,
+    command:
+      | "run_sweep_fr_test"
+      | "run_thd_test"
+      | "run_balance_test"
+      | "run_crosstalk_test"
+      | "run_isolation_test",
     request: unknown,
     startLog: string,
   ) {
@@ -716,12 +717,12 @@ export function usePawdioLabController() {
       return;
     }
     try {
-      await invoke("stop_input_monitor");
+      await ipc.stopInputMonitor();
     } catch {
       // no-op
     }
     try {
-      await invoke("stop_pink_noise");
+      await ipc.stopPinkNoise();
     } catch {
       // no-op
     }
@@ -736,7 +737,7 @@ export function usePawdioLabController() {
     appendLog(startLog);
 
     try {
-      const payload = await invoke<TestPayload>(command, { request });
+      const payload = await ipc.runPayloadTestRaw(command, request);
       appendResult({
         ...payload,
         timestamp: legacyTimestamp(payload.timestamp),
@@ -752,7 +753,7 @@ export function usePawdioLabController() {
   async function invokeLatencyRaw(
     request: LatencyRequest,
   ): Promise<LatencyReport> {
-    return invoke<LatencyReport>("run_latency_test", { request });
+    return ipc.runLatencyTest(request);
   }
 
   async function runLatencyOnce(
@@ -803,12 +804,12 @@ export function usePawdioLabController() {
       return;
     }
     try {
-      await invoke("stop_input_monitor");
+      await ipc.stopInputMonitor();
     } catch {
       // no-op
     }
     try {
-      await invoke("stop_pink_noise");
+      await ipc.stopPinkNoise();
     } catch {
       // no-op
     }
@@ -856,12 +857,12 @@ export function usePawdioLabController() {
     }
 
     try {
-      await invoke("stop_input_monitor");
+      await ipc.stopInputMonitor();
     } catch {
       // no-op
     }
     try {
-      await invoke("stop_pink_noise");
+      await ipc.stopPinkNoise();
     } catch {
       // no-op
     }
@@ -919,12 +920,9 @@ export function usePawdioLabController() {
       setLatencyExportSuite(suiteEntries);
       if (latencyRequest.saveOverallBarChart && suiteEntries.length > 0) {
         try {
-          const barPath = await invoke<string>(
-            "save_latency_overall_bar_chart",
-            {
-              request: { ...latencyRequest, calibratedOffsetMs: 0 },
-              suite: suiteEntries,
-            },
+          const barPath = await ipc.saveLatencyOverallBarChart(
+            { ...latencyRequest, calibratedOffsetMs: 0 },
+            suiteEntries,
           );
           appendLog(`[latency] overall bar chart saved -> ${barPath}`);
         } catch (barError) {
@@ -961,12 +959,12 @@ export function usePawdioLabController() {
       return;
     }
     try {
-      await invoke("stop_input_monitor");
+      await ipc.stopInputMonitor();
     } catch {
       // no-op
     }
     try {
-      await invoke("stop_pink_noise");
+      await ipc.stopPinkNoise();
     } catch {
       // no-op
     }
@@ -1027,7 +1025,7 @@ export function usePawdioLabController() {
   async function invokeSweepFrRaw(
     request: SweepInvokeRequest,
   ): Promise<TestPayload> {
-    return invoke<TestPayload>("run_sweep_fr_test", { request });
+    return ipc.runSweepFrTest(request);
   }
 
   function requestMonoConfirm(message: string): Promise<void> {
@@ -1066,12 +1064,12 @@ export function usePawdioLabController() {
       }
     }
     try {
-      await invoke("stop_input_monitor");
+      await ipc.stopInputMonitor();
     } catch {
       // no-op
     }
     try {
-      await invoke("stop_pink_noise");
+      await ipc.stopPinkNoise();
     } catch {
       // no-op
     }
@@ -1146,20 +1144,18 @@ export function usePawdioLabController() {
             "squiglink_left_",
             "squiglink_both_",
           );
-          const freqs = numberList((leftPayload.data as any)?.freqs);
-          const leftDb = numberList(
-            (leftPayload.data as any)?.left_mag_db_avg,
-          );
-          const rightDb = numberList(
-            (rightPayload.data as any)?.right_mag_db_avg,
-          );
+          const freqs = numberList(leftPayload.data["freqs"]);
+          const leftDb = numberList(leftPayload.data["left_mag_db_avg"]);
+          const rightDb = numberList(rightPayload.data["right_mag_db_avg"]);
           if (freqs.length && leftDb.length && rightDb.length) {
-            await invoke("write_squiglink_combined", {
-              outputPath: bothPath,
-              freqs,
-              leftDb,
-              rightDb,
-            }).catch(() => undefined);
+            await ipc
+              .writeSquiglinkCombined({
+                outputPath: bothPath,
+                freqs,
+                leftDb,
+                rightDb,
+              })
+              .catch(() => undefined);
             squiglinkBothPath = bothPath;
           }
         }
@@ -1194,14 +1190,14 @@ export function usePawdioLabController() {
     try {
       // Ensure any stale monitor stream is closed before starting a new one.
       try {
-        await invoke("stop_input_monitor");
+        await ipc.stopInputMonitor();
       } catch {
         // no-op
       }
       await new Promise<void>((resolve) => {
         window.setTimeout(resolve, 120);
       });
-      await invoke("start_input_monitor");
+      await ipc.startInputMonitor();
       setInputMonitor((prev) => ({
         ...prev,
         monitoring: true,
@@ -1216,7 +1212,7 @@ export function usePawdioLabController() {
 
   async function stopInputMonitor() {
     try {
-      await invoke("stop_input_monitor");
+      await ipc.stopInputMonitor();
       setInputMonitor((prev) => ({
         ...prev,
         monitoring: false,
@@ -1236,14 +1232,14 @@ export function usePawdioLabController() {
     }
     try {
       try {
-        await invoke("stop_pink_noise");
+        await ipc.stopPinkNoise();
       } catch {
         // no-op
       }
       await new Promise<void>((resolve) => {
         window.setTimeout(resolve, 80);
       });
-      await invoke("start_pink_noise");
+      await ipc.startPinkNoise();
       setPinkNoisePlaying(true);
       setInputMonitor((prev) => ({
         ...prev,
@@ -1258,7 +1254,7 @@ export function usePawdioLabController() {
 
   async function stopPinkNoise() {
     try {
-      await invoke("stop_pink_noise");
+      await ipc.stopPinkNoise();
       setPinkNoisePlaying(false);
       setInputMonitor((prev) => ({
         ...prev,
@@ -1273,7 +1269,7 @@ export function usePawdioLabController() {
 
   async function resetInputMonitorPeak() {
     try {
-      await invoke("reset_input_monitor_peak");
+      await ipc.resetInputMonitorPeak();
     } catch {
       // reset locally even if backend reset command is unavailable.
     }
@@ -1327,11 +1323,11 @@ export function usePawdioLabController() {
     setError(null);
     try {
       const latest = latencyExportSuite[latencyExportSuite.length - 1];
-      const path = await invoke<string>("export_latency_report", {
-        request: latest.request,
-        report: latest.report,
-        suite: latencyExportSuite,
-      });
+      const path = await ipc.exportLatencyReport(
+        latest.request,
+        latest.report,
+        latencyExportSuite,
+      );
       appendLog(`[latency] report saved -> ${path}`);
     } catch (err) {
       setError(String(err));
@@ -1586,14 +1582,12 @@ export function usePawdioLabController() {
     const mode = ancCurrentStep;
     const isLastStep = ancRunQueue.length === 0;
     try {
-      const result = await invoke<AncSnapshot>("capture_anc_snapshot", {
-        request: {
-          f0: ancRequest.f0,
-          f1: ancRequest.f1,
-          durationSecs: ancRequest.durationSecs,
-          repeats: ancRequest.repeats,
-          amplitude: ancRequest.amplitude,
-        },
+      const result = await ipc.captureAncSnapshot({
+        f0: ancRequest.f0,
+        f1: ancRequest.f1,
+        durationSecs: ancRequest.durationSecs,
+        repeats: ancRequest.repeats,
+        amplitude: ancRequest.amplitude,
       });
       const newCaptures = { ...ancCaptures, [mode]: result };
       setAncCaptures(newCaptures);
@@ -1692,7 +1686,7 @@ export function usePawdioLabController() {
           (a, i) => a - baseline.magDbRight[i],
         ),
       }));
-      await invoke("save_anc_plots", {
+      await ipc.saveAncPlots({
         outputDir: ancRequest.outputDir,
         timestamp,
         freqs: baseline.freqs,
@@ -1724,7 +1718,7 @@ export function usePawdioLabController() {
         (a, i) => a - baseline.magDbLeft[i],
       );
       const outputPath = `${ancRequest.outputDir}/anc_${modeKey}_${timestamp}.txt`;
-      await invoke("save_anc_squiglink", {
+      await ipc.saveAncSquiglink({
         outputPath,
         modeLabel,
         freqs: baseline.freqs,
@@ -1739,7 +1733,7 @@ export function usePawdioLabController() {
 
   async function stopTest() {
     try {
-      await invoke("stop_test");
+      await ipc.stopTest();
       setPinkNoisePlaying(false);
       setInputMonitor((prev) => ({
         ...prev,
@@ -1789,16 +1783,9 @@ export function usePawdioLabController() {
     }
   }, []);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        CALIBRATION_STORAGE_KEY,
-        JSON.stringify(latencyCalibration),
-      );
-    } catch {
-      // ignore storage write issues
-    }
-  }, [latencyCalibration]);
+  // Debounced persistence: rapid bursts (slider drags, keystrokes) coalesce into
+  // one localStorage write 250ms after the last change.
+  useDebouncedPersist(CALIBRATION_STORAGE_KEY, latencyCalibration);
 
   useEffect(() => {
     if (!experimentalEnabled && activePage === "experimental") {
@@ -1806,8 +1793,8 @@ export function usePawdioLabController() {
     }
   }, [experimentalEnabled, activePage]);
 
-  useEffect(() => {
-    const snapshot: PersistedUiState = {
+  const persistedUiSnapshot = useMemo<PersistedUiState>(
+    () => ({
       activePage,
       experimentalEnabled,
       settings,
@@ -1819,25 +1806,22 @@ export function usePawdioLabController() {
       thdRequest,
       thdToneText,
       isolationRequest,
-    };
-    try {
-      localStorage.setItem(UI_STATE_STORAGE_KEY, JSON.stringify(snapshot));
-    } catch {
-      // ignore storage write issues
-    }
-  }, [
-    activePage,
-    experimentalEnabled,
-    settings,
-    latencyRequest,
-    sweepRequest,
-    ancRequest,
-    balanceRequest,
-    crosstalkRequest,
-    thdRequest,
-    thdToneText,
-    isolationRequest,
-  ]);
+    }),
+    [
+      activePage,
+      experimentalEnabled,
+      settings,
+      latencyRequest,
+      sweepRequest,
+      ancRequest,
+      balanceRequest,
+      crosstalkRequest,
+      thdRequest,
+      thdToneText,
+      isolationRequest,
+    ],
+  );
+  useDebouncedPersist(UI_STATE_STORAGE_KEY, persistedUiSnapshot);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -1848,88 +1832,92 @@ export function usePawdioLabController() {
   }, []);
 
   useEffect(() => {
-    let offLatency: null | (() => void) = null;
-    let offProgress: null | (() => void) = null;
-    let offInput: null | (() => void) = null;
+    // Use a cancelled flag so cleanup works even if unmount races with listener attach
+    let cancelled = false;
+    const unlisteners: Array<() => void> = [];
 
-    listen<LatencyProgress>("latency-progress", (event) => {
-      setLatencyProgress((prev) => [...prev, event.payload]);
-    })
-      .then((off) => {
-        offLatency = off;
-      })
-      .catch((err) => setError(String(err)));
+    async function attachListeners() {
+      try {
+        const offLatency = await listen<LatencyProgress>(
+          "latency-progress",
+          (event) => {
+            setLatencyProgress((prev) => [...prev, event.payload]);
+          },
+        );
+        if (cancelled) { offLatency(); return; }
+        unlisteners.push(offLatency);
 
-    listen<TestProgress>("test-progress", (event) => {
-      appendLog(`[${event.payload.test}] ${event.payload.message}`);
-      if (
-        event.payload.test === "monitor" &&
-        event.payload.message.toLowerCase().includes("error")
-      ) {
-        setInputMonitor((prev) => ({
-          ...prev,
-          monitoring: false,
-          status: "Monitor error. Check input device/sample rate.",
-        }));
+        const offProgress = await listen<TestProgress>(
+          "test-progress",
+          (event) => {
+            appendLog(`[${event.payload.test}] ${event.payload.message}`);
+            if (
+              event.payload.test === "monitor" &&
+              event.payload.message.toLowerCase().includes("error")
+            ) {
+              setInputMonitor((prev) => ({
+                ...prev,
+                monitoring: false,
+                status: "Monitor error. Check input device/sample rate.",
+              }));
+            }
+            if (
+              event.payload.test === "pink_noise" &&
+              event.payload.message.toLowerCase().includes("error")
+            ) {
+              setPinkNoisePlaying(false);
+              setInputMonitor((prev) => ({
+                ...prev,
+                status: "Pink noise error. Check output device/sample rate.",
+              }));
+            }
+          },
+        );
+        if (cancelled) { offProgress(); return; }
+        unlisteners.push(offProgress);
+
+        const offInput = await listen<InputLevelEvent>(
+          "input-level",
+          (event) => {
+            const current = event.payload.currentDbfs;
+            const peakFromBackend = event.payload.peakDbfs;
+            const clips = event.payload.clipCount;
+            setInputMonitor((prev) => {
+              const peak = Math.max(prev.peakDbfs, current, peakFromBackend);
+              return {
+                ...prev,
+                monitoring: true,
+                status: "Monitoring input...",
+                currentDbfs: current,
+                peakDbfs: peak,
+                clipCount: clips,
+                splEstimate: current + 94,
+                roughFrHz:
+                  Array.isArray(event.payload.roughFrHz) &&
+                  event.payload.roughFrHz.length > 0
+                    ? event.payload.roughFrHz
+                    : prev.roughFrHz,
+                roughFrDb:
+                  Array.isArray(event.payload.roughFrDb) &&
+                  event.payload.roughFrDb.length > 0
+                    ? event.payload.roughFrDb
+                    : prev.roughFrDb,
+              };
+            });
+          },
+        );
+        if (cancelled) { offInput(); return; }
+        unlisteners.push(offInput);
+      } catch (err) {
+        setError(String(err));
       }
-      if (
-        event.payload.test === "pink_noise" &&
-        event.payload.message.toLowerCase().includes("error")
-      ) {
-        setPinkNoisePlaying(false);
-        setInputMonitor((prev) => ({
-          ...prev,
-          status: "Pink noise error. Check output device/sample rate.",
-        }));
-      }
-    })
-      .then((off) => {
-        offProgress = off;
-      })
-      .catch((err) => setError(String(err)));
+    }
 
-    listen<InputLevelEvent>("input-level", (event) => {
-      const current = event.payload.currentDbfs;
-      const peakFromBackend = event.payload.peakDbfs;
-      const clips = event.payload.clipCount;
-      setInputMonitor((prev) => {
-        const peak = Math.max(prev.peakDbfs, current, peakFromBackend);
-        return {
-          ...prev,
-          monitoring: true,
-          status: "Monitoring input...",
-          currentDbfs: current,
-          peakDbfs: peak,
-          clipCount: clips,
-          splEstimate: current + 94,
-          roughFrHz:
-            Array.isArray(event.payload.roughFrHz) &&
-            event.payload.roughFrHz.length > 0
-              ? event.payload.roughFrHz
-              : prev.roughFrHz,
-          roughFrDb:
-            Array.isArray(event.payload.roughFrDb) &&
-            event.payload.roughFrDb.length > 0
-              ? event.payload.roughFrDb
-              : prev.roughFrDb,
-        };
-      });
-    })
-      .then((off) => {
-        offInput = off;
-      })
-      .catch((err) => setError(String(err)));
+    attachListeners();
 
     return () => {
-      if (offLatency) {
-        offLatency();
-      }
-      if (offProgress) {
-        offProgress();
-      }
-      if (offInput) {
-        offInput();
-      }
+      cancelled = true;
+      for (const off of unlisteners) off();
     };
   }, []);
 
@@ -1942,6 +1930,7 @@ export function usePawdioLabController() {
     settings,
     running,
     error,
+    setError,
     latencyRequest,
     setLatencyRequest,
     latencyProgress,

@@ -1,13 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AudioSettings,
-  DeviceInventory,
   fromSelectValue,
   toNumber,
   toSelectValue,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import {
+  ACCENT_COLORS,
+  APPEARANCE_MODES,
   DEFAULT_APPEARANCE_MODE,
   DEFAULT_INPUT_BIT_DEPTH,
   DEFAULT_ACCENT_COLOR,
@@ -17,24 +18,17 @@ import {
   persistDeviceUiPrefs,
   readDeviceUiPrefs,
 } from "../theme";
+import { usePawdioLabContext } from "../pawdio-context";
 
-type DevicesPageProps = {
-  inventory: DeviceInventory | null;
-  settings: AudioSettings;
-  experimentalEnabled: boolean;
-  onChangeExperimentalEnabled: (enabled: boolean) => void;
-  onCommitSettings: (settings: AudioSettings) => void;
-  onRefreshDevices: () => void;
-};
-
-export function DevicesPage({
-  inventory,
-  settings,
-  experimentalEnabled,
-  onChangeExperimentalEnabled,
-  onCommitSettings,
-  onRefreshDevices,
-}: DevicesPageProps) {
+export function DevicesPage() {
+  const ctx = usePawdioLabContext();
+  const inventory = ctx.inventory;
+  const settings = ctx.settings;
+  const experimentalEnabled = ctx.experimentalEnabled;
+  const onChangeExperimentalEnabled = ctx.setExperimentalEnabled;
+  const onCommitSettings = (next: AudioSettings) =>
+    ctx.run(ctx.commitSettings(next));
+  const onRefreshDevices = () => ctx.run(ctx.loadState());
   const storedUiPrefs = useMemo(() => readDeviceUiPrefs(), []);
   const [draft, setDraft] = useState(settings);
   const [appearanceMode, setAppearanceMode] = useState(
@@ -248,9 +242,9 @@ export function DevicesPage({
                   setAppearanceMode(normalizeAppearanceMode(event.target.value))
                 }
               >
-                <option value="Dark">Dark</option>
-                <option value="Light">Light</option>
-                <option value="System">System</option>
+                {APPEARANCE_MODES.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
               </select>
             </label>
 
@@ -263,10 +257,9 @@ export function DevicesPage({
                   setAccentColor(normalizeAccentColor(event.target.value))
                 }
               >
-                <option value="Blue">Blue</option>
-                <option value="Teal">Teal</option>
-                <option value="Greyscale">Greyscale</option>
-                <option value="Purple">Purple</option>
+                {ACCENT_COLORS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
               </select>
             </label>
           </div>

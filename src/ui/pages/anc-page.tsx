@@ -1,52 +1,14 @@
 import { useState } from "react";
 import { EarOff, Check } from "lucide-react";
 import {
+  ANC_MODE_META,
   ANC_MODE_ORDERED,
-  AncCaptures,
   AncModeKey,
-  AncRequest,
   AncSnapshot,
   toNumber,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
-
-type ModeMeta = {
-  label: string;
-  detail: string;
-  captureTitle: string;
-  captureDetail: string;
-  color: string;
-};
-
-type AncPageProps = {
-  request: AncRequest;
-  onChangeRequest: (r: AncRequest) => void;
-  selectedModes: AncModeKey[];
-  onChangeSelectedModes: (modes: AncModeKey[]) => void;
-  captures: AncCaptures;
-  running: boolean;
-  stepPrompt: boolean;
-  currentStep: AncModeKey | null;
-  totalSteps: number;
-  stepIndex: number;
-  onStart: () => void;
-  onConfirmStep: () => void;
-  onCancelStep: () => void;
-  onReset: () => void;
-  onBrowseOutputFolder: () => void;
-  onExportPlots: (
-    baseline: AncSnapshot,
-    modes: Array<{ key: AncModeKey; label: string; snapshot: AncSnapshot }>,
-  ) => void;
-  onExportSquiglink: (
-    baseline: AncSnapshot,
-    key: AncModeKey,
-    label: string,
-    snapshot: AncSnapshot,
-  ) => void;
-  modeMeta: Record<AncModeKey, ModeMeta>;
-  modeOrdered: readonly AncModeKey[];
-};
+import { usePawdioLabContext } from "../pawdio-context";
 
 type Channel = "L" | "R";
 
@@ -91,27 +53,36 @@ function meanOf(arr: number[]): number {
   return arr.reduce((s, v) => s + v, 0) / arr.length;
 }
 
-export function AncPage({
-  request,
-  onChangeRequest,
-  selectedModes,
-  onChangeSelectedModes,
-  captures,
-  running,
-  stepPrompt,
-  currentStep,
-  totalSteps,
-  stepIndex,
-  onStart,
-  onConfirmStep,
-  onCancelStep,
-  onReset,
-  onBrowseOutputFolder,
-  onExportPlots,
-  onExportSquiglink,
-  modeMeta,
-  modeOrdered,
-}: AncPageProps) {
+export function AncPage() {
+  const ctx = usePawdioLabContext();
+  const request = ctx.ancRequest;
+  const onChangeRequest = ctx.setAncRequest;
+  const selectedModes = ctx.ancSelectedModes;
+  const onChangeSelectedModes = ctx.setAncSelectedModes;
+  const captures = ctx.ancCaptures;
+  const running = ctx.running;
+  const stepPrompt = ctx.ancStepPrompt;
+  const currentStep = ctx.ancCurrentStep;
+  const totalSteps = ctx.ancSelectedModes.length;
+  const stepIndex =
+    ctx.ancSelectedModes.length - ctx.ancRunQueue.length - 1;
+  const onStart = ctx.startAncFlow;
+  const onConfirmStep = () => ctx.run(ctx.confirmAncStep());
+  const onCancelStep = ctx.cancelAncFlow;
+  const onReset = ctx.resetAncCaptures;
+  const onBrowseOutputFolder = () => ctx.run(ctx.browseAncOutputFolder());
+  const onExportPlots = (
+    baseline: AncSnapshot,
+    modes: Array<{ key: AncModeKey; label: string; snapshot: AncSnapshot }>,
+  ) => ctx.run(ctx.exportAncPlots(baseline, modes));
+  const onExportSquiglink = (
+    baseline: AncSnapshot,
+    key: AncModeKey,
+    label: string,
+    snapshot: AncSnapshot,
+  ) => ctx.run(ctx.exportAncSquiglink(baseline, key, label, snapshot));
+  const modeMeta = ANC_MODE_META;
+  const modeOrdered = ANC_MODE_ORDERED;
   const [visibleModes, setVisibleModes] = useState<Set<AncModeKey>>(
     new Set(["anc", "transparency"]),
   );

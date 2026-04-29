@@ -1,30 +1,7 @@
 import { ButtonHTMLAttributes } from "react";
 import { FlaskConical } from "lucide-react";
-import {
-  BalanceRequest,
-  CrosstalkRequest,
-  IsolationRequest,
-  ThdRequest,
-  toNumber,
-} from "../model";
-
-type ExperimentalPageProps = {
-  running: boolean;
-  balanceRequest: BalanceRequest;
-  onChangeBalance: (request: BalanceRequest) => void;
-  crosstalkRequest: CrosstalkRequest;
-  onChangeCrosstalk: (request: CrosstalkRequest) => void;
-  thdRequest: ThdRequest;
-  thdToneText: string;
-  onChangeThdRequest: (request: ThdRequest) => void;
-  onChangeThdToneText: (value: string) => void;
-  isolationRequest: IsolationRequest;
-  onChangeIsolation: (request: IsolationRequest) => void;
-  onRunBalance: () => void;
-  onRunCrosstalk: () => void;
-  onRunThd: () => void;
-  onRunIsolation: () => void;
-};
+import { toNumber } from "../model";
+import { usePawdioLabContext } from "../pawdio-context";
 
 type RunButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
 
@@ -36,23 +13,23 @@ function RunButton(props: RunButtonProps) {
   );
 }
 
-export function ExperimentalPage({
-  running,
-  balanceRequest,
-  onChangeBalance,
-  crosstalkRequest,
-  onChangeCrosstalk,
-  thdRequest,
-  thdToneText,
-  onChangeThdRequest,
-  onChangeThdToneText,
-  isolationRequest,
-  onChangeIsolation,
-  onRunBalance,
-  onRunCrosstalk,
-  onRunThd,
-  onRunIsolation,
-}: ExperimentalPageProps) {
+export function ExperimentalPage() {
+  const ctx = usePawdioLabContext();
+  const running = ctx.running;
+  const balanceRequest = ctx.balanceRequest;
+  const onChangeBalance = ctx.setBalanceRequest;
+  const crosstalkRequest = ctx.crosstalkRequest;
+  const onChangeCrosstalk = ctx.setCrosstalkRequest;
+  const thdRequest = ctx.thdRequest;
+  const thdToneText = ctx.thdToneText;
+  const onChangeThdRequest = ctx.setThdRequest;
+  const onChangeThdToneText = ctx.setThdToneText;
+  const isolationRequest = ctx.isolationRequest;
+  const onChangeIsolation = ctx.setIsolationRequest;
+  const onRunBalance = () => ctx.run(ctx.runBalanceTest());
+  const onRunCrosstalk = () => ctx.run(ctx.runCrosstalkTest());
+  const onRunThd = () => ctx.run(ctx.runThdTest());
+  const onRunIsolation = () => ctx.run(ctx.runIsolationTest());
   return (
     <div className="page-stack">
       <section className="page-card">

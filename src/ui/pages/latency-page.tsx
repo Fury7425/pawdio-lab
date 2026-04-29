@@ -1,14 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
-import {
-  LatencyProgress,
-  LatencyReport,
-  LatencyRequest,
-  fmtMs,
-  toNumber,
-} from "../model";
+import { fmtMs, toNumber } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import { DropdownMenu } from "../components/dropdown-menu";
+import { usePawdioLabContext } from "../pawdio-context";
 
 function metricTier(ms: number | null | undefined): string {
   if (ms == null) return "";
@@ -16,28 +11,6 @@ function metricTier(ms: number | null | undefined): string {
   if (ms < 40) return "metric-warn";
   return "metric-bad";
 }
-
-type LatencyPageProps = {
-  request: LatencyRequest;
-  onChangeRequest: (request: LatencyRequest) => void;
-  progressRows: LatencyProgress[];
-  report: LatencyReport | null;
-  calibrationText: string;
-  running: boolean;
-  progressPercent: number;
-  onRunSelected: (
-    keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">,
-  ) => void;
-  onRunAll: () => void;
-  onSaveReport: () => void;
-  onExportCsv: () => void;
-  onBrowseOutputFolder: () => void;
-  onCalibrateSelected: (
-    keys: Array<"beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse">,
-    repeats: number,
-  ) => void;
-  onCalibrateAll: (repeats: number) => void;
-};
 
 const LATENCY_UI_STORAGE_KEY = "pawdio-lab-latency-ui-v1";
 
@@ -74,22 +47,26 @@ function readLatencyUiPrefs(): LatencyUiPrefs | null {
   }
 }
 
-export function LatencyPage({
-  request,
-  onChangeRequest,
-  progressRows,
-  report,
-  calibrationText,
-  running,
-  progressPercent,
-  onRunSelected,
-  onRunAll,
-  onSaveReport,
-  onExportCsv,
-  onBrowseOutputFolder,
-  onCalibrateSelected,
-  onCalibrateAll,
-}: LatencyPageProps) {
+export function LatencyPage() {
+  const ctx = usePawdioLabContext();
+  const request = ctx.latencyRequest;
+  const onChangeRequest = ctx.setLatencyRequest;
+  const progressRows = ctx.latencyProgress;
+  const report = ctx.latencyReport;
+  const calibrationText = ctx.calibrationText;
+  const running = ctx.running;
+  const progressPercent = ctx.latencyProgressPercent;
+  type PresetKey = "beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse";
+  const onRunSelected = (keys: PresetKey[]) =>
+    ctx.run(ctx.runLatencySelectedTests(keys));
+  const onRunAll = () => ctx.run(ctx.runLatencyAllTests());
+  const onSaveReport = () => ctx.run(ctx.exportLatencyReport());
+  const onExportCsv = () => ctx.run(ctx.exportLatencyCsv());
+  const onBrowseOutputFolder = () => ctx.run(ctx.browseLatencyOutputFolder());
+  const onCalibrateSelected = (keys: PresetKey[], repeats: number) =>
+    ctx.run(ctx.calibrateLatencySelected(keys, repeats));
+  const onCalibrateAll = (repeats: number) =>
+    ctx.run(ctx.calibrateLatencyAllPresets(repeats));
   const storedUiPrefs = useMemo(() => readLatencyUiPrefs(), []);
   const [runSelection, setRunSelection] = useState<PresetSelection>(
     storedUiPrefs?.runSelection ?? {

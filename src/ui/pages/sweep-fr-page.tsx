@@ -1,74 +1,36 @@
 import { useEffect, useState } from "react";
 import { AudioWaveform } from "lucide-react";
-import { SweepRequest, toNumber } from "../model";
+import { toNumber } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import { DropdownMenu } from "../components/dropdown-menu";
+import { usePawdioLabContext } from "../pawdio-context";
 
-type SweepFrPageProps = {
-  request: SweepRequest;
-  onChangeRequest: (request: SweepRequest) => void;
-  running: boolean;
-  onRun: () => void;
-  onBrowseOutputFolder: () => void;
-  lastResult: {
-    test: string;
-    timestamp: string;
-    params: Record<string, unknown>;
-    metrics: Record<string, unknown>;
-    data: Record<string, unknown>;
-    files: Record<string, unknown>;
-  } | null;
-  monitor: {
-    monitoring: boolean;
-    status: string;
-    currentDbfs: number;
-    peakDbfs: number;
-    clipCount: number;
-    splEstimate: number;
-    roughFrHz: number[];
-    roughFrDb: number[];
-  };
-  pinkNoisePlaying: boolean;
-  monoConfirmMessage: string | null;
-  onMonoConfirmOk: () => void;
-  onMonoConfirmCancel: () => void;
-  onStartMonitor: () => void;
-  onStopMonitor: () => void;
-  onStartPinkNoise: () => void;
-  onStopPinkNoise: () => void;
-  onResetPeak: () => void;
-  hasSweepResult: boolean;
-  hasSweepHistory: boolean;
-  onExportLastJson: () => void;
-  onExportAllJson: () => void;
-  onExportLastSquiglink: () => void;
-  onExportLastCsv: () => void;
-};
-
-export function SweepFrPage({
-  request,
-  onChangeRequest,
-  running,
-  onRun,
-  onBrowseOutputFolder,
-  lastResult,
-  monitor,
-  pinkNoisePlaying,
-  monoConfirmMessage,
-  onMonoConfirmOk,
-  onMonoConfirmCancel,
-  onStartMonitor,
-  onStopMonitor,
-  onStartPinkNoise,
-  onStopPinkNoise,
-  onResetPeak,
-  hasSweepResult,
-  hasSweepHistory,
-  onExportLastJson,
-  onExportAllJson,
-  onExportLastSquiglink,
-  onExportLastCsv,
-}: SweepFrPageProps) {
+export function SweepFrPage() {
+  const ctx = usePawdioLabContext();
+  const request = ctx.sweepRequest;
+  const onChangeRequest = ctx.setSweepRequest;
+  const running = ctx.running;
+  const onRun = () => ctx.run(ctx.runSweepFrTest());
+  const onBrowseOutputFolder = () => ctx.run(ctx.browseSweepOutputFolder());
+  const lastResult = ctx.sweepLastResult;
+  const monitor = ctx.inputMonitor;
+  const pinkNoisePlaying = ctx.pinkNoisePlaying;
+  const monoConfirmMessage = ctx.monoConfirmState?.message ?? null;
+  const onMonoConfirmOk = ctx.confirmMonoDialog;
+  const onMonoConfirmCancel = ctx.cancelMonoDialog;
+  const onStartMonitor = () => ctx.run(ctx.startInputMonitor());
+  const onStopMonitor = () => ctx.run(ctx.stopInputMonitor());
+  const onStartPinkNoise = () => ctx.run(ctx.startPinkNoise());
+  const onStopPinkNoise = () => ctx.run(ctx.stopPinkNoise());
+  const onResetPeak = () => ctx.run(ctx.resetInputMonitorPeak());
+  const hasSweepResult = ctx.sweepLastResult !== null;
+  const hasSweepHistory = ctx.results.some(
+    (entry) => entry.payload.test === "sweep_fr",
+  );
+  const onExportLastJson = () => ctx.run(ctx.exportSweepLastJson());
+  const onExportAllJson = () => ctx.run(ctx.exportSweepAllJson());
+  const onExportLastSquiglink = () => ctx.run(ctx.exportSweepLastSquiglink());
+  const onExportLastCsv = () => ctx.run(ctx.exportSweepLastCsv());
   const [meterHistory, setMeterHistory] = useState<number[]>(() =>
     Array.from({ length: 48 }, () => 0),
   );

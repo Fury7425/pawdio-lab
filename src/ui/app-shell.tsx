@@ -7,172 +7,43 @@ import { LatencyPage } from "./pages/latency-page";
 import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
 import { startAppearanceThemeSync } from "./theme";
-import { usePawdioLabController } from "./use-pawdio-lab";
-import { ANC_MODE_META, ANC_MODE_ORDERED, PageKeyEnum } from "./model";
+import { PageKeyEnum } from "./model";
+import { PawdioLabProvider, usePawdioLabContext } from "./pawdio-context";
 
 export function PawdioLabApp() {
-  const controller = usePawdioLabController();
-  const run = (promise: Promise<unknown>) => {
-    promise.catch((err) => console.error(err));
-  };
-
   useEffect(() => startAppearanceThemeSync(), []);
+
+  return (
+    <PawdioLabProvider>
+      <PawdioLabShell />
+    </PawdioLabProvider>
+  );
+}
+
+function PawdioLabShell() {
+  const ctx = usePawdioLabContext();
 
   return (
     <main className="app-canvas">
       <div className="app-layout">
-        <Sidebar
-          activePage={controller.activePage}
-          running={controller.running}
-          experimentalEnabled={controller.experimentalEnabled}
-          onSelectPage={controller.setActivePage}
-          onRefreshDevices={() => run(controller.loadState())}
-          onStopTest={() => run(controller.stopTest())}
-        />
+        <Sidebar />
 
-        <div className="main-column" key={controller.activePage}>
-          {controller.error && (
+        <div className="main-column" key={ctx.activePage}>
+          {ctx.error && (
             <section className="page-card">
               <h2 className="section-heading">Runtime Error</h2>
-              <p className="muted">{controller.error}</p>
+              <p className="muted">{ctx.error}</p>
             </section>
           )}
 
-          {controller.activePage === PageKeyEnum.Latency && (
-            <LatencyPage
-              request={controller.latencyRequest}
-              onChangeRequest={controller.setLatencyRequest}
-              progressRows={controller.latencyProgress}
-              report={controller.latencyReport}
-              calibrationText={controller.calibrationText}
-              running={controller.running}
-              progressPercent={controller.latencyProgressPercent}
-              onRunSelected={(keys) =>
-                run(controller.runLatencySelectedTests(keys))
-              }
-              onRunAll={() => run(controller.runLatencyAllTests())}
-              onSaveReport={() => run(controller.exportLatencyReport())}
-              onExportCsv={() => run(controller.exportLatencyCsv())}
-              onBrowseOutputFolder={() =>
-                run(controller.browseLatencyOutputFolder())
-              }
-              onCalibrateSelected={(keys, repeats) =>
-                run(controller.calibrateLatencySelected(keys, repeats))
-              }
-              onCalibrateAll={(repeats) =>
-                run(controller.calibrateLatencyAllPresets(repeats))
-              }
-            />
+          {ctx.activePage === PageKeyEnum.Latency && <LatencyPage />}
+          {ctx.activePage === PageKeyEnum.Anc && <AncPage />}
+          {ctx.activePage === PageKeyEnum.SweepFr && <SweepFrPage />}
+          {ctx.activePage === PageKeyEnum.Experimental && ctx.experimentalEnabled && (
+            <ExperimentalPage />
           )}
-
-          {controller.activePage === PageKeyEnum.Anc && (
-            <AncPage
-              request={controller.ancRequest}
-              onChangeRequest={controller.setAncRequest}
-              selectedModes={controller.ancSelectedModes}
-              onChangeSelectedModes={controller.setAncSelectedModes}
-              captures={controller.ancCaptures}
-              running={controller.running}
-              stepPrompt={controller.ancStepPrompt}
-              currentStep={controller.ancCurrentStep}
-              totalSteps={controller.ancSelectedModes.length}
-              stepIndex={
-                controller.ancSelectedModes.length -
-                controller.ancRunQueue.length -
-                1
-              }
-              onStart={controller.startAncFlow}
-              onConfirmStep={() => run(controller.confirmAncStep())}
-              onCancelStep={controller.cancelAncFlow}
-              onReset={controller.resetAncCaptures}
-              onBrowseOutputFolder={() =>
-                run(controller.browseAncOutputFolder())
-              }
-              onExportPlots={(baseline, modes) =>
-                run(controller.exportAncPlots(baseline, modes))
-              }
-              onExportSquiglink={(baseline, key, label, snap) =>
-                run(controller.exportAncSquiglink(baseline, key, label, snap))
-              }
-              modeMeta={ANC_MODE_META}
-              modeOrdered={ANC_MODE_ORDERED}
-            />
-          )}
-
-          {controller.activePage === PageKeyEnum.SweepFr && (
-            <SweepFrPage
-              request={controller.sweepRequest}
-              onChangeRequest={controller.setSweepRequest}
-              running={controller.running}
-              onRun={() => run(controller.runSweepFrTest())}
-              onBrowseOutputFolder={() =>
-                run(controller.browseSweepOutputFolder())
-              }
-              lastResult={controller.sweepLastResult}
-              monitor={controller.inputMonitor}
-              pinkNoisePlaying={controller.pinkNoisePlaying}
-              monoConfirmMessage={
-                controller.monoConfirmState?.message ?? null
-              }
-              onMonoConfirmOk={controller.confirmMonoDialog}
-              onMonoConfirmCancel={controller.cancelMonoDialog}
-              onStartMonitor={() => run(controller.startInputMonitor())}
-              onStopMonitor={() => run(controller.stopInputMonitor())}
-              onStartPinkNoise={() => run(controller.startPinkNoise())}
-              onStopPinkNoise={() => run(controller.stopPinkNoise())}
-              onResetPeak={() => run(controller.resetInputMonitorPeak())}
-              hasSweepResult={controller.sweepLastResult !== null}
-              hasSweepHistory={controller.results.some(
-                (entry) => entry.payload.test === "sweep_fr",
-              )}
-              onExportLastJson={() => run(controller.exportSweepLastJson())}
-              onExportAllJson={() => run(controller.exportSweepAllJson())}
-              onExportLastSquiglink={() =>
-                run(controller.exportSweepLastSquiglink())
-              }
-              onExportLastCsv={() => run(controller.exportSweepLastCsv())}
-            />
-          )}
-
-          {controller.activePage === PageKeyEnum.Experimental &&
-            controller.experimentalEnabled && (
-              <ExperimentalPage
-                running={controller.running}
-                balanceRequest={controller.balanceRequest}
-                onChangeBalance={controller.setBalanceRequest}
-                crosstalkRequest={controller.crosstalkRequest}
-                onChangeCrosstalk={controller.setCrosstalkRequest}
-                thdRequest={controller.thdRequest}
-                thdToneText={controller.thdToneText}
-                onChangeThdRequest={controller.setThdRequest}
-                onChangeThdToneText={controller.setThdToneText}
-                isolationRequest={controller.isolationRequest}
-                onChangeIsolation={controller.setIsolationRequest}
-                onRunBalance={() => run(controller.runBalanceTest())}
-                onRunCrosstalk={() => run(controller.runCrosstalkTest())}
-                onRunThd={() => run(controller.runThdTest())}
-                onRunIsolation={() => run(controller.runIsolationTest())}
-              />
-            )}
-
-          {controller.activePage === PageKeyEnum.Devices && (
-            <DevicesPage
-              inventory={controller.inventory}
-              settings={controller.settings}
-              experimentalEnabled={controller.experimentalEnabled}
-              onChangeExperimentalEnabled={controller.setExperimentalEnabled}
-              onCommitSettings={(next) => run(controller.commitSettings(next))}
-              onRefreshDevices={() => run(controller.loadState())}
-            />
-          )}
-
-          {controller.activePage === PageKeyEnum.Results && (
-            <ResultsPage
-              logText={controller.logText}
-              onCopyLog={() => run(controller.copyLogs())}
-              onClearLog={controller.clearLogs}
-            />
-          )}
+          {ctx.activePage === PageKeyEnum.Devices && <DevicesPage />}
+          {ctx.activePage === PageKeyEnum.Results && <ResultsPage />}
         </div>
       </div>
     </main>

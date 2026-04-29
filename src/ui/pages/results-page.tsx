@@ -1,14 +1,7 @@
-type ResultsPageProps = {
-  logText: string;
-  onCopyLog: () => void;
-  onClearLog: () => void;
-};
+import { usePawdioLabContext } from "../pawdio-context";
 
-export function ResultsPage({
-  logText,
-  onCopyLog,
-  onClearLog,
-}: ResultsPageProps) {
+export function ResultsPage() {
+  const ctx = usePawdioLabContext();
   return (
     <div className="page-stack">
       <section className="page-card">
@@ -20,14 +13,14 @@ export function ResultsPage({
             <button
               type="button"
               className="skin-btn secondary"
-              onClick={onCopyLog}
+              onClick={() => ctx.run(ctx.copyLogs())}
             >
               Copy Log
             </button>
             <button
               type="button"
               className="skin-btn secondary"
-              onClick={onClearLog}
+              onClick={ctx.clearLogs}
             >
               Clear Log
             </button>
@@ -36,7 +29,7 @@ export function ResultsPage({
 
         <div className="scroll-box">
           <pre className="mono-pre">
-            {logText.length > 0 ? logText : "No logs yet."}
+            {ctx.logText.length > 0 ? ctx.logText : "No logs yet."}
           </pre>
         </div>
       </section>
