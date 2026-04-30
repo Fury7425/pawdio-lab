@@ -1,6 +1,6 @@
 import { ButtonHTMLAttributes } from "react";
 import { FlaskConical } from "lucide-react";
-import { toNumber } from "../model";
+import { toNumber, CrosstalkRequest } from "../model";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type RunButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
