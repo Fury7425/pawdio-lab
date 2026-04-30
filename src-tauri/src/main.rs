@@ -519,15 +519,8 @@ fn write_squiglink_combined(
 ) -> Result<(), String> {
     let path = std::path::Path::new(&output_path);
     validate_output_path(path)?;
-    audio::write_squiglink_both_file(
-        path,
-        &freqs,
-        &left_db,
-        &right_db,
-    )
-    .map_err(|e| e.to_string())
+    audio::write_squiglink_both_file(path, &freqs, &left_db, &right_db).map_err(|e| e.to_string())
 }
-
 
 fn main() {
     let app_state = AppState {
@@ -544,7 +537,7 @@ fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .manage(app_state)
-.invoke_handler(tauri::generate_handler![
+        .invoke_handler(tauri::generate_handler![
             list_audio_devices,
             get_audio_settings,
             set_audio_settings,
