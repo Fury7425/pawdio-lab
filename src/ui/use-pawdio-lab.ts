@@ -3,6 +3,9 @@ import { listen } from "@tauri-apps/api/event";
 import { open } from "@tauri-apps/plugin-dialog";
 import * as ipc from "../ipc/commands";
 import { useDebouncedPersist } from "./hooks/use-debounced-persist";
+import { useMonitorAndNoise } from "./hooks/use-monitor-and-noise";
+import { useResultsLog } from "./hooks/use-results-log";
+import { useDevicesController } from "./hooks/use-devices-controller";
 import {
   ANC_MODE_META,
   ANC_MODE_ORDERED,
@@ -19,7 +22,6 @@ import {
   LatencyReport,
   LatencyRequest,
   PageKey,
-  ResultEntry,
   SweepRequest,
   TestPayload,
   TestProgress,
@@ -64,17 +66,6 @@ type InputLevelEvent = {
   roughFrDb?: number[];
 };
 
-type InputMonitorState = {
-  monitoring: boolean;
-  status: string;
-  currentDbfs: number;
-  peakDbfs: number;
-  clipCount: number;
-  splEstimate: number;
-  roughFrHz: number[];
-  roughFrDb: number[];
-};
-
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
 const UI_STATE_STORAGE_KEY = "pawdio-lab-ui-state-v1";
 
@@ -116,16 +107,6 @@ const LATENCY_PRESETS: LatencyPresetConfig[] = [
   },
 ];
 
-const DEFAULT_INPUT_MONITOR: InputMonitorState = {
-  monitoring: false,
-  status: "Ready to measure...",
-  currentDbfs: -96,
-  peakDbfs: -96,
-  clipCount: 0,
-  splEstimate: -2,
-  roughFrHz: [],
-  roughFrDb: [],
-};
 
 type PersistedUiState = {
   activePage?: PageKey;
@@ -473,12 +454,39 @@ export function usePawdioLabController() {
       ? persistedUiState.experimentalEnabled
       : true,
   );
-  const [inventory, setInventory] = useState<DeviceInventory | null>(null);
-  const [settings, setSettings] = useState<AudioSettings>(
-    mergeWithDefaults(defaultSettings, persistedUiState?.settings),
-  );
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Devices + audio settings (extracted to hooks/use-devices-controller.ts)
+  const { inventory, settings, loadState, commitSettings } =
+    useDevicesController({
+      initialSettings: mergeWithDefaults(
+        defaultSettings,
+        persistedUiState?.settings,
+      ),
+      setError: (m) => setError(m),
+    });
+
+  // Refs so the extracted result/monitor hooks see latest settings/inventory
+  // without re-instantiating their state each render.
+  const settingsRef = useRef<AudioSettings | null>(null);
+  const inventoryRef = useRef<DeviceInventory | null>(null);
+  settingsRef.current = settings;
+  inventoryRef.current = inventory;
+
+  // Logs + results buffer (extracted to hooks/use-results-log.ts)
+  const {
+    logs,
+    results,
+    logText,
+    appendLog,
+    appendResult,
+    copyLogs,
+    clearLogs,
+  } = useResultsLog({
+    getSettings: () => settingsRef.current,
+    getInventory: () => inventoryRef.current,
+  });
 
   const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(
     mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
@@ -503,10 +511,22 @@ export function usePawdioLabController() {
   const [sweepLastResult, setSweepLastResult] = useState<TestPayload | null>(
     null,
   );
-  const [inputMonitor, setInputMonitor] = useState<InputMonitorState>(
-    DEFAULT_INPUT_MONITOR,
-  );
-  const [pinkNoisePlaying, setPinkNoisePlaying] = useState(false);
+  // Input monitor + pink noise (extracted to hooks/use-monitor-and-noise.ts)
+  const {
+    inputMonitor,
+    setInputMonitor,
+    pinkNoisePlaying,
+    setPinkNoisePlaying,
+    startInputMonitor,
+    stopInputMonitor,
+    startPinkNoise,
+    stopPinkNoise,
+    resetInputMonitorPeak,
+  } = useMonitorAndNoise({
+    isRunning: () => running,
+    appendLog: (m) => appendLog(m),
+    setError: (m) => setError(m),
+  });
 
   type MonoConfirmState = {
     message: string;
@@ -551,10 +571,8 @@ export function usePawdioLabController() {
   );
   const [ancStepPrompt, setAncStepPrompt] = useState(false);
 
-  const [logs, setLogs] = useState<string[]>([]);
-  const [results, setResults] = useState<ResultEntry[]>([]);
-  const nextResultId = useRef(1);
-
+  // logs, results, logText, appendLog, appendResult, copyLogs, clearLogs are
+  // provided by useResultsLog (see top of hook).
 
   const latencyProgressPercent = useMemo(() => {
     if (latencyProgress.length === 0) {
@@ -563,9 +581,6 @@ export function usePawdioLabController() {
     const latest = latencyProgress[latencyProgress.length - 1];
     return Math.floor((latest.current / latest.total) * 100);
   }, [latencyProgress]);
-
-  const logText = useMemo(() => logs.join("\n"), [logs]);
-
 
   const calibrationText = useMemo(() => {
     const ordered = LATENCY_PRESETS.map((preset) => {
@@ -576,48 +591,7 @@ export function usePawdioLabController() {
     return ["Per-sound baselines (ms):", ...ordered].join("\n");
   }, [latencyCalibration]);
 
-  function appendLog(message: string) {
-    const stamp = new Date().toLocaleTimeString("en-US", { hour12: false });
-    setLogs((prev) => [...prev, `[${stamp}] ${message}`]);
-  }
-
-  function appendResult(payload: TestPayload) {
-    // Get device name from settings - prefer custom item name, fall back to device name
-    let deviceName = "Unknown Device";
-    if (settings) {
-      // Use the custom item name if provided (this is what users type, e.g., "Headphones", "Speakers")
-      if (settings.itemName && settings.itemName.trim()) {
-        deviceName = settings.itemName.trim();
-      } else if (inventory) {
-        // Fall back to actual device name if no custom name provided
-        const outputDevice = inventory.outputs.find(
-          (d) => d.index === settings.outputDeviceIndex,
-        );
-        const inputDevice = inventory.inputs.find(
-          (d) => d.index === settings.inputDeviceIndex,
-        );
-        if (outputDevice) {
-          deviceName = outputDevice.name;
-        } else if (inputDevice) {
-          deviceName = inputDevice.name;
-        }
-      }
-    }
-    const entry: ResultEntry = {
-      id: nextResultId.current++,
-      payload,
-      savedAt: Date.now(),
-      deviceName,
-    };
-    setResults((prev) => [...prev, entry]);
-    appendLog(`[${payload.test}] result recorded`);
-    const fileEntries = Object.entries(payload.files ?? {});
-    for (const [key, value] of fileEntries) {
-      if (typeof value === "string" && value.length > 0) {
-        appendLog(`[${payload.test}] ${key} -> ${value}`);
-      }
-    }
-  }
+  // appendLog and appendResult come from useResultsLog (top of hook).
 
   async function refreshRuntimeStatus() {
     try {
@@ -628,80 +602,7 @@ export function usePawdioLabController() {
     }
   }
 
-  async function loadState() {
-    setError(null);
-    try {
-      const [devices, liveSettings] = await Promise.all([
-        ipc.listAudioDevices(),
-        ipc.getAudioSettings(),
-      ]);
-
-      setInventory(devices);
-      const merged = { ...liveSettings, ...settings };
-      const outputIndices = new Set(
-        devices.outputs.map((device) => device.index),
-      );
-      const inputIndices = new Set(
-        devices.inputs.map((device) => device.index),
-      );
-      if (
-        merged.outputDeviceIndex !== null &&
-        !outputIndices.has(merged.outputDeviceIndex)
-      ) {
-        merged.outputDeviceIndex = null;
-      }
-      if (
-        merged.inputDeviceIndex !== null &&
-        !inputIndices.has(merged.inputDeviceIndex)
-      ) {
-        merged.inputDeviceIndex = null;
-      }
-      // Only fall back to system default if no device is currently selected
-      if (merged.outputDeviceIndex === null && devices.defaultOutputIndex !== null) {
-        merged.outputDeviceIndex = devices.defaultOutputIndex;
-      }
-      if (merged.inputDeviceIndex === null && devices.defaultInputIndex !== null) {
-        merged.inputDeviceIndex = devices.defaultInputIndex;
-      }
-      const committed = await ipc.setAudioSettings(merged);
-      setSettings(committed);
-    } catch (err) {
-      setError(String(err));
-      throw err;
-    }
-  }
-
-  async function commitSettings(next: AudioSettings) {
-    const normalized = { ...next };
-    if (inventory) {
-      const outputIndices = new Set(
-        inventory.outputs.map((device) => device.index),
-      );
-      const inputIndices = new Set(
-        inventory.inputs.map((device) => device.index),
-      );
-      if (
-        normalized.outputDeviceIndex !== null &&
-        !outputIndices.has(normalized.outputDeviceIndex)
-      ) {
-        normalized.outputDeviceIndex = inventory.defaultOutputIndex ?? null;
-      }
-      if (
-        normalized.inputDeviceIndex !== null &&
-        !inputIndices.has(normalized.inputDeviceIndex)
-      ) {
-        normalized.inputDeviceIndex = inventory.defaultInputIndex ?? null;
-      }
-    }
-    setSettings(normalized);
-    try {
-      const committed = await ipc.setAudioSettings(normalized);
-      setSettings(committed);
-    } catch (err) {
-      setError(String(err));
-      throw err;
-    }
-  }
+  // loadState and commitSettings come from useDevicesController (top of hook).
 
   async function runPayloadTest(
     command:
@@ -1182,103 +1083,8 @@ export function usePawdioLabController() {
     }
   }
 
-  async function startInputMonitor() {
-    if (running) {
-      appendLog("[monitor] cannot start while a test is running");
-      return;
-    }
-    try {
-      // Ensure any stale monitor stream is closed before starting a new one.
-      try {
-        await ipc.stopInputMonitor();
-      } catch {
-        // no-op
-      }
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 120);
-      });
-      await ipc.startInputMonitor();
-      setInputMonitor((prev) => ({
-        ...prev,
-        monitoring: true,
-        status: "Monitoring input...",
-      }));
-      appendLog("[monitor] started");
-    } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
-    }
-  }
-
-  async function stopInputMonitor() {
-    try {
-      await ipc.stopInputMonitor();
-      setInputMonitor((prev) => ({
-        ...prev,
-        monitoring: false,
-        status: "Monitoring stopped.",
-      }));
-      appendLog("[monitor] stopped");
-    } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
-    }
-  }
-
-  async function startPinkNoise() {
-    if (running) {
-      appendLog("[pink-noise] cannot start while a test is running");
-      return;
-    }
-    try {
-      try {
-        await ipc.stopPinkNoise();
-      } catch {
-        // no-op
-      }
-      await new Promise<void>((resolve) => {
-        window.setTimeout(resolve, 80);
-      });
-      await ipc.startPinkNoise();
-      setPinkNoisePlaying(true);
-      setInputMonitor((prev) => ({
-        ...prev,
-        status: prev.monitoring ? prev.status : "Playing pink noise...",
-      }));
-      appendLog("[pink-noise] started");
-    } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
-    }
-  }
-
-  async function stopPinkNoise() {
-    try {
-      await ipc.stopPinkNoise();
-      setPinkNoisePlaying(false);
-      setInputMonitor((prev) => ({
-        ...prev,
-        status: prev.monitoring ? prev.status : "Pink noise stopped.",
-      }));
-      appendLog("[pink-noise] stopped");
-    } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
-    }
-  }
-
-  async function resetInputMonitorPeak() {
-    try {
-      await ipc.resetInputMonitorPeak();
-    } catch {
-      // reset locally even if backend reset command is unavailable.
-    }
-    setInputMonitor((prev) => ({
-      ...prev,
-      peakDbfs: prev.currentDbfs,
-      clipCount: 0,
-    }));
-  }
+  // startInputMonitor / stopInputMonitor / startPinkNoise / stopPinkNoise /
+  // resetInputMonitorPeak come from useMonitorAndNoise (top of hook).
 
   async function runBalanceTest() {
     await runPayloadTest(
@@ -1748,19 +1554,7 @@ export function usePawdioLabController() {
     }
   }
 
-  async function copyLogs() {
-    try {
-      await navigator.clipboard.writeText(logText);
-      appendLog("[results] log copied");
-    } catch (err) {
-      setError(String(err));
-    }
-  }
-
-  function clearLogs() {
-    setLogs([]);
-  }
-
+  // copyLogs and clearLogs come from useResultsLog (top of hook).
 
   useEffect(() => {
     loadState().catch((err) => setError(String(err)));
