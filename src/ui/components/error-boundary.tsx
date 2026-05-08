@@ -17,7 +17,11 @@ export class ErrorBoundary extends Component<Props, State> {
   }
 
   componentDidCatch(error: Error, info: ErrorInfo): void {
-    console.error("[pawdio-lab] ErrorBoundary caught:", error, info.componentStack);
+    console.error(
+      "[pawdio-lab] ErrorBoundary caught:",
+      error,
+      info.componentStack,
+    );
   }
 
   reset = (): void => {
@@ -25,11 +29,12 @@ export class ErrorBoundary extends Component<Props, State> {
   };
 
   copy = async (): Promise<void> => {
-    const text = `${this.state.error?.name}: ${this.state.error?.message}\n\n${this.state.error?.stack ?? ""}`;
+    const err = this.state.error;
+    const text = `${err?.name}: ${err?.message}\n\n${err?.stack ?? ""}`;
     try {
       await navigator.clipboard.writeText(text);
-    } catch (err) {
-      console.warn("[pawdio-lab] clipboard write failed:", err);
+    } catch (clipErr) {
+      console.warn("[pawdio-lab] clipboard write failed:", clipErr);
     }
   };
 
@@ -39,7 +44,9 @@ export class ErrorBoundary extends Component<Props, State> {
     }
     return (
       <section className="page-card">
-        <h2 className="section-heading">{this.props.fallbackTitle ?? "Something went wrong"}</h2>
+        <h2 className="section-heading">
+          {this.props.fallbackTitle ?? "Something went wrong"}
+        </h2>
         <p className="muted">{this.state.error.message}</p>
         <pre
           style={{
@@ -59,10 +66,18 @@ export class ErrorBoundary extends Component<Props, State> {
           <button type="button" className="skin-btn" onClick={this.reset}>
             Try again
           </button>
-          <button type="button" className="skin-btn secondary" onClick={this.copy}>
+          <button
+            type="button"
+            className="skin-btn secondary"
+            onClick={this.copy}
+          >
             Copy error
           </button>
-          <button type="button" className="skin-btn secondary" onClick={() => window.location.reload()}>
+          <button
+            type="button"
+            className="skin-btn secondary"
+            onClick={() => window.location.reload()}
+          >
             Reload app
           </button>
         </div>

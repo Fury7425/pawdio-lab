@@ -16,11 +16,20 @@ use tauri::{Emitter, State};
 /// Reject paths that contain `..` traversal or are not absolute.
 /// All export commands must call this before touching the filesystem.
 fn validate_output_path(path: &std::path::Path) -> Result<(), String> {
-    if path.components().any(|c| c == std::path::Component::ParentDir) {
-        return Err(format!("Invalid path: '{}' contains '..' traversal", path.display()));
+    if path
+        .components()
+        .any(|c| c == std::path::Component::ParentDir)
+    {
+        return Err(format!(
+            "Invalid path: '{}' contains '..' traversal",
+            path.display()
+        ));
     }
     if !path.is_absolute() {
-        return Err(format!("Invalid path: '{}' must be absolute", path.display()));
+        return Err(format!(
+            "Invalid path: '{}' must be absolute",
+            path.display()
+        ));
     }
     Ok(())
 }
@@ -231,14 +240,19 @@ fn save_anc_plots(
 ) -> Result<Vec<(String, String)>, String> {
     let dir = std::path::Path::new(&output_dir);
     validate_output_path(dir)?;
-    std::fs::create_dir_all(dir)
-        .map_err(|e| format!("failed to create output dir: {e}"))?;
+    std::fs::create_dir_all(dir).map_err(|e| format!("failed to create output dir: {e}"))?;
     let mode_data: Vec<(&str, &str, Vec<f32>, Vec<f32>)> = modes
         .iter()
-        .map(|m| (m.key.as_str(), m.label.as_str(), m.attenuation_left.clone(), m.attenuation_right.clone()))
+        .map(|m| {
+            (
+                m.key.as_str(),
+                m.label.as_str(),
+                m.attenuation_left.clone(),
+                m.attenuation_right.clone(),
+            )
+        })
         .collect();
-    audio::save_anc_plots(dir, &timestamp, &freqs, &mode_data)
-        .map_err(|e| e.to_string())
+    audio::save_anc_plots(dir, &timestamp, &freqs, &mode_data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -250,13 +264,7 @@ fn save_anc_squiglink(
 ) -> Result<(), String> {
     let path = std::path::Path::new(&output_path);
     validate_output_path(path)?;
-    audio::save_anc_squiglink(
-        path,
-        &mode_label,
-        &freqs,
-        &attenuation_db,
-    )
-    .map_err(|e| e.to_string())
+    audio::save_anc_squiglink(path, &mode_label, &freqs, &attenuation_db).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -280,7 +288,9 @@ async fn start_input_monitor(
     let running_flag = state.monitor_running.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        if let Err(error) = AudioEngine::run_input_monitor(settings, cancel, peak_reset, app_handle.clone()) {
+        if let Err(error) =
+            AudioEngine::run_input_monitor(settings, cancel, peak_reset, app_handle.clone())
+        {
             if let Err(emit_err) = app_handle.emit(
                 "test-progress",
                 TestProgressEvent {
@@ -311,10 +321,7 @@ fn reset_input_monitor_peak(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-async fn start_pink_noise(
-    app: tauri::AppHandle,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+async fn start_pink_noise(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
     if state.running.load(Ordering::SeqCst) {
         return Err("Cannot start pink noise while a test is running.".to_string());
     }
@@ -380,8 +387,9 @@ async fn run_thd_test(
     let cancel = state.cancel.clone();
     let app_handle = app.clone();
 
-    let task =
-        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_thd_test(settings, request, cancel, app_handle));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        AudioEngine::run_thd_test(settings, request, cancel, app_handle)
+    });
 
     let join_result = task.await;
     state.running.store(false, Ordering::SeqCst);
@@ -412,8 +420,9 @@ async fn run_balance_test(
     };
     let cancel = state.cancel.clone();
 
-    let task =
-        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_balance_test(settings, request, cancel));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        AudioEngine::run_balance_test(settings, request, cancel)
+    });
 
     let join_result = task.await;
     state.running.store(false, Ordering::SeqCst);
@@ -444,8 +453,9 @@ async fn run_crosstalk_test(
     };
     let cancel = state.cancel.clone();
 
-    let task =
-        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_crosstalk_test(settings, request, cancel));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        AudioEngine::run_crosstalk_test(settings, request, cancel)
+    });
 
     let join_result = task.await;
     state.running.store(false, Ordering::SeqCst);
@@ -476,8 +486,9 @@ async fn run_isolation_test(
     };
     let cancel = state.cancel.clone();
 
-    let task =
-        tauri::async_runtime::spawn_blocking(move || AudioEngine::run_isolation_test(settings, request, cancel));
+    let task = tauri::async_runtime::spawn_blocking(move || {
+        AudioEngine::run_isolation_test(settings, request, cancel)
+    });
 
     let join_result = task.await;
     state.running.store(false, Ordering::SeqCst);
@@ -506,8 +517,7 @@ fn get_runtime_status(state: State<'_, AppState>) -> RuntimeStatus {
 fn ensure_output_dir(path: String) -> Result<(), String> {
     let p = std::path::Path::new(&path);
     validate_output_path(p)?;
-    std::fs::create_dir_all(p)
-        .map_err(|e| format!("failed to create directory {}: {}", path, e))
+    std::fs::create_dir_all(p).map_err(|e| format!("failed to create directory {}: {}", path, e))
 }
 
 #[tauri::command]

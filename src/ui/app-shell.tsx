@@ -43,9 +43,8 @@ function PawdioLabShell() {
             {ctx.activePage === PageKeyEnum.Latency && <LatencyPage />}
             {ctx.activePage === PageKeyEnum.Anc && <AncPage />}
             {ctx.activePage === PageKeyEnum.SweepFr && <SweepFrPage />}
-            {ctx.activePage === PageKeyEnum.Experimental && ctx.experimentalEnabled && (
-              <ExperimentalPage />
-            )}
+            {ctx.activePage === PageKeyEnum.Experimental &&
+              ctx.experimentalEnabled && <ExperimentalPage />}
             {ctx.activePage === PageKeyEnum.Devices && <DevicesPage />}
             {ctx.activePage === PageKeyEnum.Results && <ResultsPage />}
           </ErrorBoundary>

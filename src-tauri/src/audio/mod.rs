@@ -22,7 +22,6 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use thiserror::Error;
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioSettings {
@@ -410,8 +409,10 @@ impl AudioEngine {
         let host = preferred_host()?;
         let output_entries = enumerate_output_devices(&host)?;
         let input_entries = enumerate_input_devices(&host)?;
-        let output_infos: Vec<AudioDeviceInfo> =
-            output_entries.iter().map(|(_, info)| info.clone()).collect();
+        let output_infos: Vec<AudioDeviceInfo> = output_entries
+            .iter()
+            .map(|(_, info)| info.clone())
+            .collect();
         let input_infos: Vec<AudioDeviceInfo> =
             input_entries.iter().map(|(_, info)| info.clone()).collect();
         let default_output = default_index_for_output(&host, &output_infos);
@@ -437,7 +438,8 @@ impl AudioEngine {
         let duration = request.duration_secs.clamp(0.03, 12.0);
         let amplitude = request.amplitude.clamp(0.01, 1.0);
         let margin = request.record_margin_secs.clamp(0.1, 6.0);
-        let (preset_key, preset_name) = latency_preset_identity(request.signal, request.frequency_hz);
+        let (preset_key, preset_name) =
+            latency_preset_identity(request.signal, request.frequency_hz);
 
         let mut measurements = Vec::with_capacity(repeats as usize);
         let mut first_recorded: Option<Vec<f32>> = None;
@@ -453,8 +455,11 @@ impl AudioEngine {
                 amplitude,
                 runtime.output_rate,
             );
-            let recorded =
-                runtime.play_and_record_mono(signal.clone(), OutputRouting::Both, duration + margin)?;
+            let recorded = runtime.play_and_record_mono(
+                signal.clone(),
+                OutputRouting::Both,
+                duration + margin,
+            )?;
             let reference = if runtime.input_rate != runtime.output_rate {
                 resample_cubic(&signal, runtime.output_rate, runtime.input_rate)
             } else {
@@ -493,7 +498,10 @@ impl AudioEngine {
             return Err(AudioError::Cancelled);
         }
 
-        let valid: Vec<f32> = measurements.iter().filter_map(|item| item.delay_ms).collect();
+        let valid: Vec<f32> = measurements
+            .iter()
+            .filter_map(|item| item.delay_ms)
+            .collect();
         let average_delay = if valid.is_empty() {
             None
         } else {
@@ -515,7 +523,9 @@ impl AudioEngine {
 
         // Prefer shared_run_tag (same folder for all presets in a suite), then
         // shared_output_dir (legacy full-path approach), then generate a new tag.
-        let run_tag = request.shared_run_tag.clone()
+        let run_tag = request
+            .shared_run_tag
+            .clone()
             .unwrap_or_else(timestamp_filename);
         let output_dir = if let Some(ref shared) = request.shared_output_dir {
             let shared_path = PathBuf::from(shared);
@@ -525,9 +535,11 @@ impl AudioEngine {
             resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag)
         };
         if request.save_per_sound_plot {
-            if let (Some(rec), Some(reference), Some(avg_delay)) =
-                (first_recorded.as_ref(), first_reference.as_ref(), report.average_delay_ms)
-            {
+            if let (Some(rec), Some(reference), Some(avg_delay)) = (
+                first_recorded.as_ref(),
+                first_reference.as_ref(),
+                report.average_delay_ms,
+            ) {
                 if let Ok(path) = latency_plot_path(&output_dir, &preset_key) {
                     if save_latency_plot(
                         &path,
@@ -642,7 +654,11 @@ impl AudioEngine {
             clip_count: 0,
             sample_rate: input_config.sample_rate.0,
             recent_mono: Vec::new(),
-            rough_fr_hz: logspace(20.0, (input_config.sample_rate.0 as f32 * 0.45).min(20_000.0), 48),
+            rough_fr_hz: logspace(
+                20.0,
+                (input_config.sample_rate.0 as f32 * 0.45).min(20_000.0),
+                48,
+            ),
             rough_fr_db: vec![0.0; 48],
         }));
 
@@ -699,7 +715,10 @@ impl AudioEngine {
         Ok(())
     }
 
-    pub fn run_pink_noise(settings: AudioSettings, cancel: Arc<AtomicBool>) -> Result<(), AudioError> {
+    pub fn run_pink_noise(
+        settings: AudioSettings,
+        cancel: Arc<AtomicBool>,
+    ) -> Result<(), AudioError> {
         let host = preferred_host()?;
         let output_entries = enumerate_output_devices(&host)?;
         let output_device =
@@ -827,8 +846,10 @@ impl AudioEngine {
             delays_l.push(delay_l);
             delays_r.push(delay_r);
 
-            let aligned_l = align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate);
-            let aligned_r = align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate);
+            let aligned_l =
+                align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate);
+            let aligned_r =
+                align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate);
             let mag_db_l = if rec_l.is_empty() {
                 Vec::new()
             } else {
@@ -932,9 +953,12 @@ impl AudioEngine {
             }),
             files: {
                 let mut files = serde_json::Map::<String, Value>::new();
-                let ts = request.shared_run_tag.clone()
+                let ts = request
+                    .shared_run_tag
+                    .clone()
                     .unwrap_or_else(timestamp_filename);
-                let output_dir = resolve_measurement_output_dir(&request.output_dir, &item_name, &ts);
+                let output_dir =
+                    resolve_measurement_output_dir(&request.output_dir, &item_name, &ts);
 
                 if request.save_plots {
                     ensure_output_dir(&output_dir)?;
@@ -966,7 +990,8 @@ impl AudioEngine {
                     }
 
                     if has_right_data {
-                        let right_avg_path = output_dir.join(format!("sweep_fr_right_avg_{ts}.png"));
+                        let right_avg_path =
+                            output_dir.join(format!("sweep_fr_right_avg_{ts}.png"));
                         save_sweep_single_plot(
                             &right_avg_path,
                             "Right Average Frequency Response",
@@ -978,7 +1003,8 @@ impl AudioEngine {
                             Value::String(right_avg_path.display().to_string()),
                         );
 
-                        let right_all_path = output_dir.join(format!("sweep_fr_right_all_{ts}.png"));
+                        let right_all_path =
+                            output_dir.join(format!("sweep_fr_right_all_{ts}.png"));
                         save_sweep_multi_plot(
                             &right_all_path,
                             "Right All Sweeps Frequency Response",
@@ -993,7 +1019,12 @@ impl AudioEngine {
 
                     if !all_curves.is_empty() {
                         let all_path = output_dir.join(format!("sweep_fr_all_{ts}.png"));
-                        save_sweep_multi_plot(&all_path, "All Sweeps Frequency Response", &grid, &all_curves)?;
+                        save_sweep_multi_plot(
+                            &all_path,
+                            "All Sweeps Frequency Response",
+                            &grid,
+                            &all_curves,
+                        )?;
                         files.insert(
                             "plot_all".to_string(),
                             Value::String(all_path.display().to_string()),
@@ -1026,7 +1057,14 @@ impl AudioEngine {
 
                 if request.save_squiglink {
                     ensure_output_dir(&output_dir)?;
-                    let squig_files = save_squiglink_files(&output_dir, &ts, &grid, &left_avg, &right_avg, &avg_all)?;
+                    let squig_files = save_squiglink_files(
+                        &output_dir,
+                        &ts,
+                        &grid,
+                        &left_avg,
+                        &right_avg,
+                        &avg_all,
+                    )?;
                     for (key, value) in squig_files {
                         files.insert(key, Value::String(value));
                     }
@@ -1107,12 +1145,17 @@ impl AudioEngine {
             return Err(AudioError::Cancelled);
         }
         let signal = generate_sine(freq, duration, 0.8, runtime.output_rate);
-        let rec_l = runtime.play_and_record_mono(signal.clone(), OutputRouting::LeftOnly, duration + 0.3)?;
+        let rec_l = runtime.play_and_record_mono(
+            signal.clone(),
+            OutputRouting::LeftOnly,
+            duration + 0.3,
+        )?;
         std::thread::sleep(Duration::from_secs_f32(settle));
         if cancel.load(Ordering::SeqCst) {
             return Err(AudioError::Cancelled);
         }
-        let rec_r = runtime.play_and_record_mono(signal, OutputRouting::RightOnly, duration + 0.3)?;
+        let rec_r =
+            runtime.play_and_record_mono(signal, OutputRouting::RightOnly, duration + 0.3)?;
 
         let level_l = dbfs(&rec_l);
         let level_r = dbfs(&rec_r);
@@ -1216,7 +1259,8 @@ impl AudioEngine {
             return Err(AudioError::Cancelled);
         }
         let noise = generate_pink_noise(duration, amp, runtime.output_rate);
-        let rec_in = runtime.play_and_record_mono(noise.clone(), OutputRouting::Both, duration + 0.3)?;
+        let rec_in =
+            runtime.play_and_record_mono(noise.clone(), OutputRouting::Both, duration + 0.3)?;
         if cancel.load(Ordering::SeqCst) {
             return Err(AudioError::Cancelled);
         }
@@ -1268,11 +1312,8 @@ impl AudioEngine {
             } else {
                 chirp.clone()
             };
-            let captured = runtime.play_and_record_channels(
-                chirp,
-                OutputRouting::Both,
-                duration + 0.5,
-            )?;
+            let captured =
+                runtime.play_and_record_channels(chirp, OutputRouting::Both, duration + 0.5)?;
             let rec_l = channel_or_mix(&captured, 0);
             let rec_r = if captured.len() > 1 {
                 channel_or_mix(&captured, 1)
@@ -1283,8 +1324,18 @@ impl AudioEngine {
             let delay_r = find_delay_ms(&rec_r, &ref_signal, runtime.input_rate);
             let al = align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate);
             let ar = align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate);
-            mags_l.push(frequency_response_curve(&al, &ref_signal, runtime.input_rate, &grid));
-            mags_r.push(frequency_response_curve(&ar, &ref_signal, runtime.input_rate, &grid));
+            mags_l.push(frequency_response_curve(
+                &al,
+                &ref_signal,
+                runtime.input_rate,
+                &grid,
+            ));
+            mags_r.push(frequency_response_curve(
+                &ar,
+                &ref_signal,
+                runtime.input_rate,
+                &grid,
+            ));
             app.emit(
                 "test-progress",
                 TestProgressEvent {
@@ -1439,12 +1490,18 @@ fn enumerate_input_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)>
 
 fn default_index_for_output(host: &Host, outputs: &[AudioDeviceInfo]) -> Option<usize> {
     let name = host.default_output_device()?.name().ok()?;
-    outputs.iter().find(|item| item.name == name).map(|item| item.index)
+    outputs
+        .iter()
+        .find(|item| item.name == name)
+        .map(|item| item.index)
 }
 
 fn default_index_for_input(host: &Host, inputs: &[AudioDeviceInfo]) -> Option<usize> {
     let name = host.default_input_device()?.name().ok()?;
-    inputs.iter().find(|item| item.name == name).map(|item| item.index)
+    inputs
+        .iter()
+        .find(|item| item.name == name)
+        .map(|item| item.index)
 }
 
 fn select_device(
@@ -1605,10 +1662,18 @@ fn generate_pink_noise(duration_secs: f32, amplitude: f32, sample_rate: u32) -> 
         .copied()
         .fold(0.0f32, |acc, val| acc.max(val.abs()))
         .max(1e-9);
-    pink.into_iter().map(|sample| (sample / peak) * amplitude).collect()
+    pink.into_iter()
+        .map(|sample| (sample / peak) * amplitude)
+        .collect()
 }
 
-fn generate_log_chirp(f0: f32, f1: f32, duration_secs: f32, amplitude: f32, sample_rate: u32) -> Vec<f32> {
+fn generate_log_chirp(
+    f0: f32,
+    f1: f32,
+    duration_secs: f32,
+    amplitude: f32,
+    sample_rate: u32,
+) -> Vec<f32> {
     let total_samples = ((duration_secs * sample_rate as f32).round() as usize).max(1);
     let mut signal = Vec::with_capacity(total_samples);
     let start = f0.max(1.0);
@@ -1746,18 +1811,25 @@ fn resolve_output_dir(requested: &Option<String>) -> PathBuf {
 
 fn sanitize_output_name(raw: &str) -> String {
     const WINDOWS_RESERVED: &[&str] = &[
-        "CON", "PRN", "AUX", "NUL",
-        "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
-        "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
+        "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
+        "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
     ];
     const MAX_NAME_LEN: usize = 200;
 
     let mut out = String::with_capacity(raw.len().min(MAX_NAME_LEN));
     for ch in raw.trim().chars().take(MAX_NAME_LEN) {
-        let invalid = matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control();
-        if invalid { out.push('_'); } else { out.push(ch); }
+        let invalid =
+            matches!(ch, '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*') || ch.is_control();
+        if invalid {
+            out.push('_');
+        } else {
+            out.push(ch);
+        }
     }
-    let cleaned = out.trim_matches(|c| c == ' ' || c == '.').trim().to_string();
+    let cleaned = out
+        .trim_matches(|c| c == ' ' || c == '.')
+        .trim()
+        .to_string();
     if cleaned.is_empty() {
         return "item".to_string();
     }
@@ -1769,7 +1841,11 @@ fn sanitize_output_name(raw: &str) -> String {
     cleaned
 }
 
-fn resolve_measurement_output_dir(requested: &Option<String>, item_name: &str, run_tag: &str) -> PathBuf {
+fn resolve_measurement_output_dir(
+    requested: &Option<String>,
+    item_name: &str,
+    run_tag: &str,
+) -> PathBuf {
     let base = resolve_output_dir(requested);
     let item = sanitize_output_name(item_name);
     base.join(format!("(({item})-({run_tag}))"))
@@ -1789,7 +1865,10 @@ fn default_output_dir() -> PathBuf {
 
 fn ensure_output_dir(path: &Path) -> Result<(), AudioError> {
     fs::create_dir_all(path).map_err(|err| {
-        AudioError::FileExport(format!("failed to create output dir {}: {err}", path.display()))
+        AudioError::FileExport(format!(
+            "failed to create output dir {}: {err}",
+            path.display()
+        ))
     })
 }
 
@@ -1797,9 +1876,8 @@ fn write_text_file(path: &Path, content: &str) -> Result<(), AudioError> {
     let mut file = File::create(path).map_err(|err| {
         AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
     })?;
-    file.write_all(content.as_bytes()).map_err(|err| {
-        AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
-    })
+    file.write_all(content.as_bytes())
+        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))
 }
 
 fn timestamp_filename() -> String {
@@ -1832,10 +1910,7 @@ fn latency_preset_identity(signal: TestSignalKind, frequency_hz: f32) -> (String
 
 fn latency_plot_path(output_dir: &Path, preset_key: &str) -> Result<PathBuf, AudioError> {
     ensure_output_dir(output_dir)?;
-    Ok(output_dir.join(format!(
-        "{preset_key}_plot_{}.png",
-        timestamp_filename()
-    )))
+    Ok(output_dir.join(format!("{preset_key}_plot_{}.png", timestamp_filename())))
 }
 
 fn overall_bar_path(output_dir: &Path) -> Result<PathBuf, AudioError> {
@@ -1920,7 +1995,13 @@ fn build_latency_suite_text_report(suite: &[LatencyExportEntry]) -> String {
 
     let all_delays: Vec<f32> = suite
         .iter()
-        .flat_map(|entry| entry.report.measurements.iter().filter_map(|measurement| measurement.delay_ms))
+        .flat_map(|entry| {
+            entry
+                .report
+                .measurements
+                .iter()
+                .filter_map(|measurement| measurement.delay_ms)
+        })
         .collect();
     let overall_avg = if all_delays.is_empty() {
         0.0
@@ -1967,7 +2048,8 @@ fn build_latency_suite_text_report(suite: &[LatencyExportEntry]) -> String {
     ];
 
     for entry in suite {
-        let (_, sound_name) = latency_preset_identity(entry.request.signal, entry.request.frequency_hz);
+        let (_, sound_name) =
+            latency_preset_identity(entry.request.signal, entry.request.frequency_hz);
         let delays: Vec<f32> = entry
             .report
             .measurements
@@ -1977,16 +2059,29 @@ fn build_latency_suite_text_report(suite: &[LatencyExportEntry]) -> String {
         let avg = if delays.is_empty() {
             None
         } else {
-            Some(entry.report.average_delay_ms.unwrap_or_else(|| mean(&delays)))
+            Some(
+                entry
+                    .report
+                    .average_delay_ms
+                    .unwrap_or_else(|| mean(&delays)),
+            )
         };
         let std = if delays.is_empty() {
             None
         } else {
             let avg_value = avg.unwrap_or(0.0);
-            Some(entry.report.std_dev_ms.unwrap_or_else(|| standard_deviation(&delays, avg_value)))
+            Some(
+                entry
+                    .report
+                    .std_dev_ms
+                    .unwrap_or_else(|| standard_deviation(&delays, avg_value)),
+            )
         };
 
-        lines.push(format!("==================== Results for '{}' ====================", sound_name));
+        lines.push(format!(
+            "==================== Results for '{}' ====================",
+            sound_name
+        ));
         lines.push("Individual test results (Calibrated):".to_string());
         lines.push("------------------------------".to_string());
         for measurement in &entry.report.measurements {
@@ -2033,7 +2128,10 @@ fn build_latency_suite_text_report(suite: &[LatencyExportEntry]) -> String {
         lines.push(format!("CONSISTENCY ANALYSIS for '{}':", sound_name));
         lines.push("------------------------------".to_string());
         if let Some(std_value) = std {
-            lines.push(format!("Consistency: {}", latency_consistency_label(std_value)));
+            lines.push(format!(
+                "Consistency: {}",
+                latency_consistency_label(std_value)
+            ));
         } else {
             lines.push("Consistency: N/A".to_string());
         }
@@ -2070,10 +2168,7 @@ fn y_bounds(samples: &[f32]) -> (f32, f32) {
         return (-1.0, 1.0);
     }
     let min = samples.iter().copied().fold(f32::INFINITY, f32::min);
-    let max = samples
-        .iter()
-        .copied()
-        .fold(f32::NEG_INFINITY, f32::max);
+    let max = samples.iter().copied().fold(f32::NEG_INFINITY, f32::max);
     if (max - min).abs() < 1e-6 {
         (min - 0.5, max + 0.5)
     } else {
@@ -2120,12 +2215,13 @@ fn save_latency_plot(
     successful_tests: usize,
 ) -> Result<(), AudioError> {
     let root = BitMapBackend::new(path, LATENCY_PLOT_SIZE).into_drawing_area();
-    root.fill(&LATENCY_BG)
-        .map_err(|err| AudioError::FileExport(format!("plot background {}: {err}", path.display())))?;
+    root.fill(&LATENCY_BG).map_err(|err| {
+        AudioError::FileExport(format!("plot background {}: {err}", path.display()))
+    })?;
     let (title_area, body_area) = root.split_vertically(LATENCY_PLOT_TITLE_HEIGHT);
-    title_area
-        .fill(&LATENCY_BG)
-        .map_err(|err| AudioError::FileExport(format!("plot title background {}: {err}", path.display())))?;
+    title_area.fill(&LATENCY_BG).map_err(|err| {
+        AudioError::FileExport(format!("plot title background {}: {err}", path.display()))
+    })?;
     title_area
         .draw(&Text::new(
             latency_figure_title(sound_name),
@@ -2138,8 +2234,9 @@ fn save_latency_plot(
     let areas = body_area.split_evenly((3, 1));
 
     for area in &areas {
-        area.fill(&LATENCY_BG)
-            .map_err(|err| AudioError::FileExport(format!("plot panel background {}: {err}", path.display())))?;
+        area.fill(&LATENCY_BG).map_err(|err| {
+            AudioError::FileExport(format!("plot panel background {}: {err}", path.display()))
+        })?;
     }
 
     {
@@ -2149,20 +2246,30 @@ fn save_latency_plot(
             .margin(LATENCY_PANEL_MARGIN)
             .caption(
                 "Reference Signal",
-                ("sans-serif", LATENCY_SUBPLOT_TITLE_FONT_SIZE, FontStyle::Normal)
+                (
+                    "sans-serif",
+                    LATENCY_SUBPLOT_TITLE_FONT_SIZE,
+                    FontStyle::Normal,
+                )
                     .into_font()
                     .color(&BLACK),
             )
             .set_label_area_size(LabelAreaPosition::Left, LATENCY_LEFT_LABEL_AREA)
             .set_label_area_size(LabelAreaPosition::Bottom, LATENCY_BOTTOM_LABEL_AREA)
             .build_cartesian_2d(0f32..x_end.max(1.0), y_min..y_max)
-            .map_err(|err| AudioError::FileExport(format!("plot reference {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot reference {}: {err}", path.display()))
+            })?;
         chart
             .configure_mesh()
             .x_desc("Time (ms)")
             .y_desc("Amplitude")
             .axis_desc_style(
-                ("sans-serif", LATENCY_AXIS_LABEL_FONT_SIZE, FontStyle::Normal)
+                (
+                    "sans-serif",
+                    LATENCY_AXIS_LABEL_FONT_SIZE,
+                    FontStyle::Normal,
+                )
                     .into_font()
                     .color(&BLACK),
             )
@@ -2176,7 +2283,9 @@ fn save_latency_plot(
                     .color(&BLACK.mix(0.86)),
             )
             .draw()
-            .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot mesh {}: {err}", path.display()))
+            })?;
         chart
             .draw_series(LineSeries::new(
                 reference
@@ -2186,7 +2295,9 @@ fn save_latency_plot(
                 BLUE.mix(LATENCY_WAVEFORM_LINE_ALPHA)
                     .stroke_width(LATENCY_WAVEFORM_LINE_WIDTH),
             ))
-            .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot line {}: {err}", path.display()))
+            })?;
     }
 
     {
@@ -2196,20 +2307,30 @@ fn save_latency_plot(
             .margin(LATENCY_PANEL_MARGIN)
             .caption(
                 "Recorded Signal",
-                ("sans-serif", LATENCY_SUBPLOT_TITLE_FONT_SIZE, FontStyle::Normal)
+                (
+                    "sans-serif",
+                    LATENCY_SUBPLOT_TITLE_FONT_SIZE,
+                    FontStyle::Normal,
+                )
                     .into_font()
                     .color(&BLACK),
             )
             .set_label_area_size(LabelAreaPosition::Left, LATENCY_LEFT_LABEL_AREA)
             .set_label_area_size(LabelAreaPosition::Bottom, LATENCY_BOTTOM_LABEL_AREA)
             .build_cartesian_2d(0f32..x_end.max(1.0), y_min..y_max)
-            .map_err(|err| AudioError::FileExport(format!("plot recorded {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot recorded {}: {err}", path.display()))
+            })?;
         chart
             .configure_mesh()
             .x_desc("Time (ms)")
             .y_desc("Amplitude")
             .axis_desc_style(
-                ("sans-serif", LATENCY_AXIS_LABEL_FONT_SIZE, FontStyle::Normal)
+                (
+                    "sans-serif",
+                    LATENCY_AXIS_LABEL_FONT_SIZE,
+                    FontStyle::Normal,
+                )
                     .into_font()
                     .color(&BLACK),
             )
@@ -2223,7 +2344,9 @@ fn save_latency_plot(
                     .color(&BLACK.mix(0.86)),
             )
             .draw()
-            .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot mesh {}: {err}", path.display()))
+            })?;
         chart
             .draw_series(LineSeries::new(
                 recorded
@@ -2233,7 +2356,9 @@ fn save_latency_plot(
                 BLUE.mix(LATENCY_WAVEFORM_LINE_ALPHA)
                     .stroke_width(LATENCY_WAVEFORM_LINE_WIDTH),
             ))
-            .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot line {}: {err}", path.display()))
+            })?;
     }
 
     {
@@ -2250,20 +2375,30 @@ fn save_latency_plot(
             .margin(LATENCY_PANEL_MARGIN)
             .caption(
                 "Cross-Correlation",
-                ("sans-serif", LATENCY_SUBPLOT_TITLE_FONT_SIZE, FontStyle::Normal)
+                (
+                    "sans-serif",
+                    LATENCY_SUBPLOT_TITLE_FONT_SIZE,
+                    FontStyle::Normal,
+                )
                     .into_font()
                     .color(&BLACK),
             )
             .set_label_area_size(LabelAreaPosition::Left, LATENCY_LEFT_LABEL_AREA)
             .set_label_area_size(LabelAreaPosition::Bottom, LATENCY_BOTTOM_LABEL_AREA)
             .build_cartesian_2d(x_min..x_max.max(x_min + 1.0), y_min..y_max)
-            .map_err(|err| AudioError::FileExport(format!("plot correlation {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot correlation {}: {err}", path.display()))
+            })?;
         chart
             .configure_mesh()
             .x_desc("Delay (ms)")
             .y_desc("Correlation")
             .axis_desc_style(
-                ("sans-serif", LATENCY_AXIS_LABEL_FONT_SIZE, FontStyle::Normal)
+                (
+                    "sans-serif",
+                    LATENCY_AXIS_LABEL_FONT_SIZE,
+                    FontStyle::Normal,
+                )
                     .into_font()
                     .color(&BLACK),
             )
@@ -2277,15 +2412,21 @@ fn save_latency_plot(
                     .color(&BLACK.mix(0.86)),
             )
             .draw()
-            .map_err(|err| AudioError::FileExport(format!("plot mesh {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot mesh {}: {err}", path.display()))
+            })?;
 
-        let (peak_delay_ms, peak_corr_value) = corr_points
-            .iter()
-            .copied()
-            .fold(
-                (avg_delay_ms, 0.0f32),
-                |best, current| if current.1.abs() > best.1.abs() { current } else { best },
-            );
+        let (peak_delay_ms, peak_corr_value) =
+            corr_points
+                .iter()
+                .copied()
+                .fold((avg_delay_ms, 0.0f32), |best, current| {
+                    if current.1.abs() > best.1.abs() {
+                        current
+                    } else {
+                        best
+                    }
+                });
         let x_span = (x_max - x_min).max(1.0);
         let peak_half_width = (x_span * LATENCY_PEAK_BAND_RATIO).max(LATENCY_PEAK_BAND_MIN_MS);
         let band_left = (peak_delay_ms - peak_half_width).max(x_min);
@@ -2295,7 +2436,9 @@ fn save_latency_plot(
                 [(band_left, y_min), (band_right, y_max)],
                 RGBColor(255, 163, 92).mix(LATENCY_PEAK_BAND_ALPHA).filled(),
             )))
-            .map_err(|err| AudioError::FileExport(format!("plot peak band {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot peak band {}: {err}", path.display()))
+            })?;
 
         chart
             .draw_series(LineSeries::new(
@@ -2303,14 +2446,18 @@ fn save_latency_plot(
                 BLUE.mix(LATENCY_CORR_LINE_ALPHA)
                     .stroke_width(LATENCY_CORR_LINE_WIDTH),
             ))
-            .map_err(|err| AudioError::FileExport(format!("plot line {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot line {}: {err}", path.display()))
+            })?;
         chart
             .draw_series(std::iter::once(Circle::new(
                 (peak_delay_ms, peak_corr_value),
                 4,
                 RGBColor(255, 163, 92).mix(0.65).filled(),
             )))
-            .map_err(|err| AudioError::FileExport(format!("plot peak marker {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot peak marker {}: {err}", path.display()))
+            })?;
 
         let dash_height = y_span / 26.0;
         let gap_height = dash_height * 0.7;
@@ -2322,7 +2469,9 @@ fn save_latency_plot(
                     vec![(avg_delay_ms, y), (avg_delay_ms, y2)],
                     RED.stroke_width(LATENCY_DELAY_LINE_WIDTH),
                 )))
-                .map_err(|err| AudioError::FileExport(format!("plot marker {}: {err}", path.display())))?;
+                .map_err(|err| {
+                    AudioError::FileExport(format!("plot marker {}: {err}", path.display()))
+                })?;
             y += dash_height + gap_height;
         }
 
@@ -2331,10 +2480,15 @@ fn save_latency_plot(
                 vec![(avg_delay_ms, y_min), (avg_delay_ms, y_min + y_span * 0.08)],
                 RED.stroke_width(LATENCY_DELAY_LINE_WIDTH),
             )))
-            .map_err(|err| AudioError::FileExport(format!("plot legend marker {}: {err}", path.display())))?
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot legend marker {}: {err}", path.display()))
+            })?
             .label(format!("Avg Calibrated Delay: {avg_delay_ms:.4} ms"))
             .legend(|(x, y)| {
-                PathElement::new(vec![(x, y), (x + 24, y)], RED.stroke_width(LATENCY_DELAY_LINE_WIDTH))
+                PathElement::new(
+                    vec![(x, y), (x + 24, y)],
+                    RED.stroke_width(LATENCY_DELAY_LINE_WIDTH),
+                )
             });
 
         chart
@@ -2343,7 +2497,9 @@ fn save_latency_plot(
             .border_style(BLACK.mix(0.45))
             .label_font(("sans-serif", LATENCY_TICK_FONT_SIZE, FontStyle::Normal).into_font())
             .draw()
-            .map_err(|err| AudioError::FileExport(format!("plot legend {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot legend {}: {err}", path.display()))
+            })?;
 
         let box_width = x_span * LATENCY_NOTE_WIDTH_RATIO;
         let box_height = y_span * LATENCY_NOTE_HEIGHT_RATIO;
@@ -2361,13 +2517,17 @@ fn save_latency_plot(
                 [(box_left, box_bottom), (box_right, box_top)],
                 RGBColor(244, 237, 120).mix(LATENCY_NOTE_BOX_ALPHA).filled(),
             )))
-            .map_err(|err| AudioError::FileExport(format!("plot note background {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot note background {}: {err}", path.display()))
+            })?;
         chart
             .draw_series(std::iter::once(Rectangle::new(
                 [(box_left, box_bottom), (box_right, box_top)],
                 RGBColor(120, 110, 40).stroke_width(1),
             )))
-            .map_err(|err| AudioError::FileExport(format!("plot note border {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot note border {}: {err}", path.display()))
+            })?;
         chart
             .draw_series(std::iter::once(Text::new(
                 format!(
@@ -2380,7 +2540,9 @@ fn save_latency_plot(
                     .into_font()
                     .color(&BLACK),
             )))
-            .map_err(|err| AudioError::FileExport(format!("plot note text {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("plot note text {}: {err}", path.display()))
+            })?;
     }
 
     root.present()
@@ -2390,10 +2552,16 @@ fn save_latency_plot(
 fn hann_window(len: usize) -> Vec<f32> {
     // Periodic Hann window: w[i] = 0.5 * (1 - cos(2π·i/N))
     let len_f = len as f32;
-    (0..len).map(|i| 0.5 * (1.0 - (2.0 * PI * i as f32 / len_f).cos())).collect()
+    (0..len)
+        .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f32 / len_f).cos()))
+        .collect()
 }
 
-fn cross_correlation_points(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Vec<(f32, f32)> {
+fn cross_correlation_points(
+    recorded: &[f32],
+    reference: &[f32],
+    sample_rate: u32,
+) -> Vec<(f32, f32)> {
     if recorded.is_empty() || reference.is_empty() || sample_rate == 0 {
         return Vec::new();
     }
@@ -2407,8 +2575,20 @@ fn cross_correlation_points(recorded: &[f32], reference: &[f32], sample_rate: u3
     let fft = planner.plan_fft_forward(n);
     let ifft = planner.plan_fft_inverse(n);
 
-    let mut a = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
-    let mut b = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
+    let mut a = vec![
+        Complex {
+            re: 0.0f32,
+            im: 0.0f32
+        };
+        n
+    ];
+    let mut b = vec![
+        Complex {
+            re: 0.0f32,
+            im: 0.0f32
+        };
+        n
+    ];
     for (idx, value) in recorded.iter().enumerate() {
         a[idx].re = *value * rec_win[idx];
     }
@@ -2419,8 +2599,16 @@ fn cross_correlation_points(recorded: &[f32], reference: &[f32], sample_rate: u3
     fft.process(&mut b);
 
     // Normalized cross-correlation: A * conj(B) / sqrt(E_a * E_b)
-    let energy_a: f32 = recorded.iter().zip(&rec_win).map(|(s, w)| (s * w) * (s * w)).sum();
-    let energy_b: f32 = reference.iter().zip(&ref_win).map(|(s, w)| (s * w) * (s * w)).sum();
+    let energy_a: f32 = recorded
+        .iter()
+        .zip(&rec_win)
+        .map(|(s, w)| (s * w) * (s * w))
+        .sum();
+    let energy_b: f32 = reference
+        .iter()
+        .zip(&ref_win)
+        .map(|(s, w)| (s * w) * (s * w))
+        .sum();
     let norm = (energy_a * energy_b).sqrt().max(1e-12);
 
     for (left, right) in a.iter_mut().zip(b.iter()) {
@@ -2482,8 +2670,9 @@ fn save_overall_bar_chart(path: &Path, bars_data: &[(String, Vec<f32>)]) -> Resu
 
     let bg = RGBColor(230, 230, 230);
     let root = BitMapBackend::new(path, (1100, 640)).into_drawing_area();
-    root.fill(&bg)
-        .map_err(|err| AudioError::FileExport(format!("bar background {}: {err}", path.display())))?;
+    root.fill(&bg).map_err(|err| {
+        AudioError::FileExport(format!("bar background {}: {err}", path.display()))
+    })?;
 
     let x_end = labels.len() as f32;
     let mut chart = ChartBuilder::on(&root)
@@ -2542,7 +2731,9 @@ fn save_overall_bar_chart(path: &Path, bars_data: &[(String, Vec<f32>)]) -> Resu
                 vec![(center - 0.05, low), (center + 0.05, low)],
                 BLACK.stroke_width(2),
             )))
-            .map_err(|err| AudioError::FileExport(format!("bar err cap {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("bar err cap {}: {err}", path.display()))
+            })?;
         chart
             .draw_series(std::iter::once(PathElement::new(
                 vec![(center - 0.05, high), (center + 0.05, high)],
@@ -2556,7 +2747,9 @@ fn save_overall_bar_chart(path: &Path, bars_data: &[(String, Vec<f32>)]) -> Resu
                 (center, high + y_label_offset),
                 ("sans-serif", 22).into_font().color(&BLACK),
             )))
-            .map_err(|err| AudioError::FileExport(format!("bar label {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("bar label {}: {err}", path.display()))
+            })?;
     }
 
     root.present()
@@ -2659,8 +2852,9 @@ fn save_sweep_multi_plot(
     let (y_min, y_max) = sweep_y_bounds(&normalized_non_empty);
 
     let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
-    root.fill(&RGBColor(240, 240, 240))
-        .map_err(|err| AudioError::FileExport(format!("sweep background {}: {err}", path.display())))?;
+    root.fill(&RGBColor(240, 240, 240)).map_err(|err| {
+        AudioError::FileExport(format!("sweep background {}: {err}", path.display()))
+    })?;
 
     let title = format!(
         "{title}  |  normalized to {:.0} Hz @ {:.0} dB",
@@ -2669,7 +2863,10 @@ fn save_sweep_multi_plot(
 
     let mut chart = ChartBuilder::on(&root)
         .margin(28)
-        .caption(title, ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .caption(
+            title,
+            ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)),
+        )
         .set_label_area_size(LabelAreaPosition::Left, 100)
         .set_label_area_size(LabelAreaPosition::Bottom, 84)
         .build_cartesian_2d((x_min..x_max).log_scale(), y_min..y_max)
@@ -2682,7 +2879,11 @@ fn save_sweep_multi_plot(
         .axis_style(RGBColor(125, 125, 125))
         .light_line_style(RGBColor(210, 210, 210))
         .bold_line_style(RGBColor(180, 180, 180))
-        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .label_style(
+            ("sans-serif", 28)
+                .into_font()
+                .color(&RGBColor(115, 115, 115)),
+        )
         .x_label_formatter(&|value| {
             if *value >= 1000.0 {
                 format!("{:.0}k", *value / 1000.0)
@@ -2701,17 +2902,28 @@ fn save_sweep_multi_plot(
             ],
             RGBColor(145, 145, 145).mix(0.7).stroke_width(2),
         )))
-        .map_err(|err| AudioError::FileExport(format!("sweep norm-line {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("sweep norm-line {}: {err}", path.display()))
+        })?;
 
     chart
         .draw_series(std::iter::once(PathElement::new(
-            vec![(SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_min), (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_max)],
+            vec![
+                (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_min),
+                (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_max),
+            ],
             RGBColor(175, 175, 175).mix(0.65).stroke_width(2),
         )))
-        .map_err(|err| AudioError::FileExport(format!("sweep norm-marker {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("sweep norm-marker {}: {err}", path.display()))
+        })?;
 
     for (idx, curve) in normalized_non_empty.iter().enumerate() {
-        let alpha = if normalized_non_empty.len() > 1 { 0.35 } else { 0.95 };
+        let alpha = if normalized_non_empty.len() > 1 {
+            0.35
+        } else {
+            0.95
+        };
         let color = if idx % 2 == 0 {
             RGBColor(13, 73, 176).mix(alpha)
         } else {
@@ -2719,13 +2931,12 @@ fn save_sweep_multi_plot(
         };
         chart
             .draw_series(LineSeries::new(
-                freqs
-                    .iter()
-                    .zip(curve.iter())
-                    .map(|(x, y)| (*x, *y)),
+                freqs.iter().zip(curve.iter()).map(|(x, y)| (*x, *y)),
                 color.stroke_width(if normalized_non_empty.len() > 1 { 2 } else { 5 }),
             ))
-            .map_err(|err| AudioError::FileExport(format!("sweep line {}: {err}", path.display())))?;
+            .map_err(|err| {
+                AudioError::FileExport(format!("sweep line {}: {err}", path.display()))
+            })?;
     }
 
     root.present()
@@ -2757,8 +2968,9 @@ fn save_sweep_lr_avg_plot(
     let (y_min, y_max) = sweep_y_bounds(&[left_norm.clone(), right_norm.clone()]);
 
     let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
-    root.fill(&RGBColor(240, 240, 240))
-        .map_err(|err| AudioError::FileExport(format!("sweep background {}: {err}", path.display())))?;
+    root.fill(&RGBColor(240, 240, 240)).map_err(|err| {
+        AudioError::FileExport(format!("sweep background {}: {err}", path.display()))
+    })?;
 
     let title = format!(
         "Left/Right Average Frequency Response  |  normalized to {:.0} Hz @ {:.0} dB",
@@ -2767,7 +2979,10 @@ fn save_sweep_lr_avg_plot(
 
     let mut chart = ChartBuilder::on(&root)
         .margin(28)
-        .caption(title, ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .caption(
+            title,
+            ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)),
+        )
         .set_label_area_size(LabelAreaPosition::Left, 100)
         .set_label_area_size(LabelAreaPosition::Bottom, 84)
         .build_cartesian_2d((x_min..x_max).log_scale(), y_min..y_max)
@@ -2780,7 +2995,11 @@ fn save_sweep_lr_avg_plot(
         .axis_style(RGBColor(125, 125, 125))
         .light_line_style(RGBColor(210, 210, 210))
         .bold_line_style(RGBColor(180, 180, 180))
-        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .label_style(
+            ("sans-serif", 28)
+                .into_font()
+                .color(&RGBColor(115, 115, 115)),
+        )
         .x_label_formatter(&|value| {
             if *value >= 1000.0 {
                 format!("{:.0}k", *value / 1000.0)
@@ -2799,14 +3018,21 @@ fn save_sweep_lr_avg_plot(
             ],
             RGBColor(145, 145, 145).mix(0.7).stroke_width(2),
         )))
-        .map_err(|err| AudioError::FileExport(format!("sweep norm-line {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("sweep norm-line {}: {err}", path.display()))
+        })?;
 
     chart
         .draw_series(std::iter::once(PathElement::new(
-            vec![(SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_min), (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_max)],
+            vec![
+                (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_min),
+                (SWEEP_PLOT_NORMALIZE_FREQ_HZ, y_max),
+            ],
             RGBColor(175, 175, 175).mix(0.65).stroke_width(2),
         )))
-        .map_err(|err| AudioError::FileExport(format!("sweep norm-marker {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("sweep norm-marker {}: {err}", path.display()))
+        })?;
 
     chart
         .draw_series(LineSeries::new(
@@ -2815,7 +3041,12 @@ fn save_sweep_lr_avg_plot(
         ))
         .map_err(|err| AudioError::FileExport(format!("sweep left {}: {err}", path.display())))?
         .label("Left")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(12, 67, 170).stroke_width(5)));
+        .legend(|(x, y)| {
+            PathElement::new(
+                vec![(x, y), (x + 36, y)],
+                RGBColor(12, 67, 170).stroke_width(5),
+            )
+        });
 
     chart
         .draw_series(LineSeries::new(
@@ -2824,13 +3055,22 @@ fn save_sweep_lr_avg_plot(
         ))
         .map_err(|err| AudioError::FileExport(format!("sweep right {}: {err}", path.display())))?
         .label("Right")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(27, 95, 195).stroke_width(4)));
+        .legend(|(x, y)| {
+            PathElement::new(
+                vec![(x, y), (x + 36, y)],
+                RGBColor(27, 95, 195).stroke_width(4),
+            )
+        });
 
     chart
         .configure_series_labels()
         .border_style(RGBColor(170, 170, 170))
         .background_style(RGBColor(236, 236, 236).mix(0.8))
-        .label_font(("sans-serif", 28).into_font().color(&RGBColor(110, 110, 110)))
+        .label_font(
+            ("sans-serif", 28)
+                .into_font()
+                .color(&RGBColor(110, 110, 110)),
+        )
         .draw()
         .map_err(|err| AudioError::FileExport(format!("sweep legend {}: {err}", path.display())))?;
 
@@ -2860,17 +3100,25 @@ fn save_anc_single_plot(
     if freqs.len() < 2 || attenuation_l.is_empty() {
         return Ok(());
     }
-    let x_min = freqs.iter().copied().filter(|f| *f > 0.0).fold(f32::INFINITY, f32::min);
+    let x_min = freqs
+        .iter()
+        .copied()
+        .filter(|f| *f > 0.0)
+        .fold(f32::INFINITY, f32::min);
     let x_max = freqs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
     let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
-    root.fill(&RGBColor(240, 240, 240))
-        .map_err(|err| AudioError::FileExport(format!("anc background {}: {err}", path.display())))?;
+    root.fill(&RGBColor(240, 240, 240)).map_err(|err| {
+        AudioError::FileExport(format!("anc background {}: {err}", path.display()))
+    })?;
 
     let title = format!("{mode_label} — Noise Attenuation (dB)");
     let mut chart = ChartBuilder::on(&root)
         .margin(28)
-        .caption(title, ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .caption(
+            title,
+            ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)),
+        )
         .set_label_area_size(LabelAreaPosition::Left, 100)
         .set_label_area_size(LabelAreaPosition::Bottom, 84)
         .build_cartesian_2d((x_min..x_max).log_scale(), ANC_PLOT_Y_MIN..ANC_PLOT_Y_MAX)
@@ -2883,9 +3131,17 @@ fn save_anc_single_plot(
         .axis_style(RGBColor(125, 125, 125))
         .light_line_style(RGBColor(210, 210, 210))
         .bold_line_style(RGBColor(180, 180, 180))
-        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .label_style(
+            ("sans-serif", 28)
+                .into_font()
+                .color(&RGBColor(115, 115, 115)),
+        )
         .x_label_formatter(&|value| {
-            if *value >= 1000.0 { format!("{:.0}k", *value / 1000.0) } else { format!("{value:.0}") }
+            if *value >= 1000.0 {
+                format!("{:.0}k", *value / 1000.0)
+            } else {
+                format!("{value:.0}")
+            }
         })
         .draw()
         .map_err(|err| AudioError::FileExport(format!("anc mesh {}: {err}", path.display())))?;
@@ -2901,29 +3157,49 @@ fn save_anc_single_plot(
     // L channel
     chart
         .draw_series(LineSeries::new(
-            freqs.iter().zip(attenuation_l.iter()).map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
+            freqs
+                .iter()
+                .zip(attenuation_l.iter())
+                .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
             RGBColor(13, 73, 176).stroke_width(5),
         ))
         .map_err(|err| AudioError::FileExport(format!("anc left {}: {err}", path.display())))?
         .label("Left")
-        .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(13, 73, 176).stroke_width(5)));
+        .legend(|(x, y)| {
+            PathElement::new(
+                vec![(x, y), (x + 36, y)],
+                RGBColor(13, 73, 176).stroke_width(5),
+            )
+        });
 
     if !attenuation_r.is_empty() {
         chart
             .draw_series(LineSeries::new(
-                freqs.iter().zip(attenuation_r.iter()).map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
+                freqs
+                    .iter()
+                    .zip(attenuation_r.iter())
+                    .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
                 RGBColor(27, 95, 195).mix(0.6).stroke_width(3),
             ))
             .map_err(|err| AudioError::FileExport(format!("anc right {}: {err}", path.display())))?
             .label("Right")
-            .legend(|(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], RGBColor(27, 95, 195).stroke_width(3)));
+            .legend(|(x, y)| {
+                PathElement::new(
+                    vec![(x, y), (x + 36, y)],
+                    RGBColor(27, 95, 195).stroke_width(3),
+                )
+            });
     }
 
     chart
         .configure_series_labels()
         .border_style(RGBColor(170, 170, 170))
         .background_style(RGBColor(236, 236, 236).mix(0.8))
-        .label_font(("sans-serif", 28).into_font().color(&RGBColor(110, 110, 110)))
+        .label_font(
+            ("sans-serif", 28)
+                .into_font()
+                .color(&RGBColor(110, 110, 110)),
+        )
         .draw()
         .map_err(|err| AudioError::FileExport(format!("anc legend {}: {err}", path.display())))?;
 
@@ -2941,20 +3217,30 @@ fn save_anc_combined_plot(
         return Ok(());
     }
 
-    let x_min = freqs.iter().copied().filter(|f| *f > 0.0).fold(f32::INFINITY, f32::min);
+    let x_min = freqs
+        .iter()
+        .copied()
+        .filter(|f| *f > 0.0)
+        .fold(f32::INFINITY, f32::min);
     let x_max = freqs.iter().copied().fold(f32::NEG_INFINITY, f32::max);
 
     let root = BitMapBackend::new(path, (SWEEP_PLOT_WIDTH, SWEEP_PLOT_HEIGHT)).into_drawing_area();
-    root.fill(&RGBColor(240, 240, 240))
-        .map_err(|err| AudioError::FileExport(format!("anc-combined background {}: {err}", path.display())))?;
+    root.fill(&RGBColor(240, 240, 240)).map_err(|err| {
+        AudioError::FileExport(format!("anc-combined background {}: {err}", path.display()))
+    })?;
 
     let mut chart = ChartBuilder::on(&root)
         .margin(28)
-        .caption("ANC / Transparency — Noise Attenuation (dB)", ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)))
+        .caption(
+            "ANC / Transparency — Noise Attenuation (dB)",
+            ("sans-serif", 42).into_font().color(&RGBColor(95, 95, 95)),
+        )
         .set_label_area_size(LabelAreaPosition::Left, 100)
         .set_label_area_size(LabelAreaPosition::Bottom, 84)
         .build_cartesian_2d((x_min..x_max).log_scale(), ANC_PLOT_Y_MIN..ANC_PLOT_Y_MAX)
-        .map_err(|err| AudioError::FileExport(format!("anc-combined chart {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("anc-combined chart {}: {err}", path.display()))
+        })?;
 
     chart
         .configure_mesh()
@@ -2963,12 +3249,22 @@ fn save_anc_combined_plot(
         .axis_style(RGBColor(125, 125, 125))
         .light_line_style(RGBColor(210, 210, 210))
         .bold_line_style(RGBColor(180, 180, 180))
-        .label_style(("sans-serif", 28).into_font().color(&RGBColor(115, 115, 115)))
+        .label_style(
+            ("sans-serif", 28)
+                .into_font()
+                .color(&RGBColor(115, 115, 115)),
+        )
         .x_label_formatter(&|value| {
-            if *value >= 1000.0 { format!("{:.0}k", *value / 1000.0) } else { format!("{value:.0}") }
+            if *value >= 1000.0 {
+                format!("{:.0}k", *value / 1000.0)
+            } else {
+                format!("{value:.0}")
+            }
         })
         .draw()
-        .map_err(|err| AudioError::FileExport(format!("anc-combined mesh {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("anc-combined mesh {}: {err}", path.display()))
+        })?;
 
     // 0 dB reference line
     chart
@@ -2976,30 +3272,46 @@ fn save_anc_combined_plot(
             vec![(x_min, 0.0_f32), (x_max, 0.0_f32)],
             RGBColor(145, 145, 145).mix(0.8).stroke_width(2),
         )))
-        .map_err(|err| AudioError::FileExport(format!("anc-combined zeroline {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("anc-combined zeroline {}: {err}", path.display()))
+        })?;
 
     for (idx, (label, curve)) in curves.iter().enumerate() {
         let color = anc_curve_colors(idx);
         chart
             .draw_series(LineSeries::new(
-                freqs.iter().zip(curve.iter()).map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
+                freqs
+                    .iter()
+                    .zip(curve.iter())
+                    .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
                 color.stroke_width(4),
             ))
-            .map_err(|err| AudioError::FileExport(format!("anc-combined line {}: {err}", path.display())))?
+            .map_err(|err| {
+                AudioError::FileExport(format!("anc-combined line {}: {err}", path.display()))
+            })?
             .label(*label)
-            .legend(move |(x, y)| PathElement::new(vec![(x, y), (x + 36, y)], color.stroke_width(4)));
+            .legend(move |(x, y)| {
+                PathElement::new(vec![(x, y), (x + 36, y)], color.stroke_width(4))
+            });
     }
 
     chart
         .configure_series_labels()
         .border_style(RGBColor(170, 170, 170))
         .background_style(RGBColor(236, 236, 236).mix(0.8))
-        .label_font(("sans-serif", 28).into_font().color(&RGBColor(110, 110, 110)))
+        .label_font(
+            ("sans-serif", 28)
+                .into_font()
+                .color(&RGBColor(110, 110, 110)),
+        )
         .draw()
-        .map_err(|err| AudioError::FileExport(format!("anc-combined legend {}: {err}", path.display())))?;
+        .map_err(|err| {
+            AudioError::FileExport(format!("anc-combined legend {}: {err}", path.display()))
+        })?;
 
-    root.present()
-        .map_err(|err| AudioError::FileExport(format!("anc-combined write {}: {err}", path.display())))
+    root.present().map_err(|err| {
+        AudioError::FileExport(format!("anc-combined write {}: {err}", path.display()))
+    })
 }
 
 /// Public entry: generate per-mode + combined ANC attenuation plots.
@@ -3026,11 +3338,15 @@ pub fn save_anc_plots(
     if modes.len() > 1 {
         let combined_filename = format!("anc_combined_{timestamp}.png");
         let combined_path = output_dir.join(&combined_filename);
-        let curve_refs: Vec<(&str, &[f32])> = modes.iter()
+        let curve_refs: Vec<(&str, &[f32])> = modes
+            .iter()
             .map(|(_, label, att_l, _)| (*label, att_l.as_slice()))
             .collect();
         save_anc_combined_plot(&combined_path, freqs, &curve_refs)?;
-        result.push(("plot_combined".to_string(), combined_path.display().to_string()));
+        result.push((
+            "plot_combined".to_string(),
+            combined_path.display().to_string(),
+        ));
     }
 
     Ok(result)
@@ -3043,8 +3359,9 @@ pub fn save_anc_squiglink(
     freqs: &[f32],
     attenuation_db: &[f32],
 ) -> Result<(), AudioError> {
-    let mut f = File::create(path)
-        .map_err(|err| AudioError::FileExport(format!("failed to create {}: {err}", path.display())))?;
+    let mut f = File::create(path).map_err(|err| {
+        AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
+    })?;
     writeln!(f, "# PawdioLab ANC Attenuation — {mode_label}")
         .map_err(|err| AudioError::FileExport(format!("write {}: {err}", path.display())))?;
     writeln!(f, "# Frequency(Hz)\tAttenuation(dB)")
@@ -3071,13 +3388,16 @@ fn save_squiglink_files(
         let mut f = File::create(&path).map_err(|err| {
             AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
         })?;
-        writeln!(f, "# PawdioLab Frequency Response - Left Channel")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
-        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        writeln!(f, "# PawdioLab Frequency Response - Left Channel").map_err(|err| {
+            AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+        })?;
+        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)").map_err(|err| {
+            AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+        })?;
         for (freq, amp) in freqs.iter().zip(left_db.iter()) {
-            writeln!(f, "{freq:.2}\t{amp:.3}")
-                .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+            writeln!(f, "{freq:.2}\t{amp:.3}").map_err(|err| {
+                AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+            })?;
         }
         result.push(("squiglink_left".to_string(), path.display().to_string()));
     }
@@ -3087,13 +3407,16 @@ fn save_squiglink_files(
         let mut f = File::create(&path).map_err(|err| {
             AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
         })?;
-        writeln!(f, "# PawdioLab Frequency Response - Right Channel")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
-        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        writeln!(f, "# PawdioLab Frequency Response - Right Channel").map_err(|err| {
+            AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+        })?;
+        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)").map_err(|err| {
+            AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+        })?;
         for (freq, amp) in freqs.iter().zip(right_db.iter()) {
-            writeln!(f, "{freq:.2}\t{amp:.3}")
-                .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+            writeln!(f, "{freq:.2}\t{amp:.3}").map_err(|err| {
+                AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+            })?;
         }
         result.push(("squiglink_right".to_string(), path.display().to_string()));
     }
@@ -3103,13 +3426,16 @@ fn save_squiglink_files(
         let mut f = File::create(&path).map_err(|err| {
             AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
         })?;
-        writeln!(f, "# PawdioLab Frequency Response - Average (L+R)")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
-        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        writeln!(f, "# PawdioLab Frequency Response - Average (L+R)").map_err(|err| {
+            AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+        })?;
+        writeln!(f, "# Frequency(Hz)\tAmplitude(dB)").map_err(|err| {
+            AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+        })?;
         for (freq, amp) in freqs.iter().zip(avg_db.iter()) {
-            writeln!(f, "{freq:.2}\t{amp:.3}")
-                .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+            writeln!(f, "{freq:.2}\t{amp:.3}").map_err(|err| {
+                AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+            })?;
         }
         result.push(("squiglink_avg".to_string(), path.display().to_string()));
     }
@@ -3132,13 +3458,16 @@ pub fn write_squiglink_both_file(
     let mut f = File::create(path).map_err(|err| {
         AudioError::FileExport(format!("failed to create {}: {err}", path.display()))
     })?;
-    writeln!(f, "# PawdioLab Frequency Response - Both Channels")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
-    writeln!(f, "# Frequency(Hz)\tLeft(dB)\tRight(dB)")
-        .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+    writeln!(f, "# PawdioLab Frequency Response - Both Channels").map_err(|err| {
+        AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+    })?;
+    writeln!(f, "# Frequency(Hz)\tLeft(dB)\tRight(dB)").map_err(|err| {
+        AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+    })?;
     for ((freq, left), right) in freqs.iter().zip(left_db.iter()).zip(right_db.iter()) {
-        writeln!(f, "{freq:.2}\t{left:.3}\t{right:.3}")
-            .map_err(|err| AudioError::FileExport(format!("failed to write {}: {err}", path.display())))?;
+        writeln!(f, "{freq:.2}\t{left:.3}\t{right:.3}").map_err(|err| {
+            AudioError::FileExport(format!("failed to write {}: {err}", path.display()))
+        })?;
     }
     Ok(())
 }
@@ -3157,9 +3486,7 @@ fn timestamp_string() -> String {
     let minute = (seconds_of_day % 3600) / 60;
     let second = seconds_of_day % 60;
 
-    format!(
-        "{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}"
-    )
+    format!("{year:04}-{month:02}-{day:02} {hour:02}:{minute:02}:{second:02}")
 }
 
 fn civil_from_days(days: i64) -> (i32, u32, u32) {
@@ -3197,7 +3524,8 @@ fn resample_cubic(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
         return input.to_vec();
     }
 
-    let output_len = ((input.len() as f64) * (dst_rate as f64) / (src_rate as f64)).round() as usize;
+    let output_len =
+        ((input.len() as f64) * (dst_rate as f64) / (src_rate as f64)).round() as usize;
     let output_len = output_len.max(1);
     let ratio = src_rate as f64 / dst_rate as f64;
 
@@ -3262,10 +3590,26 @@ fn resample_cubic(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
             let x2 = x + 1;
             let x3 = x + 2;
 
-            let h0 = if x0 < n { (source_pos - x0 as f64) as f32 } else { 0.0 };
-            let h1 = if x1 < n { (source_pos - x1 as f64) as f32 } else { 0.0 };
-            let h2 = if x2 < n { (source_pos - x2 as f64) as f32 } else { 0.0 };
-            let h3 = if x3 < n { (source_pos - x3 as f64) as f32 } else { 0.0 };
+            let _h0 = if x0 < n {
+                (source_pos - x0 as f64) as f32
+            } else {
+                0.0
+            };
+            let h1 = if x1 < n {
+                (source_pos - x1 as f64) as f32
+            } else {
+                0.0
+            };
+            let h2 = if x2 < n {
+                (source_pos - x2 as f64) as f32
+            } else {
+                0.0
+            };
+            let _h3 = if x3 < n {
+                (source_pos - x3 as f64) as f32
+            } else {
+                0.0
+            };
 
             let a = -h2 * h2 * h2 / 6.0 + h2 * h2 / 2.0 - h2 * h1 / 3.0;
             let b = h2 * h2 * h2 / 2.0 - h2 * h2 + h2 * h1 / 2.0;
@@ -3273,10 +3617,10 @@ fn resample_cubic(input: &[f32], src_rate: u32, dst_rate: u32) -> Vec<f32> {
             let d = -h1 * h1 * h1 / 6.0 + h1 * h1 / 2.0 - h1 * h2 / 3.0;
 
             let val = if x0 < n && x3 < n {
-                input[x0] as f64 * a as f64 +
-                input[x1] as f64 * b as f64 +
-                input[x2] as f64 * c as f64 +
-                input[x3] as f64 * d as f64
+                input[x0] as f64 * a as f64
+                    + input[x1] as f64 * b as f64
+                    + input[x2] as f64 * c as f64
+                    + input[x3] as f64 * d as f64
             } else if x1 < n && x2 < n {
                 input[x1] as f64 * (1.0 - frac) as f64 + input[x2] as f64 * frac as f64
             } else {
@@ -3347,7 +3691,13 @@ fn frequency_response_curve(
 fn magnitude_spectrum(signal: &[f32], n: usize) -> Vec<f32> {
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(n);
-    let mut buffer = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
+    let mut buffer = vec![
+        Complex {
+            re: 0.0f32,
+            im: 0.0f32
+        };
+        n
+    ];
 
     for (idx, value) in signal.iter().enumerate().take(n) {
         buffer[idx].re = *value;
@@ -3365,7 +3715,11 @@ fn magnitude_spectrum(signal: &[f32], n: usize) -> Vec<f32> {
         .map(|(i, c)| {
             let mag = (c.re * c.re + c.im * c.im).sqrt();
             // DC (i=0) and Nyquist (i=half-1) are not doubled
-            if i == 0 || i == half - 1 { mag / n as f32 } else { mag * scale }
+            if i == 0 || i == half - 1 {
+                mag / n as f32
+            } else {
+                mag * scale
+            }
         })
         .collect()
 }
@@ -3420,12 +3774,32 @@ fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Optio
     let fft = planner.plan_fft_forward(n);
     let ifft = planner.plan_fft_inverse(n);
 
-    let mut a = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
-    let mut b = vec![Complex { re: 0.0f32, im: 0.0f32 }; n];
+    let mut a = vec![
+        Complex {
+            re: 0.0f32,
+            im: 0.0f32
+        };
+        n
+    ];
+    let mut b = vec![
+        Complex {
+            re: 0.0f32,
+            im: 0.0f32
+        };
+        n
+    ];
 
     // Normalize by peak amplitude so the correlation is signal-shape-based, not level-based
-    let rec_peak = recorded.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs())).max(1e-12);
-    let ref_peak = reference.iter().copied().fold(0.0f32, |acc, v| acc.max(v.abs())).max(1e-12);
+    let rec_peak = recorded
+        .iter()
+        .copied()
+        .fold(0.0f32, |acc, v| acc.max(v.abs()))
+        .max(1e-12);
+    let ref_peak = reference
+        .iter()
+        .copied()
+        .fold(0.0f32, |acc, v| acc.max(v.abs()))
+        .max(1e-12);
 
     for (idx, value) in recorded.iter().enumerate() {
         a[idx].re = (*value / rec_peak) * rec_win[idx];
@@ -3487,8 +3861,8 @@ fn play_and_record(
     let output_channels = output_config.channels as usize;
     let input_channels = expected_input_channels.max(1);
 
-    let target_frames = (record_duration_secs.max(0.05) * input_config.sample_rate.0 as f32)
-        .round() as usize;
+    let target_frames =
+        (record_duration_secs.max(0.05) * input_config.sample_rate.0 as f32).round() as usize;
     let target_frames = target_frames.max(1);
     let recorded = Arc::new(Mutex::new(
         (0..input_channels)
@@ -3739,7 +4113,11 @@ impl PinkNoiseState {
             b4: 0.0,
             b5: 0.0,
             b6: 0.0,
-            seed: if seed == 0 { 0xA5A5_A5A5_A5A5_A5A5 } else { seed },
+            seed: if seed == 0 {
+                0xA5A5_A5A5_A5A5_A5A5
+            } else {
+                seed
+            },
             gain: gain.clamp(0.0, 1.0),
         }
     }
@@ -4103,7 +4481,10 @@ fn read_monitor_f32(data: &[f32], channels: usize, stats: &Arc<Mutex<MonitorStat
 }
 
 fn read_monitor_i16(data: &[i16], channels: usize, stats: &Arc<Mutex<MonitorStats>>) {
-    let converted: Vec<f32> = data.iter().map(|sample| *sample as f32 / i16::MAX as f32).collect();
+    let converted: Vec<f32> = data
+        .iter()
+        .map(|sample| *sample as f32 / i16::MAX as f32)
+        .collect();
     update_monitor_stats(&converted, channels, stats);
 }
 
@@ -4282,7 +4663,11 @@ mod tests {
         assert_eq!(win.len(), 8);
         assert!((win[0] - 0.0).abs() < 1e-6, "w[0] should be 0");
         // Last sample w[7] = 0.5*(1 - cos(2π*7/8)) ≠ 0 (not 1.0 either but not zero)
-        assert!(win[7] > 0.0, "periodic Hann last sample should be non-zero: {}", win[7]);
+        assert!(
+            win[7] > 0.0,
+            "periodic Hann last sample should be non-zero: {}",
+            win[7]
+        );
         // All values in [0,1]
         assert!(win.iter().all(|&w| (0.0..=1.0).contains(&w)));
     }
@@ -4290,7 +4675,9 @@ mod tests {
     #[test]
     fn magnitude_spectrum_returns_half_plus_one_bins() {
         let n = 64usize;
-        let signal: Vec<f32> = (0..n).map(|i| (2.0 * PI * i as f32 / n as f32).sin()).collect();
+        let signal: Vec<f32> = (0..n)
+            .map(|i| (2.0 * PI * i as f32 / n as f32).sin())
+            .collect();
         let mag = magnitude_spectrum(&signal, n);
         assert_eq!(mag.len(), n / 2 + 1);
     }
@@ -4315,7 +4702,8 @@ mod tests {
         // Reference: sine burst starting at `mid`
         let mut reference = vec![0.0f32; len];
         for k in 0..32 {
-            reference[mid + k] = (2.0 * std::f32::consts::PI * 1000.0 * (mid + k) as f32 / sample_rate as f32).sin();
+            reference[mid + k] =
+                (2.0 * std::f32::consts::PI * 1000.0 * (mid + k) as f32 / sample_rate as f32).sin();
         }
 
         // Recorded is same burst shifted by delay_samples

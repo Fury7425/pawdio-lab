@@ -13,6 +13,12 @@ import { usePawdioLabContext } from "../pawdio-context";
 
 type Channel = "L" | "R";
 type YAxisMode = "auto" | "wide" | "narrow";
+type HoverItem = {
+  key: AncModeKey;
+  color: string;
+  label: string;
+  db: number;
+};
 
 const Y_AXIS_STORAGE_KEY = "pawdio-lab-anc-yaxis-v1";
 
@@ -217,7 +223,7 @@ export function AncPage() {
         bestIdx = i;
       }
     }
-    const items: Array<{ key: AncModeKey; color: string; label: string; db: number }> = [];
+    const items: HoverItem[] = [];
     for (const key of modeOrdered) {
       if (key === baselineKey) continue;
       if (!visibleModes.has(key)) continue;
@@ -233,7 +239,7 @@ export function AncPage() {
       });
     }
     return { hz: freqs[bestIdx], items };
-    // getAttenuation depends on baseline + channel — listed deps cover both transitively.
+    // getAttenuation closes over baseline + channel — listed deps cover both.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hover, baseline, baselineKey, captures, visibleModes, channel]);
 
@@ -796,8 +802,22 @@ export function AncPage() {
               {/* Graph area offset by 20px for Y labels */}
               <g transform="translate(20, 0)">
                 {/* Top + bottom border */}
-                <line x1="0" y1="10" x2="200" y2="10" stroke="var(--level-grid)" strokeWidth="0.4" />
-                <line x1="0" y1="90" x2="200" y2="90" stroke="var(--level-grid)" strokeWidth="0.4" />
+                <line
+                  x1="0"
+                  y1="10"
+                  x2="200"
+                  y2="10"
+                  stroke="var(--level-grid)"
+                  strokeWidth="0.4"
+                />
+                <line
+                  x1="0"
+                  y1="90"
+                  x2="200"
+                  y2="90"
+                  stroke="var(--level-grid)"
+                  strokeWidth="0.4"
+                />
 
                 {/* Minor x-grid (B6) */}
                 {X_GUIDES_MINOR.map((hz) => {
