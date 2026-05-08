@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(cargo build:*)",
-      "PowerShell($nodePaths = @\\(\"C:\\\\Program Files\\\\nodejs\", \"C:\\\\Users\\\\robin\\\\AppData\\\\Roaming\\\\nvm\\\\current\", \"$env:APPDATA\\\\npm\", \"C:\\\\Users\\\\robin\\\\.nvm\\\\versions\\\\node\"\\) ; foreach \\($p in $nodePaths\\) { if \\(Test-Path $p\\) { ls $p | Select-Object -First 3 } })",
-      "PowerShell(Set-Location \"E:\\\\프로젝트\\\\pawdio-lab\\\\src-tauri\"; $env:PATH = \"C:\\\\Users\\\\robin\\\\.cargo\\\\bin;\" + $env:PATH; cargo test --no-run 2>&1 | Select-Object -Last 20)"
-    ]
-  }
-}
