@@ -69,6 +69,13 @@ type InputLevelEvent = {
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
 const UI_STATE_STORAGE_KEY = "pawdio-lab-ui-state-v1";
 
+const logCaughtError =
+  (label: string) =>
+  (err: unknown): undefined => {
+    console.warn(`[pawdio-lab] ${label}:`, err);
+    return undefined;
+  };
+
 const LATENCY_PRESETS: LatencyPresetConfig[] = [
   {
     uiKey: "beep1k",
@@ -492,6 +499,7 @@ export function usePawdioLabController() {
     mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
   );
   const [latencyProgress, setLatencyProgress] = useState<LatencyProgress[]>([]);
+  const [lastTestProgress, setLastTestProgress] = useState<TestProgress | null>(null);
   const [latencyReport, setLatencyReport] = useState<LatencyReport | null>(
     null,
   );
@@ -647,7 +655,7 @@ export function usePawdioLabController() {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
     } finally {
-      refreshRuntimeStatus().catch(() => undefined);
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
 
@@ -744,7 +752,7 @@ export function usePawdioLabController() {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
     } finally {
-      refreshRuntimeStatus().catch(() => undefined);
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
 
@@ -835,7 +843,7 @@ export function usePawdioLabController() {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
     } finally {
-      refreshRuntimeStatus().catch(() => undefined);
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
 
@@ -912,7 +920,7 @@ export function usePawdioLabController() {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
     } finally {
-      refreshRuntimeStatus().catch(() => undefined);
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
 
@@ -1056,7 +1064,7 @@ export function usePawdioLabController() {
                 leftDb,
                 rightDb,
               })
-              .catch(() => undefined);
+              .catch(logCaughtError("writeSquiglinkCombined"));
             squiglinkBothPath = bothPath;
           }
         }
@@ -1079,7 +1087,7 @@ export function usePawdioLabController() {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
     } finally {
-      refreshRuntimeStatus().catch(() => undefined);
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
 
@@ -1550,7 +1558,7 @@ export function usePawdioLabController() {
     } catch (err) {
       setError(String(err));
     } finally {
-      refreshRuntimeStatus().catch(() => undefined);
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
 
@@ -1619,7 +1627,7 @@ export function usePawdioLabController() {
 
   useEffect(() => {
     const timer = setInterval(() => {
-      refreshRuntimeStatus().catch(() => undefined);
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }, 1000);
 
     return () => clearInterval(timer);
@@ -1645,6 +1653,7 @@ export function usePawdioLabController() {
           "test-progress",
           (event) => {
             appendLog(`[${event.payload.test}] ${event.payload.message}`);
+            setLastTestProgress(event.payload);
             if (
               event.payload.test === "monitor" &&
               event.payload.message.toLowerCase().includes("error")
@@ -1728,6 +1737,7 @@ export function usePawdioLabController() {
     latencyRequest,
     setLatencyRequest,
     latencyProgress,
+    lastTestProgress,
     latencyReport,
     latencyCalibration,
     calibrationText,
@@ -1759,6 +1769,7 @@ export function usePawdioLabController() {
     ancSelectedModes,
     setAncSelectedModes,
     ancCaptures,
+    setAncCaptures,
     ancRunQueue,
     ancCurrentStep,
     ancStepPrompt,

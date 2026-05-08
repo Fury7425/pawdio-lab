@@ -131,38 +131,48 @@ export const ANC_MODE_META: Record<
   {
     label: string;
     detail: string;
+    helpText: string;
     captureTitle: string;
     captureDetail: string;
     color: string;
   }
 > = {
   true_reference: {
-    label: "No Headphones",
-    detail: "Mic exposed, nothing worn",
-    captureTitle: "True Reference",
+    label: "Open Ears (no headphones)",
+    detail: "Bare mic, nothing worn",
+    helpText:
+      "Use this for absolute attenuation numbers. Skip if you only want to compare ANC vs passive.",
+    captureTitle: "Open Ears",
     captureDetail:
       "Remove your headphones completely. The mic captures the raw room signal.",
     color: "var(--gray-8)",
   },
   reference: {
-    label: "Passive (ANC off)",
-    detail: "Headphones on, all modes off",
-    captureTitle: "Baseline Capture",
-    captureDetail: "Put on your headphones. Disable ANC and Transparency.",
+    label: "Headphones On, Power Off",
+    detail: "Worn but every mode disabled",
+    helpText:
+      "The default baseline. Put the headphones on but keep ANC and Transparency off.",
+    captureTitle: "Baseline (Power Off)",
+    captureDetail:
+      "Put the headphones on. Disable ANC and Transparency — fully off, not Transparency.",
     color: "var(--gray-10)",
   },
   anc: {
-    label: "ANC Active",
-    detail: "Active noise cancellation on",
-    captureTitle: "Enable ANC",
+    label: "ANC On",
+    detail: "Active noise cancellation engaged",
+    helpText:
+      "Toggle ANC on the headphones, then capture. Compared to baseline gives ANC attenuation curve.",
+    captureTitle: "ANC On",
     captureDetail:
       "Turn on Active Noise Cancellation on your headphones, then start.",
     color: "var(--accent-9)",
   },
   transparency: {
-    label: "Transparency",
-    detail: "Passthrough / ambient mode",
-    captureTitle: "Enable Transparency",
+    label: "Transparency / Ambient",
+    detail: "Pass-through mode engaged",
+    helpText:
+      "Toggle Transparency / Ambient on the headphones. Curve will usually sit near 0 dB or slightly above.",
+    captureTitle: "Transparency / Ambient",
     captureDetail:
       "Switch to Transparency or Ambient mode on your headphones, then start.",
     color: "hsl(175, 65%, 45%)",

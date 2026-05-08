@@ -56,12 +56,12 @@ export function SweepFrPage() {
     const smoothValues = values.map((_, index) => {
       let weightedSum = 0;
       let weightTotal = 0;
-      for (let offset = -2; offset <= 2; offset += 1) {
+      for (let offset = -1; offset <= 1; offset += 1) {
         const target = index + offset;
         if (target < 0 || target >= values.length) {
           continue;
         }
-        const weight = offset === 0 ? 3 : Math.abs(offset) === 1 ? 2 : 1;
+        const weight = offset === 0 ? 2 : 1;
         weightedSum += values[target] * weight;
         weightTotal += weight;
       }
@@ -71,8 +71,8 @@ export function SweepFrPage() {
     const points = smoothValues.map((value, index) => {
       const hz = Math.min(maxHz, Math.max(minHz, freqs[index]));
       const x = ((Math.log10(hz) - minLog) / spanLog) * 200;
-      const clamped = Math.max(-18, Math.min(18, value));
-      const y = 10 + ((18 - clamped) / 36) * 80;
+      const clamped = Math.max(-20, Math.min(20, value));
+      const y = 10 + ((20 - clamped) / 40) * 80;
       return { x, y };
     });
 

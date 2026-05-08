@@ -1,5 +1,6 @@
 import { useEffect } from "react";
 import { Sidebar } from "./components/sidebar";
+import { ErrorBoundary } from "./components/error-boundary";
 import { AncPage } from "./pages/anc-page";
 import { DevicesPage } from "./pages/devices-page";
 import { ExperimentalPage } from "./pages/experimental-page";
@@ -14,9 +15,11 @@ export function PawdioLabApp() {
   useEffect(() => startAppearanceThemeSync(), []);
 
   return (
-    <PawdioLabProvider>
-      <PawdioLabShell />
-    </PawdioLabProvider>
+    <ErrorBoundary fallbackTitle="App failed to start">
+      <PawdioLabProvider>
+        <PawdioLabShell />
+      </PawdioLabProvider>
+    </ErrorBoundary>
   );
 }
 
@@ -36,14 +39,16 @@ function PawdioLabShell() {
             </section>
           )}
 
-          {ctx.activePage === PageKeyEnum.Latency && <LatencyPage />}
-          {ctx.activePage === PageKeyEnum.Anc && <AncPage />}
-          {ctx.activePage === PageKeyEnum.SweepFr && <SweepFrPage />}
-          {ctx.activePage === PageKeyEnum.Experimental && ctx.experimentalEnabled && (
-            <ExperimentalPage />
-          )}
-          {ctx.activePage === PageKeyEnum.Devices && <DevicesPage />}
-          {ctx.activePage === PageKeyEnum.Results && <ResultsPage />}
+          <ErrorBoundary key={ctx.activePage}>
+            {ctx.activePage === PageKeyEnum.Latency && <LatencyPage />}
+            {ctx.activePage === PageKeyEnum.Anc && <AncPage />}
+            {ctx.activePage === PageKeyEnum.SweepFr && <SweepFrPage />}
+            {ctx.activePage === PageKeyEnum.Experimental && ctx.experimentalEnabled && (
+              <ExperimentalPage />
+            )}
+            {ctx.activePage === PageKeyEnum.Devices && <DevicesPage />}
+            {ctx.activePage === PageKeyEnum.Results && <ResultsPage />}
+          </ErrorBoundary>
         </div>
       </div>
     </main>

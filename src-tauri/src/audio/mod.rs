@@ -676,7 +676,7 @@ impl AudioEngine {
                 );
                 if !next_rough.is_empty() && state.rough_fr_db.len() == next_rough.len() {
                     for (prev, next) in state.rough_fr_db.iter_mut().zip(next_rough.iter()) {
-                        *prev = *prev * 0.78 + *next * 0.22;
+                        *prev = *prev * 0.55 + *next * 0.45;
                     }
                 }
                 let _ = app.emit(
@@ -691,7 +691,7 @@ impl AudioEngine {
                 );
             }
 
-            std::thread::sleep(Duration::from_millis(100));
+            std::thread::sleep(Duration::from_millis(60));
         }
 
         stream.pause().ok();
@@ -4056,7 +4056,7 @@ fn compute_monitor_rough_fr_db(samples: &[f32], sample_rate: u32, freq_grid: &[f
         return Vec::new();
     }
 
-    let n = samples.len().min(4096).next_power_of_two().max(1024);
+    let n = samples.len().min(8192).next_power_of_two().max(1024);
     let start = samples.len().saturating_sub(n);
     let mut windowed = vec![0.0f32; n];
     let denom = (n.saturating_sub(1)).max(1) as f32;
@@ -4066,16 +4066,36 @@ fn compute_monitor_rough_fr_db(samples: &[f32], sample_rate: u32, freq_grid: &[f
     }
 
     let spectrum = magnitude_spectrum(&windowed, n);
+    let max_idx = spectrum.len().saturating_sub(1);
     let mut rough = Vec::with_capacity(freq_grid.len());
     for freq in freq_grid {
-        let bin = ((*freq / sample_rate as f32) * n as f32).round() as usize;
-        let idx = bin.min(spectrum.len().saturating_sub(1));
-        let mag = spectrum[idx].max(1e-12);
-        rough.push(20.0 * mag.log10());
+        let bin_f = (*freq / sample_rate as f32) * n as f32;
+        let bin_lo = (bin_f.floor() as usize).min(max_idx);
+        let bin_hi = (bin_lo + 1).min(max_idx);
+        let frac = (bin_f - bin_lo as f32).clamp(0.0, 1.0);
+        let db_lo = 20.0 * spectrum[bin_lo].max(1e-12).log10();
+        let db_hi = 20.0 * spectrum[bin_hi].max(1e-12).log10();
+        rough.push(db_lo * (1.0 - frac) + db_hi * frac);
     }
 
-    let avg = mean(&rough);
-    rough.into_iter().map(|v| (v - avg).clamp(-24.0, 24.0)).collect()
+    let baseline = trimmed_mean(&rough, 4);
+    rough
+        .into_iter()
+        .map(|v| (v - baseline).clamp(-20.0, 20.0))
+        .collect()
+}
+
+fn trimmed_mean(values: &[f32], trim: usize) -> f32 {
+    if values.is_empty() {
+        return 0.0;
+    }
+    if values.len() <= trim * 2 {
+        return mean(values);
+    }
+    let mut sorted: Vec<f32> = values.to_vec();
+    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let slice = &sorted[trim..sorted.len() - trim];
+    mean(slice)
 }
 
 fn read_monitor_f32(data: &[f32], channels: usize, stats: &Arc<Mutex<MonitorStats>>) {
