@@ -256,6 +256,20 @@ pub struct AncSnapshotRequest {
     pub duration_secs: f32,
     pub repeats: u32,
     pub amplitude: f32,
+    /// Which side to drive/record for this snapshot. `Both` (default) keeps the
+    /// original stereo behaviour; `Left`/`Right` drive a single channel so a
+    /// single mic can be moved between ears (guided "advanced mono mode").
+    #[serde(default)]
+    pub capture_side: AncCaptureSide,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+#[serde(rename_all = "lowercase")]
+pub enum AncCaptureSide {
+    #[default]
+    Both,
+    Left,
+    Right,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1312,30 +1326,43 @@ impl AudioEngine {
             } else {
                 chirp.clone()
             };
-            let captured =
-                runtime.play_and_record_channels(chirp, OutputRouting::Both, duration + 0.5)?;
-            let rec_l = channel_or_mix(&captured, 0);
-            let rec_r = if captured.len() > 1 {
-                channel_or_mix(&captured, 1)
-            } else {
-                rec_l.clone()
+            let routing = match request.capture_side {
+                AncCaptureSide::Both => OutputRouting::Both,
+                AncCaptureSide::Left => OutputRouting::LeftOnly,
+                AncCaptureSide::Right => OutputRouting::RightOnly,
             };
-            let delay_l = find_delay_ms(&rec_l, &ref_signal, runtime.input_rate);
-            let delay_r = find_delay_ms(&rec_r, &ref_signal, runtime.input_rate);
-            let al = align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate);
-            let ar = align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate);
-            mags_l.push(frequency_response_curve(
-                &al,
-                &ref_signal,
-                runtime.input_rate,
-                &grid,
-            ));
-            mags_r.push(frequency_response_curve(
-                &ar,
-                &ref_signal,
-                runtime.input_rate,
-                &grid,
-            ));
+            let captured =
+                runtime.play_and_record_channels(chirp, routing, duration + 0.5)?;
+            // Reference-aligned magnitude curve for one recorded channel.
+            let curve = |rec: &[f32]| -> Vec<f32> {
+                let delay = find_delay_ms(rec, &ref_signal, runtime.input_rate);
+                let aligned =
+                    align_to_reference(rec, ref_signal.len(), delay, runtime.input_rate);
+                frequency_response_curve(&aligned, &ref_signal, runtime.input_rate, &grid)
+            };
+            match request.capture_side {
+                AncCaptureSide::Both => {
+                    let rec_l = channel_or_mix(&captured, 0);
+                    let rec_r = if captured.len() > 1 {
+                        channel_or_mix(&captured, 1)
+                    } else {
+                        rec_l.clone()
+                    };
+                    mags_l.push(curve(&rec_l));
+                    mags_r.push(curve(&rec_r));
+                }
+                AncCaptureSide::Left => {
+                    mags_l.push(curve(&channel_or_mix(&captured, 0)));
+                }
+                AncCaptureSide::Right => {
+                    let rec_r = if captured.len() > 1 {
+                        channel_or_mix(&captured, 1)
+                    } else {
+                        channel_or_mix(&captured, 0)
+                    };
+                    mags_r.push(curve(&rec_r));
+                }
+            }
             app.emit(
                 "test-progress",
                 TestProgressEvent {
@@ -3161,14 +3188,14 @@ fn save_anc_single_plot(
                 .iter()
                 .zip(attenuation_l.iter())
                 .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
-            RGBColor(13, 73, 176).stroke_width(5),
+            RGBColor(13, 73, 176).stroke_width(3),
         ))
         .map_err(|err| AudioError::FileExport(format!("anc left {}: {err}", path.display())))?
         .label("Left")
         .legend(|(x, y)| {
             PathElement::new(
                 vec![(x, y), (x + 36, y)],
-                RGBColor(13, 73, 176).stroke_width(5),
+                RGBColor(13, 73, 176).stroke_width(3),
             )
         });
 
@@ -3179,14 +3206,14 @@ fn save_anc_single_plot(
                     .iter()
                     .zip(attenuation_r.iter())
                     .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
-                RGBColor(27, 95, 195).mix(0.6).stroke_width(3),
+                RGBColor(27, 95, 195).mix(0.6).stroke_width(2),
             ))
             .map_err(|err| AudioError::FileExport(format!("anc right {}: {err}", path.display())))?
             .label("Right")
             .legend(|(x, y)| {
                 PathElement::new(
                     vec![(x, y), (x + 36, y)],
-                    RGBColor(27, 95, 195).stroke_width(3),
+                    RGBColor(27, 95, 195).stroke_width(2),
                 )
             });
     }
@@ -3284,14 +3311,14 @@ fn save_anc_combined_plot(
                     .iter()
                     .zip(curve.iter())
                     .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
-                color.stroke_width(4),
+                color.stroke_width(2),
             ))
             .map_err(|err| {
                 AudioError::FileExport(format!("anc-combined line {}: {err}", path.display()))
             })?
             .label(*label)
             .legend(move |(x, y)| {
-                PathElement::new(vec![(x, y), (x + 36, y)], color.stroke_width(4))
+                PathElement::new(vec![(x, y), (x + 36, y)], color.stroke_width(2))
             });
     }
 

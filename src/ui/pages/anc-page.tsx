@@ -6,18 +6,34 @@ import {
   AncCaptures,
   AncModeKey,
   AncSnapshot,
+  CAPTURE_ORDER_META,
+  type CaptureOrder,
   toNumber,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import { usePawdioLabContext } from "../pawdio-context";
 
-type Channel = "L" | "R";
+type Channel = "L" | "R" | "both" | "avg";
 type YAxisMode = "auto" | "wide" | "narrow";
+type ChartSeries = {
+  id: string;
+  label: string;
+  color: string;
+  dash?: string;
+  values: number[];
+};
 type HoverItem = {
-  key: AncModeKey;
+  id: string;
   color: string;
   label: string;
   db: number;
+};
+
+const CHANNEL_LABELS: Record<Channel, string> = {
+  L: "L",
+  R: "R",
+  both: "Both",
+  avg: "Avg",
 };
 
 const Y_AXIS_STORAGE_KEY = "pawdio-lab-anc-yaxis-v1";
@@ -41,7 +57,10 @@ function buildCurvePath(
   toY: (db: number) => number,
 ): string {
   if (freqs.length < 2 || values.length < 2) return "";
-  const points = freqs.map((hz, i) => ({ x: toX(hz), y: toY(values[i]) }));
+  const points = freqs
+    .map((hz, i) => ({ x: toX(hz), y: toY(values[i]) }))
+    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
+  if (points.length < 2) return "";
   let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
   for (let i = 1; i < points.length - 1; i += 1) {
     const midX = (points[i].x + points[i + 1].x) / 2;
@@ -109,8 +128,7 @@ export function AncPage() {
   const running = ctx.running;
   const stepPrompt = ctx.ancStepPrompt;
   const currentStep = ctx.ancCurrentStep;
-  const totalSteps = ctx.ancSelectedModes.length;
-  const stepIndex = ctx.ancSelectedModes.length - ctx.ancRunQueue.length - 1;
+  const totalSteps = ctx.ancTotalSteps;
   const onStart = ctx.startAncFlow;
   const onConfirmStep = () => ctx.run(ctx.confirmAncStep());
   const onCancelStep = ctx.cancelAncFlow;
@@ -161,11 +179,30 @@ export function AncPage() {
     ? captures[baselineKey]
     : undefined;
 
-  function getAttenuation(snap: AncSnapshot): number[] {
+  // Attenuation for one physical channel = snapshot mag − baseline mag.
+  function attenSide(snap: AncSnapshot, side: "L" | "R"): number[] {
     if (!baseline) return [];
-    const bArr = channel === "L" ? baseline.magDbLeft : baseline.magDbRight;
-    const aArr = channel === "L" ? snap.magDbLeft : snap.magDbRight;
-    return aArr.map((a, i) => a - bArr[i]);
+    const bArr = side === "L" ? baseline.magDbLeft : baseline.magDbRight;
+    const aArr = side === "L" ? snap.magDbLeft : snap.magDbRight;
+    return aArr.map((a, i) => a - (bArr[i] ?? NaN));
+  }
+
+  // Mean of L and R attenuation; falls back to whichever side has data.
+  function attenAvg(snap: AncSnapshot): number[] {
+    const l = attenSide(snap, "L");
+    const r = attenSide(snap, "R");
+    if (l.length === 0) return r;
+    if (r.length === 0) return l;
+    const n = Math.min(l.length, r.length);
+    return Array.from({ length: n }, (_, i) => (l[i] + r[i]) / 2);
+  }
+
+  // Single curve used for per-mode stats: a chosen side, or the average
+  // (both `avg` and `both` collapse to the average for the numeric summary).
+  function statAtten(snap: AncSnapshot): number[] {
+    return channel === "L" || channel === "R"
+      ? attenSide(snap, channel)
+      : attenAvg(snap);
   }
 
   const nonBaselineCaptured = modeOrdered.filter(
@@ -208,7 +245,45 @@ export function AncPage() {
     return Array.from(new Set(ticks)).sort((a, b) => b - a);
   }, [yMin, yMax, ySpan]);
 
-  // Hover crosshair: nearest grid point info for visible modes.
+  // One drawable line per visible non-baseline mode. `both` expands each mode
+  // into two lines (L solid, R dashed); `avg` collapses to a single mean line.
+  const chartSeries = useMemo<ChartSeries[]>(() => {
+    if (!baseline) return [];
+    const out: ChartSeries[] = [];
+    for (const key of modeOrdered) {
+      if (key === baselineKey || !visibleModes.has(key)) continue;
+      const snap = captures[key];
+      if (!snap) continue;
+      const meta = modeMeta[key];
+      if (channel === "both") {
+        out.push({
+          id: `${key}-L`,
+          label: `${meta.label} (L)`,
+          color: meta.color,
+          values: attenSide(snap, "L"),
+        });
+        out.push({
+          id: `${key}-R`,
+          label: `${meta.label} (R)`,
+          color: meta.color,
+          dash: "2.5 2",
+          values: attenSide(snap, "R"),
+        });
+      } else {
+        out.push({
+          id: key,
+          label: channel === "avg" ? `${meta.label} (avg)` : meta.label,
+          color: meta.color,
+          values: channel === "avg" ? attenAvg(snap) : attenSide(snap, channel),
+        });
+      }
+    }
+    return out;
+    // attenSide/attenAvg close over baseline + channel — listed deps cover both.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [baseline, baselineKey, captures, visibleModes, channel]);
+
+  // Hover crosshair: nearest grid point info across the drawn series.
   const hoverInfo = useMemo(() => {
     if (!hover || !baseline) return null;
     const freqs = baseline.freqs;
@@ -224,24 +299,13 @@ export function AncPage() {
       }
     }
     const items: HoverItem[] = [];
-    for (const key of modeOrdered) {
-      if (key === baselineKey) continue;
-      if (!visibleModes.has(key)) continue;
-      const snap = captures[key];
-      if (!snap) continue;
-      const att = getAttenuation(snap);
-      if (att[bestIdx] === undefined) continue;
-      items.push({
-        key,
-        color: modeMeta[key].color,
-        label: modeMeta[key].label,
-        db: att[bestIdx],
-      });
+    for (const s of chartSeries) {
+      const db = s.values[bestIdx];
+      if (db === undefined || !Number.isFinite(db)) continue;
+      items.push({ id: s.id, color: s.color, label: s.label, db });
     }
     return { hz: freqs[bestIdx], items };
-    // getAttenuation closes over baseline + channel — listed deps cover both.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hover, baseline, baselineKey, captures, visibleModes, channel]);
+  }, [hover, baseline, chartSeries]);
 
   function toggleMode(key: AncModeKey) {
     onChangeSelectedModes(
@@ -266,7 +330,9 @@ export function AncPage() {
       ? modeOrdered.filter((m) => m !== baselineKey && captures[m] !== undefined)
       : [];
 
-  const stepNum = stepIndex + 1;
+  const stepNum = totalSteps - ctx.ancRunQueue.length;
+  const sideLabel = (side: "both" | "left" | "right") =>
+    side === "left" ? "LEFT ear" : side === "right" ? "RIGHT ear" : null;
 
   // Baseline picker — modes the user may pick as baseline (only those captured).
   const captureCount = modeOrdered.filter((m) => captures[m] !== undefined).length;
@@ -367,15 +433,23 @@ export function AncPage() {
             </p>
             <div
               className="modal-icon-circle"
-              style={{ background: modeMeta[currentStep].color }}
+              style={{ background: modeMeta[currentStep.mode].color }}
             >
               <EarOff size={18} color="#fff" />
             </div>
             <h3 className="section-heading" style={{ marginBottom: 6 }}>
-              {modeMeta[currentStep].captureTitle}
+              {modeMeta[currentStep.mode].captureTitle}
+              {sideLabel(currentStep.side) && (
+                <span style={{ color: modeMeta[currentStep.mode].color }}>
+                  {" — "}
+                  {sideLabel(currentStep.side)}
+                </span>
+              )}
             </h3>
             <p className="muted" style={{ marginBottom: 12 }}>
-              {modeMeta[currentStep].captureDetail}
+              {modeMeta[currentStep.mode].captureDetail}
+              {sideLabel(currentStep.side) &&
+                ` Place the mic on the ${sideLabel(currentStep.side)} and keep this mode set.`}
             </p>
             {!running && (
               <label
@@ -460,8 +534,9 @@ export function AncPage() {
           </div>
           <span style={{ fontSize: 11 }}>
             {currentStep && (
-              <strong style={{ color: modeMeta[currentStep].color }}>
-                {modeMeta[currentStep].captureTitle}
+              <strong style={{ color: modeMeta[currentStep.mode].color }}>
+                {modeMeta[currentStep.mode].captureTitle}
+                {sideLabel(currentStep.side) ? ` (${sideLabel(currentStep.side)})` : ""}
                 {" · "}
               </strong>
             )}
@@ -584,7 +659,44 @@ export function AncPage() {
                 })
               }
             />
+            <div className="field-row">
+              <span className="field-label">Capture</span>
+              <span
+                className="channel-selector"
+                role="group"
+                aria-label="Capture order"
+              >
+                {(
+                  ["stereo", "left_first", "right_first"] as CaptureOrder[]
+                ).map((opt) => (
+                  <button
+                    key={opt}
+                    type="button"
+                    className={`channel-btn${
+                      (request.captureOrder ?? "stereo") === opt
+                        ? " is-active"
+                        : ""
+                    }`}
+                    aria-pressed={(request.captureOrder ?? "stereo") === opt}
+                    title={CAPTURE_ORDER_META[opt].detail}
+                    onClick={() =>
+                      onChangeRequest({ ...request, captureOrder: opt })
+                    }
+                  >
+                    {CAPTURE_ORDER_META[opt].label}
+                  </button>
+                ))}
+              </span>
+            </div>
           </div>
+          {(request.captureOrder ?? "stereo") !== "stereo" && (
+            <p className="muted" style={{ marginTop: 8, fontSize: 11 }}>
+              Mono mode: each selected mode is captured one ear at a time
+              {" — "}
+              {CAPTURE_ORDER_META[request.captureOrder].detail.toLowerCase()}.
+              You will be prompted to reposition a single mic between sides.
+            </p>
+          )}
         </section>
 
         {request.savePlots && (
@@ -690,16 +802,16 @@ export function AncPage() {
               role="group"
               aria-label="Select channel"
             >
-              {(["L", "R"] as Channel[]).map((ch) => (
+              {(["L", "R", "both", "avg"] as Channel[]).map((ch) => (
                 <button
                   key={ch}
                   type="button"
                   className={`channel-btn${channel === ch ? " is-active" : ""}`}
                   aria-pressed={channel === ch}
-                  aria-label={`Channel ${ch}`}
+                  aria-label={`Channel ${CHANNEL_LABELS[ch]}`}
                   onClick={() => setChannel(ch)}
                 >
-                  {ch}
+                  {CHANNEL_LABELS[ch]}
                 </button>
               ))}
             </span>
@@ -878,31 +990,22 @@ export function AncPage() {
                 </text>
 
                 {/* Attenuation curves */}
-                {modeOrdered
-                  .filter(
-                    (m) =>
-                      m !== baselineKey &&
-                      captures[m] !== undefined &&
-                      visibleModes.has(m),
-                  )
-                  .map((key) => {
-                    const snap = captures[key]!;
-                    const att = getAttenuation(snap);
-                    const freqs = baseline!.freqs;
-                    const path = buildCurvePath(freqs, att, toY);
-                    if (!path) return null;
-                    return (
-                      <path
-                        key={key}
-                        d={path}
-                        fill="none"
-                        stroke={modeMeta[key].color}
-                        strokeWidth="1.8"
-                        strokeLinejoin="round"
-                        strokeLinecap="round"
-                      />
-                    );
-                  })}
+                {chartSeries.map((s) => {
+                  const path = buildCurvePath(baseline!.freqs, s.values, toY);
+                  if (!path) return null;
+                  return (
+                    <path
+                      key={s.id}
+                      d={path}
+                      fill="none"
+                      stroke={s.color}
+                      strokeWidth="1"
+                      strokeDasharray={s.dash}
+                      strokeLinejoin="round"
+                      strokeLinecap="round"
+                    />
+                  );
+                })}
 
                 {/* Hover crosshair (B8) */}
                 {hover && hoverInfo && (
@@ -920,10 +1023,10 @@ export function AncPage() {
                       const cy = toY(item.db);
                       return (
                         <circle
-                          key={item.key}
+                          key={item.id}
                           cx={hover.x}
                           cy={cy}
-                          r="1.8"
+                          r="1.5"
                           fill={item.color}
                           stroke="#fff"
                           strokeWidth="0.4"
@@ -963,7 +1066,7 @@ export function AncPage() {
             >
               <strong style={{ color: "var(--text)" }}>{fmtHz(hoverInfo.hz)} Hz</strong>
               {hoverInfo.items.map((item) => (
-                <span key={item.key} style={{ color: item.color }}>
+                <span key={item.id} style={{ color: item.color }}>
                   {item.label}: <strong>{item.db.toFixed(1)} dB</strong>
                 </span>
               ))}
@@ -975,7 +1078,7 @@ export function AncPage() {
             <div className="stats-row">
               {exportableModes.map((key) => {
                 const snap = captures[key]!;
-                const att = getAttenuation(snap);
+                const att = statAtten(snap);
                 // Strongest cancellation = most negative value.
                 const peak = Math.min(...att);
                 const avg = meanOf(att);

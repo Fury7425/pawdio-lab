@@ -32,6 +32,10 @@
   --accent-strong: #4f9ef2;
   --accent-dim: #2d4f7f;
   --accent-soft: rgba(79, 158, 242, 0.24);
+  /* ANC graph series colors (referenced by model.ts ANC_MODE_META + anc-page). */
+  --accent-9: var(--accent-strong);
+  --gray-8: #8c99af;
+  --gray-10: #b6c0d0;
   --button-text: #f4f8ff;
   --button-accent-top: #3378c8;
   --button-accent-bottom: #295f9e;
@@ -102,6 +106,9 @@
   --body-bg-mid: #ebf2fc;
   --body-bg-end: #f4f8ff;
   --accent-soft: rgba(79, 158, 242, 0.2);
+  /* Light-theme grays for ANC graph series (accent-9 inherits from base :root). */
+  --gray-8: #6a7890;
+  --gray-10: #45526b;
   --button-text: #f8fbff;
   --secondary-button-top: #f1f5fb;
   --secondary-button-bottom: #e5edf8;

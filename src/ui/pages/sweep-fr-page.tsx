@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { AudioWaveform } from "lucide-react";
-import { toNumber } from "../model";
+import { CAPTURE_ORDER_META, toNumber, type CaptureOrder } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import { DropdownMenu } from "../components/dropdown-menu";
 import { usePawdioLabContext } from "../pawdio-context";
@@ -244,19 +244,44 @@ export function SweepFrPage() {
                   />
                   Save Squiglink format (.txt)
                 </label>
-                <label className="toggle-line">
-                  <input
-                    type="checkbox"
-                    checked={request.monoMode}
-                    onChange={(event) =>
-                      onChangeRequest({
-                        ...request,
-                        monoMode: event.target.checked,
-                      })
-                    }
-                  />
-                  Mono Test (one side at a time)
-                </label>
+                <div
+                  className="toggle-line"
+                  style={{ alignItems: "center", gap: 8 }}
+                >
+                  <span className="field-label" style={{ minWidth: "auto" }}>
+                    Capture
+                  </span>
+                  <span
+                    className="channel-selector"
+                    role="group"
+                    aria-label="Capture order"
+                  >
+                    {(
+                      ["stereo", "left_first", "right_first"] as CaptureOrder[]
+                    ).map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        className={`channel-btn${
+                          (request.captureOrder ?? "stereo") === opt
+                            ? " is-active"
+                            : ""
+                        }`}
+                        aria-pressed={(request.captureOrder ?? "stereo") === opt}
+                        title={CAPTURE_ORDER_META[opt].detail}
+                        onClick={() =>
+                          onChangeRequest({
+                            ...request,
+                            captureOrder: opt,
+                            monoMode: opt !== "stereo",
+                          })
+                        }
+                      >
+                        {CAPTURE_ORDER_META[opt].label}
+                      </button>
+                    ))}
+                  </span>
+                </div>
               </div>
             </div>
           </div>

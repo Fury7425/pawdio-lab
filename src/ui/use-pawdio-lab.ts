@@ -179,6 +179,41 @@ function parsePageKey(value: unknown): PageKey {
 type SweepMonoSide = "left" | "right" | "both";
 type SweepInvokeRequest = SweepRequest & { monoSide?: SweepMonoSide };
 
+type AncCaptureSide = "both" | "left" | "right";
+type AncStep = { mode: AncModeKey; side: AncCaptureSide };
+
+/**
+ * Fold a single-side (or stereo) snapshot into the running capture for a mode.
+ * Guided mono captures arrive one side at a time, so left-only snapshots keep
+ * the previously captured right channel (and vice versa).
+ */
+function mergeAncSideSnapshot(
+  existing: AncSnapshot | undefined,
+  side: AncCaptureSide,
+  snap: AncSnapshot,
+): AncSnapshot {
+  if (side === "both" || !existing) {
+    return side === "left"
+      ? { ...snap, magDbRight: existing?.magDbRight ?? [] }
+      : side === "right"
+        ? { ...snap, magDbLeft: existing?.magDbLeft ?? [] }
+        : snap;
+  }
+  return side === "left"
+    ? {
+        freqs: snap.freqs.length ? snap.freqs : existing.freqs,
+        magDbLeft: snap.magDbLeft,
+        magDbRight: existing.magDbRight,
+        timestamp: snap.timestamp,
+      }
+    : {
+        freqs: snap.freqs.length ? snap.freqs : existing.freqs,
+        magDbLeft: existing.magDbLeft,
+        magDbRight: snap.magDbRight,
+        timestamp: snap.timestamp,
+      };
+}
+
 function recordOrEmpty(value: unknown): Record<string, unknown> {
   return toRecord(value) ?? {};
 }
@@ -573,10 +608,12 @@ export function usePawdioLabController() {
     "anc",
   ]);
   const [ancCaptures, setAncCaptures] = useState<AncCaptures>({});
-  const [ancRunQueue, setAncRunQueue] = useState<AncModeKey[]>([]);
-  const [ancCurrentStep, setAncCurrentStep] = useState<AncModeKey | null>(
-    null,
-  );
+  // A step is one capture: a mode, plus which side(s) to record. Stereo order
+  // yields one `both` step per mode; left/right-first orders expand each mode
+  // into two single-side steps so a single mic can be moved between ears.
+  const [ancRunQueue, setAncRunQueue] = useState<AncStep[]>([]);
+  const [ancCurrentStep, setAncCurrentStep] = useState<AncStep | null>(null);
+  const [ancTotalSteps, setAncTotalSteps] = useState(0);
   const [ancStepPrompt, setAncStepPrompt] = useState(false);
 
   // logs, results, logText, appendLog, appendResult, copyLogs, clearLogs are
@@ -961,14 +998,28 @@ export function usePawdioLabController() {
     if (running) {
       return;
     }
-    const monoGuided = sweepRequest.monoMode;
-    if (monoGuided) {
+    // captureOrder is the source of truth; fall back to the legacy monoMode flag
+    // for state persisted before the 3-way control existed.
+    const order =
+      sweepRequest.captureOrder ??
+      (sweepRequest.monoMode ? "left_first" : "stereo");
+    const guided = order !== "stereo";
+    const firstSide: "left" | "right" =
+      order === "right_first" ? "right" : "left";
+    const secondSide: "left" | "right" =
+      firstSide === "left" ? "right" : "left";
+    const sideWord = (side: "left" | "right") =>
+      side === "left" ? "LEFT" : "RIGHT";
+
+    if (guided) {
       try {
         await requestMonoConfirm(
-          "Mono mode: place the LEFT earphone/driver on the measurement position, then click OK to run the LEFT sweep.",
+          `Mono mode: place the ${sideWord(firstSide)} earphone/driver on the measurement position, then click OK to run the ${sideWord(firstSide)} sweep.`,
         );
       } catch {
-        appendLog("[SWEEP FR] mono run cancelled before LEFT sweep");
+        appendLog(
+          `[SWEEP FR] mono run cancelled before ${sideWord(firstSide)} sweep`,
+        );
         return;
       }
     }
@@ -991,13 +1042,16 @@ export function usePawdioLabController() {
     setRunning(true);
     setError(null);
     appendLog(
-      monoGuided
-        ? "[SWEEP FR] mono guided run started (LEFT -> RIGHT)"
+      guided
+        ? `[SWEEP FR] mono guided run started (${sideWord(firstSide)} -> ${sideWord(secondSide)})`
         : "[SWEEP FR] running",
     );
     try {
-      if (!monoGuided) {
-        const payload = await invokeSweepFrRaw(sweepRequest);
+      if (!guided) {
+        const payload = await invokeSweepFrRaw({
+          ...sweepRequest,
+          monoMode: false,
+        });
         const normalized = {
           ...payload,
           timestamp: legacyTimestamp(payload.timestamp),
@@ -1006,37 +1060,45 @@ export function usePawdioLabController() {
         appendResult(normalized);
       } else {
         const sharedRunTag = exportTimestampTag();
-        appendLog("[SWEEP FR] running LEFT sweep");
-        const leftPayload = await invokeSweepFrRaw({
+        const sidePayloads: Partial<Record<"left" | "right", TestPayload>> = {};
+
+        appendLog(`[SWEEP FR] running ${sideWord(firstSide)} sweep`);
+        sidePayloads[firstSide] = await invokeSweepFrRaw({
           ...sweepRequest,
-          monoSide: "left",
+          monoMode: true,
+          monoSide: firstSide,
           sharedRunTag,
         });
-        appendLog("[SWEEP FR] LEFT sweep complete");
+        appendLog(`[SWEEP FR] ${sideWord(firstSide)} sweep complete`);
 
         setRunning(false);
         try {
           await requestMonoConfirm(
-            "Now place the RIGHT earphone/driver on the measurement position, then click OK to run the RIGHT sweep.",
+            `Now place the ${sideWord(secondSide)} earphone/driver on the measurement position, then click OK to run the ${sideWord(secondSide)} sweep.`,
           );
         } catch {
-          const leftOnly = {
-            ...leftPayload,
-            timestamp: legacyTimestamp(leftPayload.timestamp),
+          const firstOnly = {
+            ...sidePayloads[firstSide]!,
+            timestamp: legacyTimestamp(sidePayloads[firstSide]!.timestamp),
           };
-          setSweepLastResult(leftOnly);
-          appendResult(leftOnly);
-          appendLog("[SWEEP FR] mono run stopped after LEFT sweep");
+          setSweepLastResult(firstOnly);
+          appendResult(firstOnly);
+          appendLog(
+            `[SWEEP FR] mono run stopped after ${sideWord(firstSide)} sweep`,
+          );
           return;
         }
         setRunning(true);
 
-        appendLog("[SWEEP FR] running RIGHT sweep");
-        const rightPayload = await invokeSweepFrRaw({
+        appendLog(`[SWEEP FR] running ${sideWord(secondSide)} sweep`);
+        sidePayloads[secondSide] = await invokeSweepFrRaw({
           ...sweepRequest,
-          monoSide: "right",
+          monoMode: true,
+          monoSide: secondSide,
           sharedRunTag,
         });
+        const leftPayload = sidePayloads.left!;
+        const rightPayload = sidePayloads.right!;
         const combinedPayload = combineGuidedMonoSweepPayload(
           leftPayload,
           rightPayload,
@@ -1381,19 +1443,31 @@ export function usePawdioLabController() {
   }
 
   function startAncFlow() {
-    const ordered = ANC_MODE_ORDERED.filter((m) =>
-      ancSelectedModes.includes(m),
-    );
-    if (ordered.length === 0) return;
-    setAncRunQueue(ordered.slice(1));
-    setAncCurrentStep(ordered[0]);
+    const modes = ANC_MODE_ORDERED.filter((m) => ancSelectedModes.includes(m));
+    if (modes.length === 0) return;
+    const order = ancRequest.captureOrder ?? "stereo";
+    let steps: AncStep[];
+    if (order === "stereo") {
+      steps = modes.map((mode) => ({ mode, side: "both" as const }));
+    } else {
+      const first: AncCaptureSide = order === "right_first" ? "right" : "left";
+      const second: AncCaptureSide = first === "left" ? "right" : "left";
+      steps = modes.flatMap((mode) => [
+        { mode, side: first },
+        { mode, side: second },
+      ]);
+    }
+    if (steps.length === 0) return;
+    setAncTotalSteps(steps.length);
+    setAncRunQueue(steps.slice(1));
+    setAncCurrentStep(steps[0]);
     setAncStepPrompt(true);
   }
 
   async function confirmAncStep() {
     if (!ancCurrentStep) return;
     setAncStepPrompt(false);
-    const mode = ancCurrentStep;
+    const { mode, side } = ancCurrentStep;
     const isLastStep = ancRunQueue.length === 0;
     try {
       const result = await ipc.captureAncSnapshot({
@@ -1402,10 +1476,12 @@ export function usePawdioLabController() {
         durationSecs: ancRequest.durationSecs,
         repeats: ancRequest.repeats,
         amplitude: ancRequest.amplitude,
+        captureSide: side,
       });
-      const newCaptures = { ...ancCaptures, [mode]: result };
+      const merged = mergeAncSideSnapshot(ancCaptures[mode], side, result);
+      const newCaptures = { ...ancCaptures, [mode]: merged };
       setAncCaptures(newCaptures);
-      appendLog(`[anc] captured ${mode} @ ${result.timestamp}`);
+      appendLog(`[anc] captured ${mode} (${side}) @ ${result.timestamp}`);
 
       // Auto-export when the last mode is captured and an output dir is set
       if (isLastStep && ancRequest.outputDir && ancRequest.savePlots) {
@@ -1450,6 +1526,7 @@ export function usePawdioLabController() {
   function cancelAncFlow() {
     setAncCurrentStep(null);
     setAncRunQueue([]);
+    setAncTotalSteps(0);
     setAncStepPrompt(false);
   }
 
@@ -1772,6 +1849,7 @@ export function usePawdioLabController() {
     setAncCaptures,
     ancRunQueue,
     ancCurrentStep,
+    ancTotalSteps,
     ancStepPrompt,
     logs,
     results,

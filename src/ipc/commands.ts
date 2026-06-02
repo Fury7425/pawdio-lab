@@ -122,6 +122,8 @@ export type AncSnapshotRequestShape = {
   durationSecs: number;
   repeats: number;
   amplitude: number;
+  /** Which channel(s) to drive/record. Omit/`both` = stereo (existing behaviour). */
+  captureSide?: "both" | "left" | "right";
 };
 
 export const captureAncSnapshot = (

@@ -61,6 +61,23 @@ export type LatencyCalibration = {
   perSoundOffsetsMs: Record<string, number>;
 };
 
+/**
+ * Capture order for the "advanced mono mode" shared by Sweep FR and ANC.
+ * - `stereo`: one capture, both channels at once (a stereo measurement rig).
+ * - `left_first` / `right_first`: guided per-side capture (single mic moved
+ *   between ears); the value picks which ear is measured first.
+ */
+export type CaptureOrder = "stereo" | "left_first" | "right_first";
+
+export const CAPTURE_ORDER_META: Record<
+  CaptureOrder,
+  { label: string; detail: string }
+> = {
+  stereo: { label: "Stereo", detail: "Both ears at once" },
+  left_first: { label: "Left first", detail: "Left ear, then right" },
+  right_first: { label: "Right first", detail: "Right ear, then left" },
+};
+
 export type SweepRequest = {
   f0: number;
   f1: number;
@@ -71,6 +88,7 @@ export type SweepRequest = {
   savePlots: boolean;
   saveSquiglink: boolean;
   monoMode: boolean;
+  captureOrder: CaptureOrder;
   sharedRunTag?: string;
 };
 
@@ -108,6 +126,7 @@ export type AncRequest = {
   amplitude: number;
   outputDir: string;
   savePlots: boolean;
+  captureOrder: CaptureOrder;
 };
 
 export type AncSnapshot = {
@@ -239,6 +258,7 @@ export const defaultAncRequest: AncRequest = {
   amplitude: 0.5,
   outputDir: "",
   savePlots: true,
+  captureOrder: "stereo",
 };
 
 export const defaultSettings: AudioSettings = {
@@ -278,6 +298,7 @@ export const defaultSweepRequest: SweepRequest = {
   savePlots: true,
   saveSquiglink: true,
   monoMode: false,
+  captureOrder: "stereo",
 };
 
 export const defaultBalanceRequest: BalanceRequest = {
