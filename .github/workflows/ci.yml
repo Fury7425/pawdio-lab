@@ -19,7 +19,10 @@ jobs:
           cache: "npm"
 
       - name: Install deps
-        run: npm install
+        run: npm ci
+
+      - name: Format check
+        run: npm run format:check
 
       - name: Typecheck
         run: npm run typecheck
@@ -29,6 +32,9 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Build
+        run: npm run build
 
   rust:
     name: Rust (fmt / clippy / test)
