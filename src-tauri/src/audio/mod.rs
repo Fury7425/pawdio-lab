@@ -349,6 +349,8 @@ pub struct TestResultPayload {
 
 #[derive(Debug, Error)]
 pub enum AudioError {
+    // Constructed only on Windows (see `preferred_host`); dead on other targets.
+    #[allow(dead_code)]
     #[error("audio host error: {0}")]
     HostUnavailable(String),
     #[error("audio devices enumeration failed: {0}")]
@@ -1673,7 +1675,7 @@ fn generate_pink_noise(duration_secs: f32, amplitude: f32, sample_rate: u32) -> 
         let x = rng.gen_range(-1.0f32..1.0f32);
         b0 = 0.99886 * b0 + x * 0.055_517_9;
         b1 = 0.99332 * b1 + x * 0.075_075_9;
-        b2 = 0.96900 * b2 + x * 0.153_852_0;
+        b2 = 0.96900 * b2 + x * 0.153_852;
         b3 = 0.86650 * b3 + x * 0.310_485_6;
         b4 = 0.55000 * b4 + x * 0.532_952_2;
         b5 = -0.7616 * b5 - x * 0.016_898_0;
@@ -3847,10 +3849,11 @@ fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Optio
     let mut best_val = f32::MIN;
     let max_lag = recorded.len().saturating_sub(1);
 
-    for idx in 0..=max_lag.min(a.len().saturating_sub(1)) {
-        let value = a[idx].re.abs();
-        if value > best_val {
-            best_val = value;
+    let search_len = max_lag.min(a.len().saturating_sub(1)) + 1;
+    for (idx, sample) in a.iter().enumerate().take(search_len) {
+        let mag = sample.re.abs();
+        if mag > best_val {
+            best_val = mag;
             best_idx = idx;
         }
     }
@@ -3870,6 +3873,7 @@ fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Optio
     Some(best_idx_f * 1000.0 / sample_rate as f32)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn play_and_record(
     output_device: &Device,
     input_device: &Device,
@@ -3937,6 +3941,7 @@ fn play_and_record(
     Ok(captured)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_output_stream(
     device: &Device,
     config: &StreamConfig,
@@ -4162,7 +4167,7 @@ impl PinkNoiseState {
         let x = self.next_white();
         self.b0 = 0.99886 * self.b0 + x * 0.055_517_9;
         self.b1 = 0.99332 * self.b1 + x * 0.075_075_9;
-        self.b2 = 0.96900 * self.b2 + x * 0.153_852_0;
+        self.b2 = 0.96900 * self.b2 + x * 0.153_852;
         self.b3 = 0.86650 * self.b3 + x * 0.310_485_6;
         self.b4 = 0.55000 * self.b4 + x * 0.532_952_2;
         self.b5 = -0.7616 * self.b5 - x * 0.016_898_0;
