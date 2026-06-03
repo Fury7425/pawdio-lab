@@ -1771,22 +1771,23 @@ fn average_option(values: &[Option<f32>]) -> Option<f32> {
 }
 
 fn average_curves(curves: &[Vec<f32>]) -> Vec<f32> {
-    if curves.is_empty() {
+    // Skip empty curves (e.g. a single-side capture, or a transient recording
+    // failure on one repeat) so they neither blank the result when they land
+    // first nor skew the divisor.
+    let non_empty: Vec<&Vec<f32>> = curves.iter().filter(|c| !c.is_empty()).collect();
+    if non_empty.is_empty() {
         return Vec::new();
     }
-    let len = curves[0].len();
-    if len == 0 {
-        return Vec::new();
-    }
+    let len = non_empty[0].len();
 
     let mut acc = vec![0.0f32; len];
-    for curve in curves {
+    for curve in &non_empty {
         for (idx, value) in curve.iter().enumerate().take(len) {
             acc[idx] += *value;
         }
     }
     for value in &mut acc {
-        *value /= curves.len() as f32;
+        *value /= non_empty.len() as f32;
     }
     acc
 }

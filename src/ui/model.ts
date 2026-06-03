@@ -250,6 +250,21 @@ export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "experimental", label: "Experimental Tests" },
 ];
 
+const VALID_PAGE_KEYS: ReadonlySet<string> = new Set(
+  pageItems.map((item) => item.key),
+);
+
+/**
+ * Validate a persisted/unknown value as a `PageKey`, falling back to "latency".
+ * Backed by `pageItems` (the single source of truth for navigable pages) so a
+ * newly added page can't silently fail to restore from localStorage.
+ */
+export function parsePageKey(value: unknown): PageKey {
+  return typeof value === "string" && VALID_PAGE_KEYS.has(value)
+    ? (value as PageKey)
+    : "latency";
+}
+
 export const defaultAncRequest: AncRequest = {
   f0: 20,
   f1: 20000,

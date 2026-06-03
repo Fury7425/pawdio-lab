@@ -1079,11 +1079,15 @@ export function AncPage() {
               {exportableModes.map((key) => {
                 const snap = captures[key]!;
                 const att = statAtten(snap);
+                // Guard against an empty / all-NaN curve (e.g. viewing a channel
+                // that wasn't captured) so the cards don't show "Infinity"/"NaN".
+                const finite = att.filter((v) => Number.isFinite(v));
+                const hasData = finite.length > 0;
                 // Strongest cancellation = most negative value.
-                const peak = Math.min(...att);
-                const avg = meanOf(att);
-                const peakIdx = att.indexOf(peak);
-                const peakHz = baseline.freqs[peakIdx];
+                const peak = hasData ? Math.min(...finite) : NaN;
+                const avg = hasData ? meanOf(finite) : NaN;
+                const peakIdx = hasData ? att.indexOf(peak) : -1;
+                const peakHz = peakIdx >= 0 ? baseline.freqs[peakIdx] : undefined;
                 const meta = modeMeta[key];
                 return (
                   <div
@@ -1100,7 +1104,7 @@ export function AncPage() {
                     </div>
                     <div className="stats-card-text">
                       <span className="muted">Peak </span>
-                      <strong>{peak.toFixed(1)} dB</strong>
+                      <strong>{hasData ? `${peak.toFixed(1)} dB` : "—"}</strong>
                       {peakHz && (
                         <span className="muted">
                           {" "}
@@ -1110,7 +1114,7 @@ export function AncPage() {
                     </div>
                     <div className="stats-card-text">
                       <span className="muted">Avg </span>
-                      <strong>{avg.toFixed(1)} dB</strong>
+                      <strong>{hasData ? `${avg.toFixed(1)} dB` : "—"}</strong>
                     </div>
                   </div>
                 );
