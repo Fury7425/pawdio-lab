@@ -43,7 +43,9 @@ const MAX_LOG = Math.log10(20000);
 const SPAN_LOG = MAX_LOG - MIN_LOG;
 
 function toX(hz: number): number {
-  return ((Math.log10(Math.max(20, Math.min(20000, hz))) - MIN_LOG) / SPAN_LOG) * 200;
+  return (
+    ((Math.log10(Math.max(20, Math.min(20000, hz))) - MIN_LOG) / SPAN_LOG) * 200
+  );
 }
 
 function fromX(x: number): number {
@@ -76,7 +78,11 @@ function fmtTime(timestamp: string): string {
   try {
     const d = new Date(timestamp);
     if (Number.isNaN(d.getTime())) return timestamp.slice(11, 19);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
   } catch {
     return timestamp.slice(0, 8);
   }
@@ -88,7 +94,9 @@ function meanOf(arr: number[]): number {
 }
 
 function fmtHz(hz: number): string {
-  return hz >= 1000 ? `${(hz / 1000).toFixed(hz >= 10000 ? 0 : 1)}k` : `${Math.round(hz)}`;
+  return hz >= 1000
+    ? `${(hz / 1000).toFixed(hz >= 10000 ? 0 : 1)}k`
+    : `${Math.round(hz)}`;
 }
 
 function loadYAxisMode(): YAxisMode {
@@ -174,7 +182,9 @@ export function AncPage() {
     (m) => captures[m] !== undefined,
   );
   const baselineKey: AncModeKey | undefined =
-    manualBaseline && captures[manualBaseline] ? manualBaseline : autoBaselineKey;
+    manualBaseline && captures[manualBaseline]
+      ? manualBaseline
+      : autoBaselineKey;
   const baseline: AncSnapshot | undefined = baselineKey
     ? captures[baselineKey]
     : undefined;
@@ -209,7 +219,8 @@ export function AncPage() {
     (m) => m !== baselineKey && captures[m] !== undefined,
   );
   const hasTransOnly =
-    nonBaselineCaptured.length === 1 && nonBaselineCaptured[0] === "transparency";
+    nonBaselineCaptured.length === 1 &&
+    nonBaselineCaptured[0] === "transparency";
 
   let yMin: number;
   let yMax: number;
@@ -327,7 +338,9 @@ export function AncPage() {
   const hasAnyCapture = modeOrdered.some((m) => captures[m] !== undefined);
   const exportableModes =
     baseline && baselineKey
-      ? modeOrdered.filter((m) => m !== baselineKey && captures[m] !== undefined)
+      ? modeOrdered.filter(
+          (m) => m !== baselineKey && captures[m] !== undefined,
+        )
       : [];
 
   const stepNum = totalSteps - ctx.ancRunQueue.length;
@@ -335,7 +348,9 @@ export function AncPage() {
     side === "left" ? "LEFT ear" : side === "right" ? "RIGHT ear" : null;
 
   // Baseline picker — modes the user may pick as baseline (only those captured).
-  const captureCount = modeOrdered.filter((m) => captures[m] !== undefined).length;
+  const captureCount = modeOrdered.filter(
+    (m) => captures[m] !== undefined,
+  ).length;
 
   // ---- Session save / load (B9) ----
   function handleSaveSession() {
@@ -536,7 +551,9 @@ export function AncPage() {
             {currentStep && (
               <strong style={{ color: modeMeta[currentStep.mode].color }}>
                 {modeMeta[currentStep.mode].captureTitle}
-                {sideLabel(currentStep.side) ? ` (${sideLabel(currentStep.side)})` : ""}
+                {sideLabel(currentStep.side)
+                  ? ` (${sideLabel(currentStep.side)})`
+                  : ""}
                 {" · "}
               </strong>
             )}
@@ -588,7 +605,10 @@ export function AncPage() {
                   }}
                 >
                   {selected && (
-                    <span className="mode-select-check" style={{ color: meta.color }}>
+                    <span
+                      className="mode-select-check"
+                      style={{ color: meta.color }}
+                    >
                       <Check size={12} />
                     </span>
                   )}
@@ -985,7 +1005,12 @@ export function AncPage() {
                   strokeWidth="1"
                   strokeDasharray="3 3"
                 />
-                <text x="202" y={zeroY + 3} fontSize="6" fill="var(--text-muted)">
+                <text
+                  x="202"
+                  y={zeroY + 3}
+                  fontSize="6"
+                  fill="var(--text-muted)"
+                >
                   0
                 </text>
 
@@ -1064,7 +1089,9 @@ export function AncPage() {
                 flexWrap: "wrap",
               }}
             >
-              <strong style={{ color: "var(--text)" }}>{fmtHz(hoverInfo.hz)} Hz</strong>
+              <strong style={{ color: "var(--text)" }}>
+                {fmtHz(hoverInfo.hz)} Hz
+              </strong>
               {hoverInfo.items.map((item) => (
                 <span key={item.id} style={{ color: item.color }}>
                   {item.label}: <strong>{item.db.toFixed(1)} dB</strong>
@@ -1087,7 +1114,8 @@ export function AncPage() {
                 const peak = hasData ? Math.min(...finite) : NaN;
                 const avg = hasData ? meanOf(finite) : NaN;
                 const peakIdx = hasData ? att.indexOf(peak) : -1;
-                const peakHz = peakIdx >= 0 ? baseline.freqs[peakIdx] : undefined;
+                const peakHz =
+                  peakIdx >= 0 ? baseline.freqs[peakIdx] : undefined;
                 const meta = modeMeta[key];
                 return (
                   <div
@@ -1106,10 +1134,7 @@ export function AncPage() {
                       <span className="muted">Peak </span>
                       <strong>{hasData ? `${peak.toFixed(1)} dB` : "—"}</strong>
                       {peakHz && (
-                        <span className="muted">
-                          {" "}
-                          @ {fmtHz(peakHz)} Hz
-                        </span>
+                        <span className="muted"> @ {fmtHz(peakHz)} Hz</span>
                       )}
                     </div>
                     <div className="stats-card-text">

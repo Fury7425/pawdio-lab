@@ -137,9 +137,7 @@ export function ExperimentalPage() {
 
           <section className="page-card">
             <h3 className="section-subheading">Isolation</h3>
-            <p className="muted">
-              Measures inside to outside isolation.
-            </p>
+            <p className="muted">Measures inside to outside isolation.</p>
             <div className="field-grid-2 mt-10">
               <label className="field-row">
                 <span className="field-label">Noise Duration (s)</span>

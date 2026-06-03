@@ -373,7 +373,9 @@ export function LatencyPage() {
           <h3 className="section-subheading">Results Summary</h3>
 
           <div className="metric-grid">
-            <article className={`metric-card ${metricTier(report?.averageDelayMs)}`}>
+            <article
+              className={`metric-card ${metricTier(report?.averageDelayMs)}`}
+            >
               <p className="metric-label">Average (ms)</p>
               <p className="metric-value">
                 {fmtMs(report?.averageDelayMs ?? null)}

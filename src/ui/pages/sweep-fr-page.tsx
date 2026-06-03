@@ -267,7 +267,9 @@ export function SweepFrPage() {
                             ? " is-active"
                             : ""
                         }`}
-                        aria-pressed={(request.captureOrder ?? "stereo") === opt}
+                        aria-pressed={
+                          (request.captureOrder ?? "stereo") === opt
+                        }
                         title={CAPTURE_ORDER_META[opt].detail}
                         onClick={() =>
                           onChangeRequest({
@@ -363,7 +365,14 @@ export function SweepFrPage() {
                   Clipping detected ({monitor.clipCount})
                 </p>
               )}
-              <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+              <div
+                style={{
+                  display: "flex",
+                  gap: 8,
+                  marginTop: 12,
+                  flexWrap: "wrap",
+                }}
+              >
                 <button
                   type="button"
                   className="skin-btn secondary"
@@ -375,7 +384,9 @@ export function SweepFrPage() {
                   type="button"
                   className="skin-btn secondary"
                   disabled={running}
-                  onClick={pinkNoisePlaying ? onStopPinkNoise : onStartPinkNoise}
+                  onClick={
+                    pinkNoisePlaying ? onStopPinkNoise : onStartPinkNoise
+                  }
                 >
                   {pinkNoisePlaying ? "Stop Pink Noise" : "Play Pink Noise"}
                 </button>
@@ -502,7 +513,10 @@ export function SweepFrPage() {
                 {lastResult.metrics &&
                   Object.keys(lastResult.metrics).length > 0 && (
                     <>
-                      <p className="section-subheading" style={{ marginTop: 12 }}>
+                      <p
+                        className="section-subheading"
+                        style={{ marginTop: 12 }}
+                      >
                         Metrics
                       </p>
                       <div className="metric-grid">
@@ -510,7 +524,10 @@ export function SweepFrPage() {
                           ([key, value]) => (
                             <article key={key} className="metric-card">
                               <p className="metric-label">{key}</p>
-                              <p className="metric-value" style={{ fontSize: 16 }}>
+                              <p
+                                className="metric-value"
+                                style={{ fontSize: 16 }}
+                              >
                                 {typeof value === "number"
                                   ? value.toFixed(2)
                                   : String(value)}

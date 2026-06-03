@@ -51,12 +51,16 @@ export const listAudioDevices = (): Promise<DeviceInventory> =>
 export const getAudioSettings = (): Promise<AudioSettings> =>
   invoke<AudioSettings>("get_audio_settings");
 
-export const setAudioSettings = (settings: AudioSettings): Promise<AudioSettings> =>
+export const setAudioSettings = (
+  settings: AudioSettings,
+): Promise<AudioSettings> =>
   invoke<AudioSettings>("set_audio_settings", { settings });
 
 // Tests ----------------------------------------------------------------------
 
-export const runLatencyTest = (request: LatencyRequest): Promise<LatencyReport> =>
+export const runLatencyTest = (
+  request: LatencyRequest,
+): Promise<LatencyReport> =>
   invoke<LatencyReport>("run_latency_test", { request });
 
 export const runSweepFrTest = (request: SweepRequest): Promise<TestPayload> =>
@@ -68,10 +72,14 @@ export const runThdTest = (request: ThdRequest): Promise<TestPayload> =>
 export const runBalanceTest = (request: BalanceRequest): Promise<TestPayload> =>
   invoke<TestPayload>("run_balance_test", { request });
 
-export const runCrosstalkTest = (request: CrosstalkRequest): Promise<TestPayload> =>
+export const runCrosstalkTest = (
+  request: CrosstalkRequest,
+): Promise<TestPayload> =>
   invoke<TestPayload>("run_crosstalk_test", { request });
 
-export const runIsolationTest = (request: IsolationRequest): Promise<TestPayload> =>
+export const runIsolationTest = (
+  request: IsolationRequest,
+): Promise<TestPayload> =>
   invoke<TestPayload>("run_isolation_test", { request });
 
 // Monitor / pink noise -------------------------------------------------------
@@ -128,7 +136,8 @@ export type AncSnapshotRequestShape = {
 
 export const captureAncSnapshot = (
   request: AncSnapshotRequestShape,
-): Promise<AncSnapshot> => invoke<AncSnapshot>("capture_anc_snapshot", { request });
+): Promise<AncSnapshot> =>
+  invoke<AncSnapshot>("capture_anc_snapshot", { request });
 
 export const saveAncPlots = (params: {
   outputDir: string;

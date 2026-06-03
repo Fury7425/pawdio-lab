@@ -1331,13 +1331,11 @@ impl AudioEngine {
                 AncCaptureSide::Left => OutputRouting::LeftOnly,
                 AncCaptureSide::Right => OutputRouting::RightOnly,
             };
-            let captured =
-                runtime.play_and_record_channels(chirp, routing, duration + 0.5)?;
+            let captured = runtime.play_and_record_channels(chirp, routing, duration + 0.5)?;
             // Reference-aligned magnitude curve for one recorded channel.
             let curve = |rec: &[f32]| -> Vec<f32> {
                 let delay = find_delay_ms(rec, &ref_signal, runtime.input_rate);
-                let aligned =
-                    align_to_reference(rec, ref_signal.len(), delay, runtime.input_rate);
+                let aligned = align_to_reference(rec, ref_signal.len(), delay, runtime.input_rate);
                 frequency_response_curve(&aligned, &ref_signal, runtime.input_rate, &grid)
             };
             match request.capture_side {

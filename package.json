@@ -53,7 +53,10 @@
     "vitest": "^3.2.4"
   },
   "lint-staged": {
-    "*.{ts,tsx}": ["prettier --write", "eslint --fix"],
+    "*.{ts,tsx}": [
+      "prettier --write",
+      "eslint --fix"
+    ],
     "*.rs": "cargo fmt --"
   }
 }

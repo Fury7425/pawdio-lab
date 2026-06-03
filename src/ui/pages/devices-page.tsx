@@ -243,7 +243,9 @@ export function DevicesPage() {
                 }
               >
                 {APPEARANCE_MODES.map((m) => (
-                  <option key={m} value={m}>{m}</option>
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
                 ))}
               </select>
             </label>
@@ -258,7 +260,9 @@ export function DevicesPage() {
                 }
               >
                 {ACCENT_COLORS.map((c) => (
-                  <option key={c} value={c}>{c}</option>
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
                 ))}
               </select>
             </label>

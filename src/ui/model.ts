@@ -116,7 +116,11 @@ export type IsolationRequest = {
   amplitude: number;
 };
 
-export type AncModeKey = "true_reference" | "reference" | "anc" | "transparency";
+export type AncModeKey =
+  | "true_reference"
+  | "reference"
+  | "anc"
+  | "transparency";
 
 export type AncRequest = {
   f0: number;
@@ -239,7 +243,6 @@ export type ResultEntry = {
   savedAt?: number;
   deviceName?: string;
 };
-
 
 export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "latency", label: "Latency" },

@@ -39,7 +39,9 @@ type Deps = {
  * error) without taking a hard dependency on the controller.
  */
 export function useMonitorAndNoise({ isRunning, appendLog, setError }: Deps) {
-  const [inputMonitor, setInputMonitor] = useState<InputMonitorState>(DEFAULT_INPUT_MONITOR);
+  const [inputMonitor, setInputMonitor] = useState<InputMonitorState>(
+    DEFAULT_INPUT_MONITOR,
+  );
   const [pinkNoisePlaying, setPinkNoisePlaying] = useState(false);
 
   async function startInputMonitor() {
