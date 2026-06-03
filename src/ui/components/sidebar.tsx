@@ -9,7 +9,10 @@ import {
 import { pageItems, PageKey } from "../model";
 import { usePawdioLabContext } from "../pawdio-context";
 
-const PAGE_ICONS: Record<PageKey, React.ComponentType<{ size?: number | string }>> = {
+const PAGE_ICONS: Record<
+  PageKey,
+  React.ComponentType<{ size?: number | string }>
+> = {
   latency: Timer,
   sweep_fr: AudioWaveform,
   anc: EarOff,
@@ -50,7 +53,10 @@ export function Sidebar() {
 
       <div className="sidebar-footer">
         <span className="status-pill" aria-live="polite" aria-atomic="true">
-          <span className={`status-dot ${ctx.running ? "running" : "idle"}`} aria-hidden="true" />
+          <span
+            className={`status-dot ${ctx.running ? "running" : "idle"}`}
+            aria-hidden="true"
+          />
           {ctx.running ? "Running" : "Idle"}
         </span>
         <button

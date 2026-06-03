@@ -116,7 +116,11 @@ export type IsolationRequest = {
   amplitude: number;
 };
 
-export type AncModeKey = "true_reference" | "reference" | "anc" | "transparency";
+export type AncModeKey =
+  | "true_reference"
+  | "reference"
+  | "anc"
+  | "transparency";
 
 export type AncRequest = {
   f0: number;
@@ -240,7 +244,6 @@ export type ResultEntry = {
   deviceName?: string;
 };
 
-
 export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "latency", label: "Latency" },
   { key: "sweep_fr", label: "Sweep FR" },
@@ -249,6 +252,21 @@ export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "results", label: "Results / Export" },
   { key: "experimental", label: "Experimental Tests" },
 ];
+
+const VALID_PAGE_KEYS: ReadonlySet<string> = new Set(
+  pageItems.map((item) => item.key),
+);
+
+/**
+ * Validate a persisted/unknown value as a `PageKey`, falling back to "latency".
+ * Backed by `pageItems` (the single source of truth for navigable pages) so a
+ * newly added page can't silently fail to restore from localStorage.
+ */
+export function parsePageKey(value: unknown): PageKey {
+  return typeof value === "string" && VALID_PAGE_KEYS.has(value)
+    ? (value as PageKey)
+    : "latency";
+}
 
 export const defaultAncRequest: AncRequest = {
   f0: 20,

@@ -36,6 +36,7 @@ import {
   defaultSweepRequest,
   defaultThdRequest,
   legacyTimestamp,
+  parsePageKey,
   parseToneList,
 } from "./model";
 
@@ -114,7 +115,6 @@ const LATENCY_PRESETS: LatencyPresetConfig[] = [
   },
 ];
 
-
 type PersistedUiState = {
   activePage?: PageKey;
   experimentalEnabled?: boolean;
@@ -161,19 +161,6 @@ function mergeWithDefaults<T extends Record<string, unknown>>(
     return defaults;
   }
   return { ...defaults, ...(record as Partial<T>) };
-}
-
-function parsePageKey(value: unknown): PageKey {
-  if (
-    value === "latency" ||
-    value === "sweep_fr" ||
-    value === "experimental" ||
-    value === "devices" ||
-    value === "results"
-  ) {
-    return value;
-  }
-  return "latency";
 }
 
 type SweepMonoSide = "left" | "right" | "both";
@@ -534,7 +521,9 @@ export function usePawdioLabController() {
     mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
   );
   const [latencyProgress, setLatencyProgress] = useState<LatencyProgress[]>([]);
-  const [lastTestProgress, setLastTestProgress] = useState<TestProgress | null>(null);
+  const [lastTestProgress, setLastTestProgress] = useState<TestProgress | null>(
+    null,
+  );
   const [latencyReport, setLatencyReport] = useState<LatencyReport | null>(
     null,
   );
@@ -1466,9 +1455,12 @@ export function usePawdioLabController() {
 
   async function confirmAncStep() {
     if (!ancCurrentStep) return;
-    setAncStepPrompt(false);
     const { mode, side } = ancCurrentStep;
     const isLastStep = ancRunQueue.length === 0;
+    // Keep the step modal open and flag the run so its in-progress ("Recording…")
+    // state shows immediately, rather than waiting on the 1s runtime-status poll.
+    // The prompt advances to the next step once the capture resolves (below).
+    setRunning(true);
     try {
       const result = await ipc.captureAncSnapshot({
         f0: ancRequest.f0,
@@ -1485,7 +1477,9 @@ export function usePawdioLabController() {
 
       // Auto-export when the last mode is captured and an output dir is set
       if (isLastStep && ancRequest.outputDir && ancRequest.savePlots) {
-        const baselineKey = ANC_MODE_ORDERED.find((m) => newCaptures[m] !== undefined);
+        const baselineKey = ANC_MODE_ORDERED.find(
+          (m) => newCaptures[m] !== undefined,
+        );
         const baseline = baselineKey ? newCaptures[baselineKey] : undefined;
         if (baseline && baselineKey) {
           const exportable = ANC_MODE_ORDERED.filter(
@@ -1514,11 +1508,13 @@ export function usePawdioLabController() {
     } catch (err) {
       setError(String(err));
       appendLog(`[anc] error: ${String(err)}`);
+    } finally {
+      setRunning(false);
     }
     setAncRunQueue((q) => {
       const next = q[0] ?? null;
       setAncCurrentStep(next);
-      if (next) setAncStepPrompt(true);
+      setAncStepPrompt(next !== null);
       return q.slice(1);
     });
   }
@@ -1555,7 +1551,11 @@ export function usePawdioLabController() {
 
   async function exportAncPlots(
     baseline: AncSnapshot,
-    modesToExport: Array<{ key: AncModeKey; label: string; snapshot: AncSnapshot }>,
+    modesToExport: Array<{
+      key: AncModeKey;
+      label: string;
+      snapshot: AncSnapshot;
+    }>,
   ) {
     if (!ancRequest.outputDir) {
       appendLog("[anc] no output dir set — skipping plot export");
@@ -1605,9 +1605,14 @@ export function usePawdioLabController() {
         .toISOString()
         .replace(/[:.]/g, "-")
         .slice(0, 19);
-      const attenuationDb = snapshot.magDbLeft.map(
-        (a, i) => a - baseline.magDbLeft[i],
-      );
+      // Squiglink is single-channel: prefer the left curve, but fall back to the
+      // right when a guided right-only capture left magDbLeft empty — otherwise
+      // the exported file would have no data.
+      const useRight =
+        snapshot.magDbLeft.length === 0 || baseline.magDbLeft.length === 0;
+      const aArr = useRight ? snapshot.magDbRight : snapshot.magDbLeft;
+      const bArr = useRight ? baseline.magDbRight : baseline.magDbLeft;
+      const attenuationDb = aArr.map((a, i) => a - (bArr[i] ?? NaN));
       const outputPath = `${ancRequest.outputDir}/anc_${modeKey}_${timestamp}.txt`;
       await ipc.saveAncSquiglink({
         outputPath,
@@ -1723,7 +1728,10 @@ export function usePawdioLabController() {
             setLatencyProgress((prev) => [...prev, event.payload]);
           },
         );
-        if (cancelled) { offLatency(); return; }
+        if (cancelled) {
+          offLatency();
+          return;
+        }
         unlisteners.push(offLatency);
 
         const offProgress = await listen<TestProgress>(
@@ -1753,7 +1761,10 @@ export function usePawdioLabController() {
             }
           },
         );
-        if (cancelled) { offProgress(); return; }
+        if (cancelled) {
+          offProgress();
+          return;
+        }
         unlisteners.push(offProgress);
 
         const offInput = await listen<InputLevelEvent>(
@@ -1786,7 +1797,10 @@ export function usePawdioLabController() {
             });
           },
         );
-        if (cancelled) { offInput(); return; }
+        if (cancelled) {
+          offInput();
+          return;
+        }
         unlisteners.push(offInput);
       } catch (err) {
         setError(String(err));

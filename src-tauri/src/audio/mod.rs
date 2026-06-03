@@ -349,6 +349,8 @@ pub struct TestResultPayload {
 
 #[derive(Debug, Error)]
 pub enum AudioError {
+    // Constructed only on Windows (see `preferred_host`); dead on other targets.
+    #[allow(dead_code)]
     #[error("audio host error: {0}")]
     HostUnavailable(String),
     #[error("audio devices enumeration failed: {0}")]
@@ -1331,13 +1333,11 @@ impl AudioEngine {
                 AncCaptureSide::Left => OutputRouting::LeftOnly,
                 AncCaptureSide::Right => OutputRouting::RightOnly,
             };
-            let captured =
-                runtime.play_and_record_channels(chirp, routing, duration + 0.5)?;
+            let captured = runtime.play_and_record_channels(chirp, routing, duration + 0.5)?;
             // Reference-aligned magnitude curve for one recorded channel.
             let curve = |rec: &[f32]| -> Vec<f32> {
                 let delay = find_delay_ms(rec, &ref_signal, runtime.input_rate);
-                let aligned =
-                    align_to_reference(rec, ref_signal.len(), delay, runtime.input_rate);
+                let aligned = align_to_reference(rec, ref_signal.len(), delay, runtime.input_rate);
                 frequency_response_curve(&aligned, &ref_signal, runtime.input_rate, &grid)
             };
             match request.capture_side {
@@ -1675,7 +1675,7 @@ fn generate_pink_noise(duration_secs: f32, amplitude: f32, sample_rate: u32) -> 
         let x = rng.gen_range(-1.0f32..1.0f32);
         b0 = 0.99886 * b0 + x * 0.055_517_9;
         b1 = 0.99332 * b1 + x * 0.075_075_9;
-        b2 = 0.96900 * b2 + x * 0.153_852_0;
+        b2 = 0.96900 * b2 + x * 0.153_852;
         b3 = 0.86650 * b3 + x * 0.310_485_6;
         b4 = 0.55000 * b4 + x * 0.532_952_2;
         b5 = -0.7616 * b5 - x * 0.016_898_0;
@@ -1771,22 +1771,23 @@ fn average_option(values: &[Option<f32>]) -> Option<f32> {
 }
 
 fn average_curves(curves: &[Vec<f32>]) -> Vec<f32> {
-    if curves.is_empty() {
+    // Skip empty curves (e.g. a single-side capture, or a transient recording
+    // failure on one repeat) so they neither blank the result when they land
+    // first nor skew the divisor.
+    let non_empty: Vec<&Vec<f32>> = curves.iter().filter(|c| !c.is_empty()).collect();
+    if non_empty.is_empty() {
         return Vec::new();
     }
-    let len = curves[0].len();
-    if len == 0 {
-        return Vec::new();
-    }
+    let len = non_empty[0].len();
 
     let mut acc = vec![0.0f32; len];
-    for curve in curves {
+    for curve in &non_empty {
         for (idx, value) in curve.iter().enumerate().take(len) {
             acc[idx] += *value;
         }
     }
     for value in &mut acc {
-        *value /= curves.len() as f32;
+        *value /= non_empty.len() as f32;
     }
     acc
 }
@@ -3848,10 +3849,11 @@ fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Optio
     let mut best_val = f32::MIN;
     let max_lag = recorded.len().saturating_sub(1);
 
-    for idx in 0..=max_lag.min(a.len().saturating_sub(1)) {
-        let value = a[idx].re.abs();
-        if value > best_val {
-            best_val = value;
+    let search_len = max_lag.min(a.len().saturating_sub(1)) + 1;
+    for (idx, sample) in a.iter().enumerate().take(search_len) {
+        let mag = sample.re.abs();
+        if mag > best_val {
+            best_val = mag;
             best_idx = idx;
         }
     }
@@ -3871,6 +3873,7 @@ fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Optio
     Some(best_idx_f * 1000.0 / sample_rate as f32)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn play_and_record(
     output_device: &Device,
     input_device: &Device,
@@ -3938,6 +3941,7 @@ fn play_and_record(
     Ok(captured)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn build_output_stream(
     device: &Device,
     config: &StreamConfig,
@@ -4163,7 +4167,7 @@ impl PinkNoiseState {
         let x = self.next_white();
         self.b0 = 0.99886 * self.b0 + x * 0.055_517_9;
         self.b1 = 0.99332 * self.b1 + x * 0.075_075_9;
-        self.b2 = 0.96900 * self.b2 + x * 0.153_852_0;
+        self.b2 = 0.96900 * self.b2 + x * 0.153_852;
         self.b3 = 0.86650 * self.b3 + x * 0.310_485_6;
         self.b4 = 0.55000 * self.b4 + x * 0.532_952_2;
         self.b5 = -0.7616 * self.b5 - x * 0.016_898_0;
@@ -4713,7 +4717,7 @@ mod tests {
     fn resample_cubic_output_length() {
         let input: Vec<f32> = (0..100).map(|i| i as f32 / 100.0).collect();
         let output = resample_cubic(&input, 44100, 48000);
-        let expected = (100.0 * 48000.0 / 44100.0).ceil() as usize;
+        let expected = (100.0_f64 * 48000.0 / 44100.0).ceil() as usize;
         // Allow ±1 for rounding
         assert!((output.len() as isize - expected as isize).abs() <= 1);
     }

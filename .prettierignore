@@ -1,0 +1,16 @@
+# Build output
+dist/
+dist-ssr/
+src-tauri/target/
+src-tauri/gen/
+*.tsbuildinfo
+
+# Dependencies & generated lockfiles
+node_modules/
+package-lock.json
+
+# Hand-authored docs — don't reflow prose/tables
+*.md
+
+# Legacy Python tooling (Prettier has no Python parser; listed for clarity)
+app/
