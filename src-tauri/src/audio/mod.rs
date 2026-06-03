@@ -4712,7 +4712,7 @@ mod tests {
     fn resample_cubic_output_length() {
         let input: Vec<f32> = (0..100).map(|i| i as f32 / 100.0).collect();
         let output = resample_cubic(&input, 44100, 48000);
-        let expected = (100.0 * 48000.0 / 44100.0).ceil() as usize;
+        let expected = (100.0_f64 * 48000.0 / 44100.0).ceil() as usize;
         // Allow ±1 for rounding
         assert!((output.len() as isize - expected as isize).abs() <= 1);
     }
