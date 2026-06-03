@@ -509,6 +509,7 @@ export function AncPage() {
               <button
                 type="button"
                 className="skin-btn secondary"
+                disabled={running}
                 onClick={onCancelStep}
               >
                 Cancel
