@@ -1120,13 +1120,67 @@ export function usePawdioLabController() {
           }
         }
 
+        // Each per-side mono sweep only renders its own bud into the aggregate
+        // plots ("All Sweeps", "Average of All", L/R Average), and the naive
+        // file merge keeps just one side. Regenerate them from the merged
+        // left+right curves so both buds are accounted for.
+        let lrAvgPlotPath: string | undefined;
+        const allPlotPath = String(combinedPayload.files?.plot_all ?? "");
+        const avgAllPlotPath = String(
+          combinedPayload.files?.plot_avg_all ?? "",
+        );
+        const combinedFreqs = numberList(combinedPayload.data["freqs"]);
+        const combinedAllCurves = numberCurveList(
+          combinedPayload.data["mag_db_all"],
+        );
+        const combinedAvgAll = numberList(
+          combinedPayload.data["mag_db_avg_all"],
+        );
+        const combinedLeftAvg = numberList(
+          combinedPayload.data["left_mag_db_avg"],
+        );
+        const combinedRightAvg = numberList(
+          combinedPayload.data["right_mag_db_avg"],
+        );
+        const hasLrAvg =
+          combinedLeftAvg.length > 0 && combinedRightAvg.length > 0;
+        if (allPlotPath && hasLrAvg) {
+          lrAvgPlotPath = allPlotPath.replace(
+            "sweep_fr_all_",
+            "sweep_fr_lr_avg_",
+          );
+        }
+        if (combinedFreqs.length && (allPlotPath || avgAllPlotPath)) {
+          await ipc
+            .saveSweepCombinedPlots({
+              allPlotPath: allPlotPath || undefined,
+              avgAllPlotPath: avgAllPlotPath || undefined,
+              lrAvgPlotPath,
+              freqs: combinedFreqs,
+              allCurves: combinedAllCurves,
+              avgAll: combinedAvgAll,
+              leftAvg: combinedLeftAvg,
+              rightAvg: combinedRightAvg,
+            })
+            .catch(logCaughtError("saveSweepCombinedPlots"));
+        } else {
+          lrAvgPlotPath = undefined;
+        }
+
+        const extraFiles: Record<string, string> = {};
+        if (squiglinkBothPath) {
+          extraFiles.squiglink_both = squiglinkBothPath;
+        }
+        if (lrAvgPlotPath) {
+          extraFiles.plot_lr_avg = lrAvgPlotPath;
+        }
         const normalized = {
           ...combinedPayload,
           timestamp: legacyTimestamp(combinedPayload.timestamp),
-          ...(squiglinkBothPath && {
+          ...(Object.keys(extraFiles).length > 0 && {
             files: {
               ...combinedPayload.files,
-              squiglink_both: squiglinkBothPath,
+              ...extraFiles,
             },
           }),
         };

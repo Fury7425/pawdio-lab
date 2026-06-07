@@ -119,6 +119,22 @@ export const writeSquiglinkCombined = (params: {
   rightDb: number[];
 }): Promise<void> => invoke("write_squiglink_combined", params);
 
+/**
+ * Regenerate the aggregate sweep plots (All Sweeps / Average of All /
+ * Left+Right Average) from both sides' curves. Used after a guided mono run
+ * combines two single-side sweeps so the aggregate plots include both buds.
+ */
+export const saveSweepCombinedPlots = (params: {
+  allPlotPath?: string;
+  avgAllPlotPath?: string;
+  lrAvgPlotPath?: string;
+  freqs: number[];
+  allCurves: number[][];
+  avgAll: number[];
+  leftAvg: number[];
+  rightAvg: number[];
+}): Promise<void> => invoke("save_sweep_combined_plots", params);
+
 export const ensureOutputDir = (path: string): Promise<void> =>
   invoke("ensure_output_dir", { path });
 

@@ -532,6 +532,44 @@ fn write_squiglink_combined(
     audio::write_squiglink_both_file(path, &freqs, &left_db, &right_db).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+#[allow(clippy::too_many_arguments)]
+fn save_sweep_combined_plots(
+    all_plot_path: Option<String>,
+    avg_all_plot_path: Option<String>,
+    lr_avg_plot_path: Option<String>,
+    freqs: Vec<f32>,
+    all_curves: Vec<Vec<f32>>,
+    avg_all: Vec<f32>,
+    left_avg: Vec<f32>,
+    right_avg: Vec<f32>,
+) -> Result<(), String> {
+    let resolve = |value: &Option<String>| -> Result<Option<std::path::PathBuf>, String> {
+        match value {
+            Some(raw) if !raw.is_empty() => {
+                let path = std::path::Path::new(raw);
+                validate_output_path(path)?;
+                Ok(Some(path.to_path_buf()))
+            }
+            _ => Ok(None),
+        }
+    };
+    let all = resolve(&all_plot_path)?;
+    let avg_all_path = resolve(&avg_all_plot_path)?;
+    let lr_avg = resolve(&lr_avg_plot_path)?;
+    audio::save_sweep_combined_plots(
+        all.as_deref(),
+        avg_all_path.as_deref(),
+        lr_avg.as_deref(),
+        &freqs,
+        &all_curves,
+        &avg_all,
+        &left_avg,
+        &right_avg,
+    )
+    .map_err(|e| e.to_string())
+}
+
 fn main() {
     let app_state = AppState {
         audio: Arc::new(tokio::sync::Mutex::new(AudioEngine::new())),
@@ -571,6 +609,7 @@ fn main() {
             get_runtime_status,
             ensure_output_dir,
             write_squiglink_combined,
+            save_sweep_combined_plots,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|err| {
