@@ -13,9 +13,13 @@ import type {
   BalanceRequest,
   CrosstalkRequest,
   DeviceInventory,
+  DeviceRecord,
   IsolationRequest,
   LatencyReport,
   LatencyRequest,
+  LibraryTestType,
+  MeasurementRecord,
+  MeasurementSummary,
   RuntimeStatus,
   SweepRequest,
   TestPayload,
@@ -185,3 +189,45 @@ export const runPayloadTestRaw = (
     | "run_isolation_test",
   request: unknown,
 ): Promise<TestPayload> => invoke<TestPayload>(command, { request });
+
+// Measurement library / DB ---------------------------------------------------
+// SQLite-backed persistence (src-tauri/src/db.rs). Tauri maps these camelCase
+// argument keys to the snake_case Rust parameters automatically.
+
+export const dbListDevices = (): Promise<DeviceRecord[]> =>
+  invoke<DeviceRecord[]>("db_list_devices");
+
+export const dbCreateDevice = (
+  name: string,
+  kind?: string,
+): Promise<DeviceRecord> =>
+  invoke<DeviceRecord>("db_create_device", { name, kind });
+
+export const dbRenameDevice = (
+  id: number,
+  name: string,
+): Promise<DeviceRecord> =>
+  invoke<DeviceRecord>("db_rename_device", { id, name });
+
+export const dbDeleteDevice = (id: number): Promise<void> =>
+  invoke("db_delete_device", { id });
+
+export const dbListMeasurements = (
+  deviceId?: number,
+  testType?: LibraryTestType,
+): Promise<MeasurementSummary[]> =>
+  invoke<MeasurementSummary[]>("db_list_measurements", { deviceId, testType });
+
+export const dbGetMeasurement = (id: number): Promise<MeasurementRecord> =>
+  invoke<MeasurementRecord>("db_get_measurement", { id });
+
+export const dbSaveMeasurement = (params: {
+  deviceId: number;
+  testType: LibraryTestType;
+  label?: string;
+  payload: MeasurementRecord["payload"];
+}): Promise<MeasurementRecord> =>
+  invoke<MeasurementRecord>("db_save_measurement", params);
+
+export const dbDeleteMeasurement = (id: number): Promise<void> =>
+  invoke("db_delete_measurement", { id });

@@ -6,6 +6,7 @@ import { useDebouncedPersist } from "./hooks/use-debounced-persist";
 import { useMonitorAndNoise } from "./hooks/use-monitor-and-noise";
 import { useResultsLog } from "./hooks/use-results-log";
 import { useDevicesController } from "./hooks/use-devices-controller";
+import { useLibrary } from "./hooks/use-library";
 import {
   ANC_MODE_META,
   ANC_MODE_ORDERED,
@@ -537,6 +538,9 @@ export function usePawdioLabController() {
     getSettings: () => settingsRef.current,
     getInventory: () => inventoryRef.current,
   });
+
+  // Measurement library (SQLite-backed; hooks/use-library.ts)
+  const library = useLibrary({ setError: (m) => setError(m) });
 
   const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(
     mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
@@ -1730,6 +1734,7 @@ export function usePawdioLabController() {
 
   useEffect(() => {
     loadState().catch((err) => setError(String(err)));
+    library.loadLibrary();
   }, []);
 
   useEffect(() => {
@@ -1950,6 +1955,7 @@ export function usePawdioLabController() {
     logs,
     results,
     logText,
+    library,
     latencyProgressPercent,
     loadState,
     commitSettings,

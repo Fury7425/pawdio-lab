@@ -5,6 +5,7 @@ import {
   Settings,
   FileText,
   FlaskConical,
+  Library,
 } from "lucide-react";
 import { pageItems, PageKey } from "../model";
 import { usePawdioLabContext } from "../pawdio-context";
@@ -18,6 +19,7 @@ const PAGE_ICONS: Record<
   anc: EarOff,
   devices: Settings,
   results: FileText,
+  library: Library,
   experimental: FlaskConical,
 };
 

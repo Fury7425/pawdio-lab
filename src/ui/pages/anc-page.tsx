@@ -11,23 +11,16 @@ import {
   toNumber,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
+import {
+  OverlayChart,
+  type OverlayHoverInfo,
+  type OverlaySeries,
+} from "../components/overlay-chart";
+import { fmtHz } from "../lib/chart-scale";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type Channel = "L" | "R" | "both" | "avg";
 type YAxisMode = "auto" | "wide" | "narrow";
-type ChartSeries = {
-  id: string;
-  label: string;
-  color: string;
-  dash?: string;
-  values: number[];
-};
-type HoverItem = {
-  id: string;
-  color: string;
-  label: string;
-  db: number;
-};
 
 const CHANNEL_LABELS: Record<Channel, string> = {
   L: "L",
@@ -37,42 +30,6 @@ const CHANNEL_LABELS: Record<Channel, string> = {
 };
 
 const Y_AXIS_STORAGE_KEY = "pawdio-lab-anc-yaxis-v1";
-
-const MIN_LOG = Math.log10(20);
-const MAX_LOG = Math.log10(20000);
-const SPAN_LOG = MAX_LOG - MIN_LOG;
-
-function toX(hz: number): number {
-  return (
-    ((Math.log10(Math.max(20, Math.min(20000, hz))) - MIN_LOG) / SPAN_LOG) * 200
-  );
-}
-
-function fromX(x: number): number {
-  const logHz = MIN_LOG + (x / 200) * SPAN_LOG;
-  return Math.pow(10, logHz);
-}
-
-function buildCurvePath(
-  freqs: number[],
-  values: number[],
-  toY: (db: number) => number,
-): string {
-  if (freqs.length < 2 || values.length < 2) return "";
-  const points = freqs
-    .map((hz, i) => ({ x: toX(hz), y: toY(values[i]) }))
-    .filter((p) => Number.isFinite(p.x) && Number.isFinite(p.y));
-  if (points.length < 2) return "";
-  let path = `M ${points[0].x.toFixed(2)} ${points[0].y.toFixed(2)}`;
-  for (let i = 1; i < points.length - 1; i += 1) {
-    const midX = (points[i].x + points[i + 1].x) / 2;
-    const midY = (points[i].y + points[i + 1].y) / 2;
-    path += ` Q ${points[i].x.toFixed(2)} ${points[i].y.toFixed(2)} ${midX.toFixed(2)} ${midY.toFixed(2)}`;
-  }
-  const last = points[points.length - 1];
-  path += ` T ${last.x.toFixed(2)} ${last.y.toFixed(2)}`;
-  return path;
-}
 
 function fmtTime(timestamp: string): string {
   try {
@@ -91,12 +48,6 @@ function fmtTime(timestamp: string): string {
 function meanOf(arr: number[]): number {
   if (arr.length === 0) return 0;
   return arr.reduce((s, v) => s + v, 0) / arr.length;
-}
-
-function fmtHz(hz: number): string {
-  return hz >= 1000
-    ? `${(hz / 1000).toFixed(hz >= 10000 ? 0 : 1)}k`
-    : `${Math.round(hz)}`;
 }
 
 function loadYAxisMode(): YAxisMode {
@@ -163,7 +114,7 @@ export function AncPage() {
   const [stateConfirmed, setStateConfirmed] = useState(false);
   const [yAxisMode, setYAxisModeState] = useState<YAxisMode>(loadYAxisMode);
   const [manualBaseline, setManualBaseline] = useState<AncModeKey | null>(null);
-  const [hover, setHover] = useState<{ x: number; hz: number } | null>(null);
+  const [hoverInfo, setHoverInfo] = useState<OverlayHoverInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const setYAxisMode = (v: YAxisMode) => {
@@ -234,33 +185,12 @@ export function AncPage() {
     yMin = hasTransOnly ? -15 : -40;
     yMax = hasTransOnly ? 15 : 10;
   }
-  const ySpan = yMax - yMin;
-
-  function toY(db: number): number {
-    const clamped = Math.max(yMin, Math.min(yMax, db));
-    return 10 + ((yMax - clamped) / ySpan) * 80;
-  }
-
-  const zeroY = toY(0);
-
-  const X_GUIDES_MAJOR = [100, 500, 1000, 5000, 10000];
-  const X_GUIDES_MINOR = [30, 50, 200, 300, 700, 2000, 3000, 7000, 15000];
-  const Y_TICKS = useMemo(() => {
-    const ticks: number[] = [yMax];
-    const step = ySpan >= 40 ? 10 : 5;
-    for (let v = Math.floor(yMax / step) * step; v > yMin; v -= step) {
-      if (v < yMax && v > yMin && !ticks.includes(v)) ticks.push(v);
-    }
-    if (!ticks.includes(0) && yMin <= 0 && yMax >= 0) ticks.push(0);
-    ticks.push(yMin);
-    return Array.from(new Set(ticks)).sort((a, b) => b - a);
-  }, [yMin, yMax, ySpan]);
-
   // One drawable line per visible non-baseline mode. `both` expands each mode
   // into two lines (L solid, R dashed); `avg` collapses to a single mean line.
-  const chartSeries = useMemo<ChartSeries[]>(() => {
+  const chartSeries = useMemo<OverlaySeries[]>(() => {
     if (!baseline) return [];
-    const out: ChartSeries[] = [];
+    const freqs = baseline.freqs;
+    const out: OverlaySeries[] = [];
     for (const key of modeOrdered) {
       if (key === baselineKey || !visibleModes.has(key)) continue;
       const snap = captures[key];
@@ -271,6 +201,7 @@ export function AncPage() {
           id: `${key}-L`,
           label: `${meta.label} (L)`,
           color: meta.color,
+          freqs,
           values: attenSide(snap, "L"),
         });
         out.push({
@@ -278,6 +209,7 @@ export function AncPage() {
           label: `${meta.label} (R)`,
           color: meta.color,
           dash: "2.5 2",
+          freqs,
           values: attenSide(snap, "R"),
         });
       } else {
@@ -285,6 +217,7 @@ export function AncPage() {
           id: key,
           label: channel === "avg" ? `${meta.label} (avg)` : meta.label,
           color: meta.color,
+          freqs,
           values: channel === "avg" ? attenAvg(snap) : attenSide(snap, channel),
         });
       }
@@ -293,30 +226,6 @@ export function AncPage() {
     // attenSide/attenAvg close over baseline + channel — listed deps cover both.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline, baselineKey, captures, visibleModes, channel]);
-
-  // Hover crosshair: nearest grid point info across the drawn series.
-  const hoverInfo = useMemo(() => {
-    if (!hover || !baseline) return null;
-    const freqs = baseline.freqs;
-    if (!freqs.length) return null;
-    const targetHz = hover.hz;
-    let bestIdx = 0;
-    let bestDist = Infinity;
-    for (let i = 0; i < freqs.length; i += 1) {
-      const dist = Math.abs(Math.log10(freqs[i]) - Math.log10(targetHz));
-      if (dist < bestDist) {
-        bestDist = dist;
-        bestIdx = i;
-      }
-    }
-    const items: HoverItem[] = [];
-    for (const s of chartSeries) {
-      const db = s.values[bestIdx];
-      if (db === undefined || !Number.isFinite(db)) continue;
-      items.push({ id: s.id, color: s.color, label: s.label, db });
-    }
-    return { hz: freqs[bestIdx], items };
-  }, [hover, baseline, chartSeries]);
 
   function toggleMode(key: AncModeKey) {
     onChangeSelectedModes(
@@ -898,188 +807,18 @@ export function AncPage() {
 
           {/* SVG attenuation graph */}
           <div className="level-meter" style={{ marginBottom: 16 }}>
-            <svg
-              viewBox="0 0 220 110"
-              style={{ width: "100%", display: "block" }}
-              role="img"
-              aria-label="Attenuation frequency response graph"
-              onMouseMove={(e) => {
-                const svg = e.currentTarget;
-                const rect = svg.getBoundingClientRect();
-                const px = ((e.clientX - rect.left) / rect.width) * 220 - 20;
-                if (px < 0 || px > 200) {
-                  setHover(null);
-                  return;
-                }
-                setHover({ x: px, hz: fromX(px) });
-              }}
-              onMouseLeave={() => setHover(null)}
-            >
-              {/* Y-axis labels */}
-              {Y_TICKS.map((db) => {
-                const y = toY(db);
-                return (
-                  <text
-                    key={`ylabel-${db}`}
-                    x="16"
-                    y={y + 3}
-                    textAnchor="end"
-                    fontSize="6"
-                    fill="var(--text-muted)"
-                  >
-                    {db > 0 ? `+${db}` : db}
-                  </text>
-                );
-              })}
-
-              {/* Graph area offset by 20px for Y labels */}
-              <g transform="translate(20, 0)">
-                {/* Top + bottom border */}
-                <line
-                  x1="0"
-                  y1="10"
-                  x2="200"
-                  y2="10"
-                  stroke="var(--level-grid)"
-                  strokeWidth="0.4"
-                />
-                <line
-                  x1="0"
-                  y1="90"
-                  x2="200"
-                  y2="90"
-                  stroke="var(--level-grid)"
-                  strokeWidth="0.4"
-                />
-
-                {/* Minor x-grid (B6) */}
-                {X_GUIDES_MINOR.map((hz) => {
-                  const x = toX(hz);
-                  return (
-                    <line
-                      key={`xminor-${hz}`}
-                      x1={x}
-                      y1="10"
-                      x2={x}
-                      y2="90"
-                      stroke="var(--level-grid)"
-                      strokeWidth="0.2"
-                      opacity="0.45"
-                    />
-                  );
-                })}
-
-                {/* Major x-grid + labels */}
-                {X_GUIDES_MAJOR.map((hz) => {
-                  const x = toX(hz);
-                  const label = hz >= 1000 ? `${hz / 1000}k` : `${hz}`;
-                  return (
-                    <g key={`xguide-${hz}`}>
-                      <line
-                        x1={x}
-                        y1="8"
-                        x2={x}
-                        y2="92"
-                        stroke="var(--level-grid)"
-                        strokeWidth="0.4"
-                      />
-                      <text
-                        x={x}
-                        y="100"
-                        textAnchor="middle"
-                        fontSize="6"
-                        fill="var(--text-muted)"
-                      >
-                        {label}
-                      </text>
-                    </g>
-                  );
-                })}
-
-                {/* 0 dB reference line */}
-                <line
-                  x1="0"
-                  y1={zeroY}
-                  x2="200"
-                  y2={zeroY}
-                  stroke="var(--stroke)"
-                  strokeWidth="1"
-                  strokeDasharray="3 3"
-                />
-                <text
-                  x="202"
-                  y={zeroY + 3}
-                  fontSize="6"
-                  fill="var(--text-muted)"
-                >
-                  0
-                </text>
-
-                {/* Attenuation curves */}
-                {chartSeries.map((s) => {
-                  const path = buildCurvePath(baseline!.freqs, s.values, toY);
-                  if (!path) return null;
-                  return (
-                    <path
-                      key={s.id}
-                      d={path}
-                      fill="none"
-                      stroke={s.color}
-                      strokeWidth="1"
-                      strokeDasharray={s.dash}
-                      strokeLinejoin="round"
-                      strokeLinecap="round"
-                    />
-                  );
-                })}
-
-                {/* Hover crosshair (B8) */}
-                {hover && hoverInfo && (
-                  <g pointerEvents="none">
-                    <line
-                      x1={hover.x}
-                      y1="10"
-                      x2={hover.x}
-                      y2="90"
-                      stroke="var(--accent-9)"
-                      strokeWidth="0.5"
-                      opacity="0.7"
-                    />
-                    {hoverInfo.items.map((item) => {
-                      const cy = toY(item.db);
-                      return (
-                        <circle
-                          key={item.id}
-                          cx={hover.x}
-                          cy={cy}
-                          r="1.5"
-                          fill={item.color}
-                          stroke="#fff"
-                          strokeWidth="0.4"
-                        />
-                      );
-                    })}
-                  </g>
-                )}
-
-                {/* Empty state overlay */}
-                {nonBaselineCaptured.length === 0 && (
-                  <text
-                    x="100"
-                    y="54"
-                    textAnchor="middle"
-                    fontSize="8"
-                    fill="var(--text-muted)"
-                  >
-                    Capture at least two modes to see attenuation
-                  </text>
-                )}
-              </g>
-            </svg>
+            <OverlayChart
+              series={chartSeries}
+              yMin={yMin}
+              yMax={yMax}
+              ariaLabel="Attenuation frequency response graph"
+              emptyMessage="Capture at least two modes to see attenuation"
+              onHover={setHoverInfo}
+            />
           </div>
 
           {/* Hover readout (B8) */}
-          {hover && hoverInfo && hoverInfo.items.length > 0 && (
+          {hoverInfo && hoverInfo.items.length > 0 && (
             <div
               className="muted"
               style={{
@@ -1095,7 +834,7 @@ export function AncPage() {
               </strong>
               {hoverInfo.items.map((item) => (
                 <span key={item.id} style={{ color: item.color }}>
-                  {item.label}: <strong>{item.db.toFixed(1)} dB</strong>
+                  {item.label}: <strong>{item.value.toFixed(1)} dB</strong>
                 </span>
               ))}
             </div>

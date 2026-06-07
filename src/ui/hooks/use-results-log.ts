@@ -13,6 +13,33 @@ type Deps = {
 };
 
 /**
+ * Best-effort human name for the device under test: a user-typed `itemName`
+ * wins, otherwise the selected output (then input) device name, else
+ * "Unknown Device". Shared by the results log and the save-to-library picker.
+ */
+export function deriveDeviceName(
+  settings: AudioSettings | null,
+  inventory: DeviceInventory | null,
+): string {
+  if (settings) {
+    if (settings.itemName && settings.itemName.trim()) {
+      return settings.itemName.trim();
+    }
+    if (inventory) {
+      const outputDevice = inventory.outputs.find(
+        (d) => d.index === settings.outputDeviceIndex,
+      );
+      const inputDevice = inventory.inputs.find(
+        (d) => d.index === settings.inputDeviceIndex,
+      );
+      if (outputDevice) return outputDevice.name;
+      if (inputDevice) return inputDevice.name;
+    }
+  }
+  return "Unknown Device";
+}
+
+/**
  * Logs + results buffer + the helpers that mutate them.
  *
  * Split from the main controller because they're called from every test
@@ -34,25 +61,7 @@ export function useResultsLog({ getSettings, getInventory }: Deps = {}) {
   function appendResult(payload: TestPayload) {
     const settings = getSettings?.() ?? null;
     const inventory = getInventory?.() ?? null;
-
-    let deviceName = "Unknown Device";
-    if (settings) {
-      if (settings.itemName && settings.itemName.trim()) {
-        deviceName = settings.itemName.trim();
-      } else if (inventory) {
-        const outputDevice = inventory.outputs.find(
-          (d) => d.index === settings.outputDeviceIndex,
-        );
-        const inputDevice = inventory.inputs.find(
-          (d) => d.index === settings.inputDeviceIndex,
-        );
-        if (outputDevice) {
-          deviceName = outputDevice.name;
-        } else if (inputDevice) {
-          deviceName = inputDevice.name;
-        }
-      }
-    }
+    const deviceName = deriveDeviceName(settings, inventory);
 
     const entry: ResultEntry = {
       id: nextResultId.current++,

@@ -5,6 +5,7 @@ import { AncPage } from "./pages/anc-page";
 import { DevicesPage } from "./pages/devices-page";
 import { ExperimentalPage } from "./pages/experimental-page";
 import { LatencyPage } from "./pages/latency-page";
+import { LibraryPage } from "./pages/library-page";
 import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
 import { startAppearanceThemeSync } from "./theme";
@@ -47,6 +48,7 @@ function PawdioLabShell() {
               ctx.experimentalEnabled && <ExperimentalPage />}
             {ctx.activePage === PageKeyEnum.Devices && <DevicesPage />}
             {ctx.activePage === PageKeyEnum.Results && <ResultsPage />}
+            {ctx.activePage === PageKeyEnum.Library && <LibraryPage />}
           </ErrorBoundary>
         </div>
       </div>

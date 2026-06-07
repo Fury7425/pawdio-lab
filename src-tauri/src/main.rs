@@ -1,4 +1,5 @@
 mod audio;
+mod db;
 
 use std::sync::{
     atomic::{AtomicBool, Ordering},
@@ -10,8 +11,9 @@ use audio::{
     DeviceInventory, IsolationRequest, LatencyExportEntry, LatencyTestReport, LatencyTestRequest,
     SweepFrRequest, TestProgressEvent, TestResultPayload, ThdRequest,
 };
+use db::{DeviceRecord, MeasurementRecord, MeasurementSummary};
 use serde::Serialize;
-use tauri::{Emitter, State};
+use tauri::{Emitter, Manager, State};
 
 /// Reject paths that contain `..` traversal or are not absolute.
 /// All export commands must call this before touching the filesystem.
@@ -37,6 +39,7 @@ fn validate_output_path(path: &std::path::Path) -> Result<(), String> {
 #[derive(Clone)]
 struct AppState {
     audio: Arc<tokio::sync::Mutex<AudioEngine>>,
+    db: Arc<tokio::sync::Mutex<rusqlite::Connection>>,
     running: Arc<AtomicBool>,
     cancel: Arc<AtomicBool>,
     monitor_running: Arc<AtomicBool>,
@@ -570,21 +573,107 @@ fn save_sweep_combined_plots(
     .map_err(|e| e.to_string())
 }
 
-fn main() {
-    let app_state = AppState {
-        audio: Arc::new(tokio::sync::Mutex::new(AudioEngine::new())),
-        running: Arc::new(AtomicBool::new(false)),
-        cancel: Arc::new(AtomicBool::new(false)),
-        monitor_running: Arc::new(AtomicBool::new(false)),
-        monitor_cancel: Arc::new(AtomicBool::new(false)),
-        monitor_peak_reset: Arc::new(AtomicBool::new(false)),
-        pink_noise_running: Arc::new(AtomicBool::new(false)),
-        pink_noise_cancel: Arc::new(AtomicBool::new(false)),
-    };
+// Measurement library (SQLite) -----------------------------------------------
 
+#[tauri::command]
+async fn db_list_devices(state: State<'_, AppState>) -> Result<Vec<DeviceRecord>, String> {
+    let conn = state.db.lock().await;
+    db::list_devices(&conn)
+}
+
+#[tauri::command]
+async fn db_create_device(
+    state: State<'_, AppState>,
+    name: String,
+    kind: Option<String>,
+) -> Result<DeviceRecord, String> {
+    let conn = state.db.lock().await;
+    db::create_device(&conn, &name, kind)
+}
+
+#[tauri::command]
+async fn db_rename_device(
+    state: State<'_, AppState>,
+    id: i64,
+    name: String,
+) -> Result<DeviceRecord, String> {
+    let conn = state.db.lock().await;
+    db::rename_device(&conn, id, &name)
+}
+
+#[tauri::command]
+async fn db_delete_device(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().await;
+    db::delete_device(&conn, id)
+}
+
+#[tauri::command]
+async fn db_list_measurements(
+    state: State<'_, AppState>,
+    device_id: Option<i64>,
+    test_type: Option<String>,
+) -> Result<Vec<MeasurementSummary>, String> {
+    let conn = state.db.lock().await;
+    db::list_measurements(&conn, device_id, test_type)
+}
+
+#[tauri::command]
+async fn db_get_measurement(
+    state: State<'_, AppState>,
+    id: i64,
+) -> Result<MeasurementRecord, String> {
+    let conn = state.db.lock().await;
+    db::get_measurement(&conn, id)
+}
+
+#[tauri::command]
+async fn db_save_measurement(
+    state: State<'_, AppState>,
+    device_id: i64,
+    test_type: String,
+    label: Option<String>,
+    payload: serde_json::Value,
+) -> Result<MeasurementRecord, String> {
+    let conn = state.db.lock().await;
+    db::save_measurement(&conn, device_id, &test_type, label, &payload)
+}
+
+#[tauri::command]
+async fn db_delete_measurement(state: State<'_, AppState>, id: i64) -> Result<(), String> {
+    let conn = state.db.lock().await;
+    db::delete_measurement(&conn, id)
+}
+
+fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .manage(app_state)
+        .setup(|app| {
+            let db_path = app
+                .path()
+                .app_data_dir()
+                .map_err(|e| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        format!("could not resolve app data dir: {e}"),
+                    )
+                })?
+                .join("pawdio-lab.db");
+            let conn = db::init(&db_path)
+                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+
+            app.manage(AppState {
+                audio: Arc::new(tokio::sync::Mutex::new(AudioEngine::new())),
+                db: Arc::new(tokio::sync::Mutex::new(conn)),
+                running: Arc::new(AtomicBool::new(false)),
+                cancel: Arc::new(AtomicBool::new(false)),
+                monitor_running: Arc::new(AtomicBool::new(false)),
+                monitor_cancel: Arc::new(AtomicBool::new(false)),
+                monitor_peak_reset: Arc::new(AtomicBool::new(false)),
+                pink_noise_running: Arc::new(AtomicBool::new(false)),
+                pink_noise_cancel: Arc::new(AtomicBool::new(false)),
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             list_audio_devices,
             get_audio_settings,
@@ -610,6 +699,14 @@ fn main() {
             ensure_output_dir,
             write_squiglink_combined,
             save_sweep_combined_plots,
+            db_list_devices,
+            db_create_device,
+            db_rename_device,
+            db_delete_device,
+            db_list_measurements,
+            db_get_measurement,
+            db_save_measurement,
+            db_delete_measurement,
         ])
         .run(tauri::generate_context!())
         .unwrap_or_else(|err| {

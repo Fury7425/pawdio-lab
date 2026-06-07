@@ -4,7 +4,8 @@ export type PageKey =
   | "anc"
   | "experimental"
   | "devices"
-  | "results";
+  | "results"
+  | "library";
 
 export enum PageKeyEnum {
   Latency = "latency",
@@ -13,6 +14,7 @@ export enum PageKeyEnum {
   Experimental = "experimental",
   Devices = "devices",
   Results = "results",
+  Library = "library",
 }
 
 export type AudioDeviceInfo = {
@@ -244,12 +246,68 @@ export type ResultEntry = {
   deviceName?: string;
 };
 
+// Measurement library (SQLite-backed; see src-tauri/src/db.rs) ----------------
+
+export type LibraryTestType =
+  | "latency"
+  | "sweep_fr"
+  | "thd"
+  | "balance"
+  | "crosstalk"
+  | "isolation"
+  | "anc";
+
+export type DeviceRecord = {
+  id: number;
+  name: string;
+  kind?: string | null;
+  notes?: string | null;
+  createdAt: number;
+};
+
+export type MeasurementSummary = {
+  id: number;
+  deviceId: number;
+  testType: LibraryTestType;
+  capturedAt: number;
+  label?: string | null;
+};
+
+/**
+ * A full saved measurement. `payload` is the same JSON the test produced —
+ * discriminated by `testType`: `LatencyReport` for "latency", `AncCaptures`
+ * for "anc", otherwise `TestPayload`.
+ */
+export type MeasurementRecord = MeasurementSummary & {
+  notes?: string | null;
+  schemaVer: number;
+  payload: LatencyReport | TestPayload | AncCaptures;
+};
+
+export const LIBRARY_TEST_LABELS: Record<LibraryTestType, string> = {
+  latency: "Latency",
+  sweep_fr: "Frequency Response",
+  thd: "THD",
+  balance: "Channel Balance",
+  crosstalk: "Crosstalk",
+  isolation: "Isolation",
+  anc: "ANC / Transparency",
+};
+
+/** Test types that have a comparison renderer in v1. */
+export const COMPARABLE_TEST_TYPES: ReadonlySet<LibraryTestType> = new Set([
+  "sweep_fr",
+  "latency",
+  "anc",
+]);
+
 export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "latency", label: "Latency" },
   { key: "sweep_fr", label: "Sweep FR" },
   { key: "anc", label: "ANC / Transparency" },
   { key: "devices", label: "Devices / Settings" },
   { key: "results", label: "Results / Export" },
+  { key: "library", label: "Library / Compare" },
   { key: "experimental", label: "Experimental Tests" },
 ];
 
