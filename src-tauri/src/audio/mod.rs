@@ -3112,6 +3112,7 @@ fn save_sweep_lr_avg_plot(
 /// Guided mono mode captures each earphone in a separate sweep, so the
 /// per-sweep plots only contain one side. This regenerates the aggregate plots
 /// using the merged left+right curves so both buds are accounted for.
+#[allow(clippy::too_many_arguments)]
 pub fn save_sweep_combined_plots(
     all_path: Option<&Path>,
     avg_all_path: Option<&Path>,
