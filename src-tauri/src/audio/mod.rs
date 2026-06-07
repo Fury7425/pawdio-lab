@@ -3106,6 +3106,41 @@ fn save_sweep_lr_avg_plot(
         .map_err(|err| AudioError::FileExport(format!("sweep write {}: {err}", path.display())))
 }
 
+/// Render the combined "All Sweeps" / "Average of All" / "Left+Right Average"
+/// plots from both sides' curve data.
+///
+/// Guided mono mode captures each earphone in a separate sweep, so the
+/// per-sweep plots only contain one side. This regenerates the aggregate plots
+/// using the merged left+right curves so both buds are accounted for.
+#[allow(clippy::too_many_arguments)]
+pub fn save_sweep_combined_plots(
+    all_path: Option<&Path>,
+    avg_all_path: Option<&Path>,
+    lr_avg_path: Option<&Path>,
+    freqs: &[f32],
+    all_curves: &[Vec<f32>],
+    avg_all: &[f32],
+    left_avg: &[f32],
+    right_avg: &[f32],
+) -> Result<(), AudioError> {
+    if let Some(path) = all_path {
+        if !all_curves.is_empty() {
+            save_sweep_multi_plot(path, "All Sweeps Frequency Response", freqs, all_curves)?;
+        }
+    }
+    if let Some(path) = avg_all_path {
+        if !avg_all.is_empty() {
+            save_sweep_single_plot(path, "Average of All Frequency Response", freqs, avg_all)?;
+        }
+    }
+    if let Some(path) = lr_avg_path {
+        if !left_avg.is_empty() && !right_avg.is_empty() {
+            save_sweep_lr_avg_plot(path, freqs, left_avg, right_avg)?;
+        }
+    }
+    Ok(())
+}
+
 const ANC_PLOT_Y_MIN: f32 = -40.0;
 const ANC_PLOT_Y_MAX: f32 = 10.0;
 

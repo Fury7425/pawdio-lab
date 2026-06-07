@@ -231,6 +231,27 @@ function numberList(value: unknown): number[] {
     .filter((item) => Number.isFinite(item));
 }
 
+/**
+ * Derive a sibling file path by replacing a token in the final path segment
+ * (basename) only. Returns undefined when the basename does not contain the
+ * token, so callers never fabricate a path from a filename that doesn't match.
+ * Scoping the replacement to the basename avoids clobbering an earlier
+ * directory segment that happens to contain the same token.
+ */
+function siblingPathByBasename(
+  path: string,
+  search: string,
+  replacement: string,
+): string | undefined {
+  const sepIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
+  const dir = sepIndex >= 0 ? path.slice(0, sepIndex + 1) : "";
+  const base = sepIndex >= 0 ? path.slice(sepIndex + 1) : path;
+  if (!base.includes(search)) {
+    return undefined;
+  }
+  return `${dir}${base.replace(search, replacement)}`;
+}
+
 function exportTimestampTag(): string {
   const now = new Date();
   const yyyy = now.getFullYear();
@@ -1120,13 +1141,74 @@ export function usePawdioLabController() {
           }
         }
 
+        // Each per-side mono sweep only renders its own bud into the aggregate
+        // plots ("All Sweeps", "Average of All", L/R Average), and the naive
+        // file merge keeps just one side. Regenerate them from the merged
+        // left+right curves so both buds are accounted for.
+        let lrAvgPlotPath: string | undefined;
+        const allPlotPath = String(combinedPayload.files?.plot_all ?? "");
+        const avgAllPlotPath = String(
+          combinedPayload.files?.plot_avg_all ?? "",
+        );
+        const combinedFreqs = numberList(combinedPayload.data["freqs"]);
+        const combinedAllCurves = numberCurveList(
+          combinedPayload.data["mag_db_all"],
+        );
+        const combinedAvgAll = numberList(
+          combinedPayload.data["mag_db_avg_all"],
+        );
+        const combinedLeftAvg = numberList(
+          combinedPayload.data["left_mag_db_avg"],
+        );
+        const combinedRightAvg = numberList(
+          combinedPayload.data["right_mag_db_avg"],
+        );
+        const hasLrAvg =
+          combinedLeftAvg.length > 0 && combinedRightAvg.length > 0;
+        // Derive the L/R-average path from the basename only so a directory
+        // segment containing "sweep_fr_all_" can't be rewritten by mistake.
+        if (allPlotPath && hasLrAvg) {
+          lrAvgPlotPath = siblingPathByBasename(
+            allPlotPath,
+            "sweep_fr_all_",
+            "sweep_fr_lr_avg_",
+          );
+        }
+        let combinedPlotsWritten = false;
+        if (combinedFreqs.length && (allPlotPath || avgAllPlotPath)) {
+          combinedPlotsWritten = await ipc
+            .saveSweepCombinedPlots({
+              allPlotPath: allPlotPath || undefined,
+              avgAllPlotPath: avgAllPlotPath || undefined,
+              lrAvgPlotPath,
+              freqs: combinedFreqs,
+              allCurves: combinedAllCurves,
+              avgAll: combinedAvgAll,
+              leftAvg: combinedLeftAvg,
+              rightAvg: combinedRightAvg,
+            })
+            .then(() => true)
+            .catch((err) => {
+              logCaughtError("saveSweepCombinedPlots")(err);
+              return false;
+            });
+        }
+
+        const extraFiles: Record<string, string> = {};
+        if (squiglinkBothPath) {
+          extraFiles.squiglink_both = squiglinkBothPath;
+        }
+        // Only record the L/R-average plot once it was actually written.
+        if (lrAvgPlotPath && combinedPlotsWritten) {
+          extraFiles.plot_lr_avg = lrAvgPlotPath;
+        }
         const normalized = {
           ...combinedPayload,
           timestamp: legacyTimestamp(combinedPayload.timestamp),
-          ...(squiglinkBothPath && {
+          ...(Object.keys(extraFiles).length > 0 && {
             files: {
               ...combinedPayload.files,
-              squiglink_both: squiglinkBothPath,
+              ...extraFiles,
             },
           }),
         };
