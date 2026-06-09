@@ -2,7 +2,10 @@ import { useEffect, useState } from "react";
 import { AudioWaveform } from "lucide-react";
 import { CAPTURE_ORDER_META, toNumber, type CaptureOrder } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
-import { DropdownMenu } from "../components/dropdown-menu";
+import { EmptyState } from "../components/empty-state";
+import { ExportMenu } from "../components/export-menu";
+import { CheckboxField } from "../components/form-fields";
+import { Modal } from "../components/modal";
 import { usePawdioLabContext } from "../pawdio-context";
 
 export function SweepFrPage() {
@@ -113,29 +116,30 @@ export function SweepFrPage() {
 
   return (
     <div className="page-stack">
-      {monoConfirmMessage && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <p className="modal-message">{monoConfirmMessage}</p>
-            <div className="modal-actions">
-              <button
-                type="button"
-                className="skin-btn secondary"
-                onClick={onMonoConfirmCancel}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="skin-btn"
-                onClick={onMonoConfirmOk}
-              >
-                OK
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal
+        open={Boolean(monoConfirmMessage)}
+        onClose={onMonoConfirmCancel}
+        footer={
+          <>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              onClick={onMonoConfirmCancel}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="skin-btn"
+              onClick={onMonoConfirmOk}
+            >
+              OK
+            </button>
+          </>
+        }
+      >
+        <p className="modal-message">{monoConfirmMessage}</p>
+      </Modal>
 
       <section className="page-card">
         <h2 className="section-heading">Sweep Frequency Response</h2>
@@ -218,32 +222,20 @@ export function SweepFrPage() {
             <div className="field-row">
               <span className="field-label">Options</span>
               <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                <label className="toggle-line">
-                  <input
-                    type="checkbox"
-                    checked={request.savePlots}
-                    onChange={(event) =>
-                      onChangeRequest({
-                        ...request,
-                        savePlots: event.target.checked,
-                      })
-                    }
-                  />
-                  Save plots
-                </label>
-                <label className="toggle-line">
-                  <input
-                    type="checkbox"
-                    checked={request.saveSquiglink}
-                    onChange={(event) =>
-                      onChangeRequest({
-                        ...request,
-                        saveSquiglink: event.target.checked,
-                      })
-                    }
-                  />
-                  Save Squiglink format (.txt)
-                </label>
+                <CheckboxField
+                  label="Save plots"
+                  checked={request.savePlots}
+                  onChange={(checked) =>
+                    onChangeRequest({ ...request, savePlots: checked })
+                  }
+                />
+                <CheckboxField
+                  label="Save Squiglink format (.txt)"
+                  checked={request.saveSquiglink}
+                  onChange={(checked) =>
+                    onChangeRequest({ ...request, saveSquiglink: checked })
+                  }
+                />
                 <div
                   className="toggle-line"
                   style={{ alignItems: "center", gap: 8 }}
@@ -361,7 +353,10 @@ export function SweepFrPage() {
                 </div>
               </div>
               {monitor.clipCount > 0 && (
-                <p className="muted mt-8" style={{ color: "var(--danger-text)" }}>
+                <p
+                  className="muted mt-8"
+                  style={{ color: "var(--danger-text)" }}
+                >
                   Clipping detected ({monitor.clipCount})
                 </p>
               )}
@@ -569,50 +564,39 @@ export function SweepFrPage() {
                 </details>
               </div>
             ) : (
-              <div className="empty-state" style={{ minHeight: 400 }}>
-                <AudioWaveform size={32} />
-                <span>Run a sweep to see results here</span>
-              </div>
+              <EmptyState
+                icon={<AudioWaveform size={32} />}
+                message="Run a sweep to see results here"
+                style={{ minHeight: 400 }}
+              />
             )}
           </div>
           <div className="row-end mt-12">
-            <DropdownMenu
-              label="Export"
+            <ExportMenu
               disabled={running || (!hasSweepResult && !hasSweepHistory)}
-            >
-              <button
-                type="button"
-                className="dropdown-item"
-                disabled={running || !hasSweepResult}
-                onClick={onExportLastJson}
-              >
-                Export LAST (JSON)
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                disabled={running || !hasSweepHistory}
-                onClick={onExportAllJson}
-              >
-                Export ALL (JSON)
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                disabled={running || !hasSweepResult}
-                onClick={onExportLastSquiglink}
-              >
-                Export LAST to Squiglink
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                disabled={running || !hasSweepResult}
-                onClick={onExportLastCsv}
-              >
-                Export LAST (CSV)
-              </button>
-            </DropdownMenu>
+              items={[
+                {
+                  label: "Export LAST (JSON)",
+                  onSelect: onExportLastJson,
+                  disabled: running || !hasSweepResult,
+                },
+                {
+                  label: "Export ALL (JSON)",
+                  onSelect: onExportAllJson,
+                  disabled: running || !hasSweepHistory,
+                },
+                {
+                  label: "Export LAST to Squiglink",
+                  onSelect: onExportLastSquiglink,
+                  disabled: running || !hasSweepResult,
+                },
+                {
+                  label: "Export LAST (CSV)",
+                  onSelect: onExportLastCsv,
+                  disabled: running || !hasSweepResult,
+                },
+              ]}
+            />
           </div>
         </section>
       </section>

@@ -2,14 +2,18 @@ import { useEffect, useMemo, useState } from "react";
 import { Clock } from "lucide-react";
 import { fmtMs, toNumber } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
-import { DropdownMenu } from "../components/dropdown-menu";
+import { ChipGroup } from "../components/chip-group";
+import { EmptyState } from "../components/empty-state";
+import { ExportMenu } from "../components/export-menu";
+import { CheckboxField, RangeField } from "../components/form-fields";
+import { MetricCard, type MetricTier } from "../components/metric-card";
 import { usePawdioLabContext } from "../pawdio-context";
 
-function metricTier(ms: number | null | undefined): string {
-  if (ms == null) return "";
-  if (ms < 15) return "metric-good";
-  if (ms < 40) return "metric-warn";
-  return "metric-bad";
+function metricTier(ms: number | null | undefined): MetricTier | null {
+  if (ms == null) return null;
+  if (ms < 15) return "good";
+  if (ms < 40) return "warn";
+  return "bad";
 }
 
 const LATENCY_UI_STORAGE_KEY = "pawdio-lab-latency-ui-v1";
@@ -153,10 +157,6 @@ export function LatencyPage() {
     },
   ];
 
-  function isRunPresetEnabled(key: keyof typeof runSelection) {
-    return runSelection[key];
-  }
-
   return (
     <div className="page-stack">
       <section className="page-card">
@@ -165,45 +165,32 @@ export function LatencyPage() {
         <section className="page-section">
           <h3 className="section-subheading">Run Delay Tests</h3>
 
-          <div className="chip-row">
-            {presetOptions.map((preset) => (
-              <button
-                key={preset.key}
-                type="button"
-                className={`chip-btn ${isRunPresetEnabled(preset.key as keyof typeof runSelection) ? "is-on" : ""}`.trim()}
-                onClick={() =>
-                  setRunSelection((prev) => ({
-                    ...prev,
-                    [preset.key]: !prev[preset.key as keyof typeof prev],
-                  }))
-                }
-              >
-                {preset.label}
-              </button>
-            ))}
-          </div>
+          <ChipGroup
+            options={presetOptions.map(({ key, label }) => ({
+              key: key as PresetKey,
+              label,
+            }))}
+            selected={runSelection}
+            onToggle={(key) =>
+              setRunSelection((prev) => ({ ...prev, [key]: !prev[key] }))
+            }
+            ariaLabel="Latency test presets"
+          />
 
-          <div className="range-line mt-12">
-            <span className="field-label">Repeats</span>
-            <input
-              className="skin-range"
-              type="range"
-              min={1}
-              max={20}
-              step={1}
-              value={request.repeats}
-              onChange={(event) =>
-                onChangeRequest({
-                  ...request,
-                  repeats: Math.max(
-                    1,
-                    Math.round(toNumber(event.target.value, 5)),
-                  ),
-                })
-              }
-            />
-            <span>{request.repeats}</span>
-          </div>
+          <RangeField
+            className="mt-12"
+            label="Repeats"
+            min={1}
+            max={20}
+            step={1}
+            value={request.repeats}
+            onChange={(value) =>
+              onChangeRequest({
+                ...request,
+                repeats: Math.max(1, Math.round(value)),
+              })
+            }
+          />
 
           <div className="field-grid-4 mt-12">
             <LabeledNumberInput
@@ -255,32 +242,20 @@ export function LatencyPage() {
           </div>
 
           <div className="field-grid-2 mt-12">
-            <label className="toggle-line">
-              <input
-                type="checkbox"
-                checked={request.savePerSoundPlot}
-                onChange={(event) =>
-                  onChangeRequest({
-                    ...request,
-                    savePerSoundPlot: event.target.checked,
-                  })
-                }
-              />
-              Save per-sound plot
-            </label>
-            <label className="toggle-line">
-              <input
-                type="checkbox"
-                checked={request.saveOverallBarChart}
-                onChange={(event) =>
-                  onChangeRequest({
-                    ...request,
-                    saveOverallBarChart: event.target.checked,
-                  })
-                }
-              />
-              Save overall bar chart
-            </label>
+            <CheckboxField
+              label="Save per-sound plot"
+              checked={request.savePerSoundPlot}
+              onChange={(checked) =>
+                onChangeRequest({ ...request, savePerSoundPlot: checked })
+              }
+            />
+            <CheckboxField
+              label="Save overall bar chart"
+              checked={request.saveOverallBarChart}
+              onChange={(checked) =>
+                onChangeRequest({ ...request, saveOverallBarChart: checked })
+              }
+            />
           </div>
 
           <div className="field-grid-4 mt-12">
@@ -347,24 +322,21 @@ export function LatencyPage() {
                 Run ALL
               </button>
             </div>
-            <DropdownMenu label="Export" disabled={!report || running}>
-              <button
-                type="button"
-                className="dropdown-item"
-                disabled={!report || running}
-                onClick={onSaveReport}
-              >
-                Save Text Report
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                disabled={!report || running}
-                onClick={onExportCsv}
-              >
-                Export CSV
-              </button>
-            </DropdownMenu>
+            <ExportMenu
+              disabled={!report || running}
+              items={[
+                {
+                  label: "Save Text Report",
+                  onSelect: onSaveReport,
+                  disabled: !report || running,
+                },
+                {
+                  label: "Export CSV",
+                  onSelect: onExportCsv,
+                  disabled: !report || running,
+                },
+              ]}
+            />
           </div>
         </section>
 
@@ -373,22 +345,21 @@ export function LatencyPage() {
           <h3 className="section-subheading">Results Summary</h3>
 
           <div className="metric-grid">
-            <article
-              className={`metric-card ${metricTier(report?.averageDelayMs)}`}
-            >
-              <p className="metric-label">Average (ms)</p>
-              <p className="metric-value">
-                {fmtMs(report?.averageDelayMs ?? null)}
-              </p>
-            </article>
-            <article className={`metric-card ${metricTier(report?.stdDevMs)}`}>
-              <p className="metric-label">Std Dev (ms)</p>
-              <p className="metric-value">{fmtMs(report?.stdDevMs ?? null)}</p>
-            </article>
-            <article className={`metric-card ${metricTier(lastDelay)}`}>
-              <p className="metric-label">Last (ms)</p>
-              <p className="metric-value">{fmtMs(lastDelay)}</p>
-            </article>
+            <MetricCard
+              label="Average (ms)"
+              value={fmtMs(report?.averageDelayMs ?? null)}
+              tier={metricTier(report?.averageDelayMs)}
+            />
+            <MetricCard
+              label="Std Dev (ms)"
+              value={fmtMs(report?.stdDevMs ?? null)}
+              tier={metricTier(report?.stdDevMs)}
+            />
+            <MetricCard
+              label="Last (ms)"
+              value={fmtMs(lastDelay)}
+              tier={metricTier(lastDelay)}
+            />
           </div>
 
           <div className="mt-10">
@@ -409,10 +380,10 @@ export function LatencyPage() {
               {breakdownText ? (
                 <pre className="mono-pre">{breakdownText}</pre>
               ) : (
-                <div className="empty-state">
-                  <Clock size={28} />
-                  <span>Run a test to see latency breakdown</span>
-                </div>
+                <EmptyState
+                  icon={<Clock size={28} />}
+                  message="Run a test to see latency breakdown"
+                />
               )}
             </div>
           </div>
@@ -422,46 +393,30 @@ export function LatencyPage() {
         <section className="page-section">
           <h3 className="section-subheading">Calibration</h3>
 
-          <div className="chip-row">
-            {(
-              [
-                ["beep1k", "1kHz Beep"],
-                ["beep200", "200Hz Low Beep"],
-                ["beep2k", "Mixed (2kHz Sine)"],
-                ["beep5k", "5kHz Beep"],
-                ["impulse", "Click (Impulse)"],
-              ] as const
-            ).map(([key, label]) => (
-              <button
-                key={key}
-                type="button"
-                className={`chip-btn ${calibrationMode[key] ? "is-on" : ""}`.trim()}
-                onClick={() =>
-                  setCalibrationMode((prev) => ({ ...prev, [key]: !prev[key] }))
-                }
-              >
-                {label}
-              </button>
-            ))}
-          </div>
+          <ChipGroup
+            options={[
+              { key: "beep1k", label: "1kHz Beep" },
+              { key: "beep200", label: "200Hz Low Beep" },
+              { key: "beep2k", label: "Mixed (2kHz Sine)" },
+              { key: "beep5k", label: "5kHz Beep" },
+              { key: "impulse", label: "Click (Impulse)" },
+            ]}
+            selected={calibrationMode}
+            onToggle={(key) =>
+              setCalibrationMode((prev) => ({ ...prev, [key]: !prev[key] }))
+            }
+            ariaLabel="Calibration presets"
+          />
 
-          <div className="range-line mt-12">
-            <span className="field-label">Repeats</span>
-            <input
-              className="skin-range"
-              type="range"
-              min={1}
-              max={20}
-              step={1}
-              value={calibrationRepeats}
-              onChange={(event) =>
-                setCalibrationRepeats(
-                  Math.round(toNumber(event.target.value, 5)),
-                )
-              }
-            />
-            <span>{calibrationRepeats}</span>
-          </div>
+          <RangeField
+            className="mt-12"
+            label="Repeats"
+            min={1}
+            max={20}
+            step={1}
+            value={calibrationRepeats}
+            onChange={(value) => setCalibrationRepeats(Math.round(value))}
+          />
 
           <div className="field-grid-2 mt-12">
             <button

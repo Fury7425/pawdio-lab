@@ -6,6 +6,7 @@ import {
   toSelectValue,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
+import { CheckboxField, SelectField } from "../components/form-fields";
 import {
   ACCENT_COLORS,
   APPEARANCE_MODES,
@@ -110,19 +111,15 @@ export function DevicesPage() {
                 }))
               }
             />
-            <label className="field-row">
-              <span className="field-label">Input Bit Depth</span>
-              <select
-                className="skin-select"
-                value={inputBitDepth}
-                onChange={(event) => setInputBitDepth(event.target.value)}
-              >
-                <option value="Auto">Auto</option>
-                <option value="16">16</option>
-                <option value="24">24</option>
-                <option value="32">32</option>
-              </select>
-            </label>
+            <SelectField
+              label="Input Bit Depth"
+              value={inputBitDepth}
+              onChange={setInputBitDepth}
+              options={["Auto", "16", "24", "32"].map((depth) => ({
+                value: depth,
+                label: depth,
+              }))}
+            />
           </div>
 
           <label className="field-row mt-10">
@@ -189,15 +186,14 @@ export function DevicesPage() {
             </div>
           </div>
 
-          <label className="field-row mt-10">
-            <span className="field-label">Input Device</span>
-            <select
-              className="skin-select"
+          <div className="mt-10">
+            <SelectField
+              label="Input Device"
               value={toSelectValue(draft.inputDeviceIndex)}
-              onChange={(event) =>
+              onChange={(value) =>
                 commitDeviceSelection({
                   ...draft,
-                  inputDeviceIndex: fromSelectValue(event.target.value),
+                  inputDeviceIndex: fromSelectValue(value),
                 })
               }
             >
@@ -208,8 +204,8 @@ export function DevicesPage() {
                   {device.defaultSampleRate}Hz)
                 </option>
               ))}
-            </select>
-          </label>
+            </SelectField>
+          </div>
 
           <LabeledNumberInput
             label="Chunk Size"
@@ -233,51 +229,30 @@ export function DevicesPage() {
           <h3 className="section-subheading">Appearance</h3>
 
           <div className="field-grid-2">
-            <label className="field-row">
-              <span className="field-label">Appearance Mode</span>
-              <select
-                className="skin-select"
-                value={appearanceMode}
-                onChange={(event) =>
-                  setAppearanceMode(normalizeAppearanceMode(event.target.value))
-                }
-              >
-                {APPEARANCE_MODES.map((m) => (
-                  <option key={m} value={m}>
-                    {m}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Appearance Mode"
+              value={appearanceMode}
+              onChange={(value) =>
+                setAppearanceMode(normalizeAppearanceMode(value))
+              }
+              options={APPEARANCE_MODES.map((m) => ({ value: m, label: m }))}
+            />
 
-            <label className="field-row">
-              <span className="field-label">Accent Color</span>
-              <select
-                className="skin-select"
-                value={accentColor}
-                onChange={(event) =>
-                  setAccentColor(normalizeAccentColor(event.target.value))
-                }
-              >
-                {ACCENT_COLORS.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <SelectField
+              label="Accent Color"
+              value={accentColor}
+              onChange={(value) => setAccentColor(normalizeAccentColor(value))}
+              options={ACCENT_COLORS.map((c) => ({ value: c, label: c }))}
+            />
           </div>
 
-          <label className="toggle-line mt-10">
-            <input
-              type="checkbox"
+          <div className="mt-10">
+            <CheckboxField
+              label="Enable Experimental Tests"
               checked={experimentalEnabled}
-              onChange={(event) =>
-                onChangeExperimentalEnabled(event.target.checked)
-              }
+              onChange={onChangeExperimentalEnabled}
             />
-            Enable Experimental Tests
-          </label>
+          </div>
         </section>
       </section>
     </div>

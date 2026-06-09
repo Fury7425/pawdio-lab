@@ -11,6 +11,7 @@ import {
   toNumber,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
+import { Modal } from "../components/modal";
 import {
   OverlayChart,
   type OverlayHoverInfo,
@@ -350,71 +351,13 @@ export function AncPage() {
     <div className="page-stack">
       {/* Step modal */}
       {stepPrompt && currentStep && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <p className="modal-step-label">
-              Step {stepNum} of {totalSteps}
-            </p>
-            <div
-              className="modal-icon-circle"
-              style={{ background: modeMeta[currentStep.mode].color }}
-            >
-              <EarOff size={18} color="var(--button-text)" />
-            </div>
-            <h3 className="section-heading" style={{ marginBottom: 6 }}>
-              {modeMeta[currentStep.mode].captureTitle}
-              {sideLabel(currentStep.side) && (
-                <span style={{ color: modeMeta[currentStep.mode].color }}>
-                  {" — "}
-                  {sideLabel(currentStep.side)}
-                </span>
-              )}
-            </h3>
-            <p className="muted" style={{ marginBottom: 12 }}>
-              {modeMeta[currentStep.mode].captureDetail}
-              {sideLabel(currentStep.side) &&
-                ` Place the mic on the ${sideLabel(currentStep.side)} and keep this mode set.`}
-            </p>
-            {!running && (
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  marginBottom: 12,
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={stateConfirmed}
-                  onChange={(e) => setStateConfirmed(e.target.checked)}
-                  style={{ marginTop: 2 }}
-                />
-                <span>
-                  I changed the headphone state — ready to capture this mode.
-                </span>
-              </label>
-            )}
-            {running && (
-              <div
-                className="modal-progress-track"
-                role="progressbar"
-                aria-label="Recording in progress"
-              >
-                <div className="modal-progress-pulse" />
-              </div>
-            )}
-            {running && lastTestProgress && (
-              <p
-                className="muted"
-                style={{ fontSize: 11, marginTop: 6, marginBottom: 0 }}
-              >
-                {lastTestProgress.message}
-              </p>
-            )}
-            <div className="modal-actions">
+        <Modal
+          open
+          onClose={() => {
+            if (!running) onCancelStep();
+          }}
+          footer={
+            <>
               <button
                 type="button"
                 className="skin-btn secondary"
@@ -431,9 +374,72 @@ export function AncPage() {
               >
                 {running ? "Recording…" : "Start Recording"}
               </button>
-            </div>
+            </>
+          }
+        >
+          <p className="modal-step-label">
+            Step {stepNum} of {totalSteps}
+          </p>
+          <div
+            className="modal-icon-circle"
+            style={{ background: modeMeta[currentStep.mode].color }}
+          >
+            <EarOff size={18} color="var(--button-text)" />
           </div>
-        </div>
+          <h3 className="section-heading" style={{ marginBottom: 6 }}>
+            {modeMeta[currentStep.mode].captureTitle}
+            {sideLabel(currentStep.side) && (
+              <span style={{ color: modeMeta[currentStep.mode].color }}>
+                {" — "}
+                {sideLabel(currentStep.side)}
+              </span>
+            )}
+          </h3>
+          <p className="muted" style={{ marginBottom: 12 }}>
+            {modeMeta[currentStep.mode].captureDetail}
+            {sideLabel(currentStep.side) &&
+              ` Place the mic on the ${sideLabel(currentStep.side)} and keep this mode set.`}
+          </p>
+          {!running && (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                marginBottom: 12,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={stateConfirmed}
+                onChange={(e) => setStateConfirmed(e.target.checked)}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                I changed the headphone state — ready to capture this mode.
+              </span>
+            </label>
+          )}
+          {running && (
+            <div
+              className="modal-progress-track"
+              role="progressbar"
+              aria-label="Recording in progress"
+            >
+              <div className="modal-progress-pulse" />
+            </div>
+          )}
+          {running && lastTestProgress && (
+            <p
+              className="muted"
+              style={{ fontSize: 11, marginTop: 6, marginBottom: 0 }}
+            >
+              {lastTestProgress.message}
+            </p>
+          )}
+        </Modal>
       )}
 
       {/* In-page sticky progress (B7) */}

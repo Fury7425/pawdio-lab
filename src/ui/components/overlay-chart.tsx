@@ -113,8 +113,7 @@ export function OverlayChart({
     onHoverRef.current?.(hoverInfo);
   }, [hoverInfo]);
 
-  const showZero =
-    (zeroLine ?? true) && yMin <= 0 && yMax >= 0 ? toY(0) : null;
+  const showZero = (zeroLine ?? true) && yMin <= 0 && yMax >= 0 ? toY(0) : null;
 
   return (
     <svg
@@ -222,7 +221,12 @@ export function OverlayChart({
               strokeWidth="1"
               strokeDasharray="3 3"
             />
-            <text x="202" y={showZero + 3} fontSize="6" fill="var(--text-muted)">
+            <text
+              x="202"
+              y={showZero + 3}
+              fontSize="6"
+              fill="var(--text-muted)"
+            >
               0
             </text>
           </>
