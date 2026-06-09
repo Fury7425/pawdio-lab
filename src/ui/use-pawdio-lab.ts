@@ -70,6 +70,9 @@ type InputLevelEvent = {
 
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
 const UI_STATE_STORAGE_KEY = "pawdio-lab-ui-state-v1";
+// Long runs emit one latency-progress event per repeat; cap retained rows so
+// the array cannot grow without bound across many runs.
+const MAX_LATENCY_PROGRESS_ROWS = 1000;
 
 const logCaughtError =
   (label: string) =>
@@ -1735,6 +1738,8 @@ export function usePawdioLabController() {
   useEffect(() => {
     loadState().catch((err) => setError(String(err)));
     library.loadLibrary();
+    // Intentional init-only effect: runs once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -1812,7 +1817,10 @@ export function usePawdioLabController() {
         const offLatency = await listen<LatencyProgress>(
           "latency-progress",
           (event) => {
-            setLatencyProgress((prev) => [...prev, event.payload]);
+            setLatencyProgress((prev) => [
+              ...prev.slice(-(MAX_LATENCY_PROGRESS_ROWS - 1)),
+              event.payload,
+            ]);
           },
         );
         if (cancelled) {
@@ -1900,6 +1908,8 @@ export function usePawdioLabController() {
       cancelled = true;
       for (const off of unlisteners) off();
     };
+    // Intentional mount-once Tauri listener attach; callbacks use stable setters.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return {

@@ -48,7 +48,15 @@ export function DropdownMenu({ label, disabled, children }: DropdownMenuProps) {
         <ChevronDown size={14} />
       </button>
       {open && (
-        <div className="dropdown-menu" onClick={() => setOpen(false)}>
+        <div
+          className="dropdown-menu"
+          role="menu"
+          tabIndex={-1}
+          onClick={() => setOpen(false)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") setOpen(false);
+          }}
+        >
           {children}
         </div>
       )}

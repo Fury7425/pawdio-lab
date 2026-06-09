@@ -32,8 +32,6 @@ export default defineConfig({
         manualChunks: {
           // Split React and its dependencies into a separate chunk
           "react-vendor": ["react", "react-dom"],
-          // Split Radix UI components
-          "radix-vendor": ["@radix-ui/themes"],
           // Split Tauri API
           "tauri-vendor": ["@tauri-apps/api", "@tauri-apps/plugin-dialog"],
         },
@@ -48,7 +46,7 @@ export default defineConfig({
   cacheDir: "node_modules/.vite",
   // Optimize dependencies
   optimizeDeps: {
-    include: ["react", "react-dom", "@radix-ui/themes", "@tauri-apps/api"],
+    include: ["react", "react-dom", "@tauri-apps/api"],
     // Speed up dependency pre-bundling
     esbuildOptions: {
       // Enable platform-specific optimizations

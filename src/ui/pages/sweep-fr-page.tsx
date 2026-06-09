@@ -361,7 +361,7 @@ export function SweepFrPage() {
                 </div>
               </div>
               {monitor.clipCount > 0 && (
-                <p className="muted mt-8" style={{ color: "#ff8e8e" }}>
+                <p className="muted mt-8" style={{ color: "var(--danger-text)" }}>
                   Clipping detected ({monitor.clipCount})
                 </p>
               )}

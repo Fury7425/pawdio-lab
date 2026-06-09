@@ -359,7 +359,7 @@ export function AncPage() {
               className="modal-icon-circle"
               style={{ background: modeMeta[currentStep.mode].color }}
             >
-              <EarOff size={18} color="#fff" />
+              <EarOff size={18} color="var(--button-text)" />
             </div>
             <h3 className="section-heading" style={{ marginBottom: 6 }}>
               {modeMeta[currentStep.mode].captureTitle}
@@ -719,7 +719,7 @@ export function AncPage() {
                     style={{
                       borderColor: meta.color,
                       background: active ? meta.color : "transparent",
-                      color: active ? "#fff" : meta.color,
+                      color: active ? "var(--button-text)" : meta.color,
                     }}
                   >
                     {meta.label}

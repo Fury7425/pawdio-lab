@@ -265,7 +265,7 @@ export function OverlayChart({
                 cy={toY(item.value)}
                 r="1.5"
                 fill={item.color}
-                stroke="#fff"
+                stroke="var(--text-strong)"
                 strokeWidth="0.4"
               />
             ))}
