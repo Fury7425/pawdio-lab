@@ -9,6 +9,7 @@ import {
 } from "../model";
 import { deriveDeviceName } from "../hooks/use-results-log";
 import { Modal } from "../components/modal";
+import { PageHeader } from "../components/page-header";
 import { usePawdioLabContext } from "../pawdio-context";
 import { ComparisonPanel, type CompareEntry } from "./compare/comparison-panel";
 import { compareColor } from "./compare/compare-colors";
@@ -483,7 +484,10 @@ export function LibraryPage() {
 
       {/* Session strip */}
       <section className="page-card">
-        <h2 className="section-heading">Save to Library</h2>
+        <PageHeader
+          title="Save to Library"
+          description="Persist session results per device to compare them later."
+        />
         {sessionItems.length === 0 ? (
           <div className="empty-state">
             <span>
@@ -511,20 +515,20 @@ export function LibraryPage() {
 
       {/* Library browser */}
       <section className="page-card">
-        <div className="section-header-row">
-          <h2 className="section-heading" style={{ marginBottom: 0 }}>
-            Library
-          </h2>
-          {selectedIds.length > 0 && (
-            <button
-              type="button"
-              className="skin-btn secondary"
-              onClick={() => setSelectedIds([])}
-            >
-              Clear selection ({selectedIds.length})
-            </button>
-          )}
-        </div>
+        <PageHeader
+          title="Library"
+          actions={
+            selectedIds.length > 0 ? (
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={() => setSelectedIds([])}
+              >
+                Clear selection ({selectedIds.length})
+              </button>
+            ) : undefined
+          }
+        />
 
         {devices.length === 0 ? (
           <div className="empty-state">
@@ -546,7 +550,7 @@ export function LibraryPage() {
                     {open ? "▾" : "▸"} {device.name}{" "}
                     <span className="muted">({list.length})</span>
                   </button>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="btn-row">
                     <button
                       type="button"
                       className="skin-btn secondary"

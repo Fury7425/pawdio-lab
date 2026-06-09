@@ -6,6 +6,7 @@ import { EmptyState } from "../components/empty-state";
 import { ExportMenu } from "../components/export-menu";
 import { CheckboxField } from "../components/form-fields";
 import { Modal } from "../components/modal";
+import { PageHeader } from "../components/page-header";
 import { usePawdioLabContext } from "../pawdio-context";
 
 export function SweepFrPage() {
@@ -142,7 +143,10 @@ export function SweepFrPage() {
       </Modal>
 
       <section className="page-card">
-        <h2 className="section-heading">Sweep Frequency Response</h2>
+        <PageHeader
+          title="Sweep Frequency Response"
+          description="Log-chirp sweep capture with live input monitoring."
+        />
 
         <section className="page-section">
           <h3 className="section-subheading">Sweep Settings</h3>
@@ -281,7 +285,7 @@ export function SweepFrPage() {
           </div>
 
           <div className="field-grid-4 mt-12">
-            <label className="field-row" style={{ gridColumn: "span 3" }}>
+            <label className="field-row field-span-3">
               <span className="field-label">Output Folder</span>
               <input
                 className="skin-input"
@@ -292,7 +296,7 @@ export function SweepFrPage() {
                 }
               />
             </label>
-            <div className="row-end" style={{ alignItems: "end" }}>
+            <div className="row-end align-end">
               <button
                 type="button"
                 className="skin-btn secondary"

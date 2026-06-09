@@ -42,8 +42,9 @@ export function Sidebar() {
               key={item.key}
               type="button"
               className={`nav-btn${ctx.activePage === item.key ? " is-active" : ""}`}
-              aria-pressed={ctx.activePage === item.key}
+              aria-current={ctx.activePage === item.key ? "page" : undefined}
               aria-label={item.label}
+              title={item.label}
               onClick={() => ctx.setActivePage(item.key)}
             >
               <Icon size={16} aria-hidden="true" />
@@ -70,6 +71,7 @@ export function Sidebar() {
         >
           Stop
         </button>
+        <span className="sidebar-version">v{__APP_VERSION__}</span>
       </div>
     </aside>
   );

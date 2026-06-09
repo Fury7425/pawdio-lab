@@ -7,6 +7,7 @@ import { EmptyState } from "../components/empty-state";
 import { ExportMenu } from "../components/export-menu";
 import { CheckboxField, RangeField } from "../components/form-fields";
 import { MetricCard, type MetricTier } from "../components/metric-card";
+import { PageHeader } from "../components/page-header";
 import { usePawdioLabContext } from "../pawdio-context";
 
 function metricTier(ms: number | null | undefined): MetricTier | null {
@@ -160,7 +161,10 @@ export function LatencyPage() {
   return (
     <div className="page-stack">
       <section className="page-card">
-        <h2 className="section-heading">Latency</h2>
+        <PageHeader
+          title="Latency"
+          description="Measure output-to-input delay with tone bursts and impulse clicks."
+        />
 
         <section className="page-section">
           <h3 className="section-subheading">Run Delay Tests</h3>
@@ -259,7 +263,7 @@ export function LatencyPage() {
           </div>
 
           <div className="field-grid-4 mt-12">
-            <label className="field-row" style={{ gridColumn: "span 3" }}>
+            <label className="field-row field-span-3">
               <span className="field-label">Output Folder</span>
               <input
                 className="skin-input"
@@ -270,7 +274,7 @@ export function LatencyPage() {
                 }
               />
             </label>
-            <div className="row-end" style={{ alignItems: "end" }}>
+            <div className="row-end align-end">
               <button
                 type="button"
                 className="skin-btn secondary"
@@ -282,7 +286,7 @@ export function LatencyPage() {
           </div>
 
           <div className="action-row">
-            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <div className="btn-row">
               <button
                 type="button"
                 className={`skin-btn${running ? " is-loading" : ""}`}

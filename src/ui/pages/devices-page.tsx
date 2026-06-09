@@ -7,6 +7,7 @@ import {
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import { CheckboxField, SelectField } from "../components/form-fields";
+import { PageHeader } from "../components/page-header";
 import {
   ACCENT_COLORS,
   APPEARANCE_MODES,
@@ -63,7 +64,10 @@ export function DevicesPage() {
   return (
     <div className="page-stack">
       <section className="page-card">
-        <h2 className="section-heading">Devices / Settings</h2>
+        <PageHeader
+          title="Devices / Settings"
+          description="Audio devices, signal settings, and appearance."
+        />
 
         <section className="page-section">
           <h3 className="section-subheading">Signal Settings</h3>
@@ -153,7 +157,7 @@ export function DevicesPage() {
           <h3 className="section-subheading">Audio Devices</h3>
 
           <div className="field-grid-4">
-            <label className="field-row" style={{ gridColumn: "span 3" }}>
+            <label className="field-row field-span-3">
               <span className="field-label">Output Device</span>
               <select
                 className="skin-select"
@@ -175,7 +179,7 @@ export function DevicesPage() {
               </select>
             </label>
 
-            <div className="row-end" style={{ alignItems: "end" }}>
+            <div className="row-end align-end">
               <button
                 type="button"
                 className="skin-btn secondary"

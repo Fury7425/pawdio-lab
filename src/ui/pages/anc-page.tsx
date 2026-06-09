@@ -12,6 +12,7 @@ import {
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import { Modal } from "../components/modal";
+import { PageHeader } from "../components/page-header";
 import { ChartLegend } from "../components/chart-legend";
 import { OverlayChart, type OverlaySeries } from "../components/overlay-chart";
 import { fmtHz } from "../lib/chart-scale";
@@ -485,7 +486,10 @@ export function AncPage() {
 
       {/* Config card */}
       <section className="page-card">
-        <h2 className="section-heading">ANC / Transparency Measurement</h2>
+        <PageHeader
+          title="ANC / Transparency Measurement"
+          description="Guided capture of per-frequency attenuation across headphone modes."
+        />
 
         <section className="page-section">
           <h3 className="section-subheading">Select Modes</h3>
@@ -698,7 +702,7 @@ export function AncPage() {
       {/* Results card */}
       {hasAnyCapture && (
         <section className="page-card">
-          <h2 className="section-heading">Attenuation Results</h2>
+          <PageHeader title="Attenuation Results" />
 
           {/* Graph controls */}
           <div className="graph-controls-row">
