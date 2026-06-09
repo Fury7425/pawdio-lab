@@ -10,10 +10,10 @@ import {
 } from "../../model";
 import {
   OverlayChart,
-  type OverlayHoverInfo,
   type OverlaySeries,
 } from "../../components/overlay-chart";
-import { fmtHz, nearestFreqIndex } from "../../lib/chart-scale";
+import { ChartLegend } from "../../components/chart-legend";
+import { nearestFreqIndex } from "../../lib/chart-scale";
 import type { CompareEntry } from "./comparison-panel";
 
 type Channel = "L" | "R" | "avg";
@@ -115,7 +115,6 @@ export function CompareCurves({ entries, kind }: Props) {
   const [channel, setChannel] = useState<Channel>("avg");
   const [normalize, setNormalize] = useState(kind === "sweep_fr");
   const [compareMode, setCompareMode] = useState<AncModeKey | null>(null);
-  const [hoverInfo, setHoverInfo] = useState<OverlayHoverInfo | null>(null);
 
   // Non-baseline ANC modes present across all selected records (for the picker).
   const ancModeOptions = useMemo<AncModeKey[]>(() => {
@@ -229,71 +228,22 @@ export function CompareCurves({ entries, kind }: Props) {
         )}
       </div>
 
-      {/* Legend */}
-      <div className="chip-row" style={{ marginBottom: 12 }}>
-        {series.map((s) => (
-          <span
-            key={s.id}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              fontSize: 11,
-            }}
-          >
-            <span
-              aria-hidden="true"
-              style={{
-                width: 12,
-                height: 3,
-                borderRadius: 2,
-                background: s.color,
-                display: "inline-block",
-              }}
-            />
-            {s.label}
-          </span>
-        ))}
-      </div>
+      <ChartLegend items={series} />
 
       <div className="level-meter" style={{ marginBottom: 12 }}>
         <OverlayChart
           series={series}
           yMin={yMin}
           yMax={yMax}
+          yAxisLabel={unit}
           ariaLabel={
             kind === "sweep_fr"
               ? "Frequency response comparison"
               : "ANC attenuation comparison"
           }
           emptyMessage="No comparable curve data in the selected records"
-          onHover={setHoverInfo}
         />
       </div>
-
-      {hoverInfo && hoverInfo.items.length > 0 && (
-        <div
-          className="muted"
-          style={{
-            fontSize: 11,
-            display: "flex",
-            gap: 12,
-            flexWrap: "wrap",
-          }}
-        >
-          <strong style={{ color: "var(--text)" }}>
-            {fmtHz(hoverInfo.hz)} Hz
-          </strong>
-          {hoverInfo.items.map((item) => (
-            <span key={item.id} style={{ color: item.color }}>
-              {item.label}:{" "}
-              <strong>
-                {item.value.toFixed(1)} {unit}
-              </strong>
-            </span>
-          ))}
-        </div>
-      )}
     </div>
   );
 }

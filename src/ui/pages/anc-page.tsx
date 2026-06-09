@@ -12,11 +12,8 @@ import {
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
 import { Modal } from "../components/modal";
-import {
-  OverlayChart,
-  type OverlayHoverInfo,
-  type OverlaySeries,
-} from "../components/overlay-chart";
+import { ChartLegend } from "../components/chart-legend";
+import { OverlayChart, type OverlaySeries } from "../components/overlay-chart";
 import { fmtHz } from "../lib/chart-scale";
 import { usePawdioLabContext } from "../pawdio-context";
 
@@ -115,7 +112,6 @@ export function AncPage() {
   const [stateConfirmed, setStateConfirmed] = useState(false);
   const [yAxisMode, setYAxisModeState] = useState<YAxisMode>(loadYAxisMode);
   const [manualBaseline, setManualBaseline] = useState<AncModeKey | null>(null);
-  const [hoverInfo, setHoverInfo] = useState<OverlayHoverInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const setYAxisMode = (v: YAxisMode) => {
@@ -811,7 +807,7 @@ export function AncPage() {
             )}
           </div>
 
-          {/* SVG attenuation graph */}
+          {/* SVG attenuation graph with built-in hover tooltip */}
           <div className="level-meter" style={{ marginBottom: 16 }}>
             <OverlayChart
               series={chartSeries}
@@ -819,32 +815,10 @@ export function AncPage() {
               yMax={yMax}
               ariaLabel="Attenuation frequency response graph"
               emptyMessage="Capture at least two modes to see attenuation"
-              onHover={setHoverInfo}
             />
           </div>
 
-          {/* Hover readout (B8) */}
-          {hoverInfo && hoverInfo.items.length > 0 && (
-            <div
-              className="muted"
-              style={{
-                fontSize: 11,
-                marginBottom: 12,
-                display: "flex",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <strong style={{ color: "var(--text)" }}>
-                {fmtHz(hoverInfo.hz)} Hz
-              </strong>
-              {hoverInfo.items.map((item) => (
-                <span key={item.id} style={{ color: item.color }}>
-                  {item.label}: <strong>{item.value.toFixed(1)} dB</strong>
-                </span>
-              ))}
-            </div>
-          )}
+          <ChartLegend items={chartSeries} />
 
           {/* Stats row */}
           {exportableModes.length > 0 && baseline && (
