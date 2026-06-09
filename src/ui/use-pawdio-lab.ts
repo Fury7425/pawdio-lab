@@ -7,6 +7,7 @@ import { useMonitorAndNoise } from "./hooks/use-monitor-and-noise";
 import { useResultsLog } from "./hooks/use-results-log";
 import { useDevicesController } from "./hooks/use-devices-controller";
 import { useLibrary } from "./hooks/use-library";
+import { useToast } from "./components/toast";
 import {
   ANC_MODE_META,
   ANC_MODE_ORDERED,
@@ -510,6 +511,13 @@ export function usePawdioLabController() {
   );
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
+
+  // Surface every new error as a toast; the persistent error card in the shell
+  // remains the detail view.
+  useEffect(() => {
+    if (error) toast(error, { kind: "error" });
+  }, [error, toast]);
 
   // Devices + audio settings (extracted to hooks/use-devices-controller.ts)
   const { inventory, settings, loadState, commitSettings } =
@@ -543,7 +551,10 @@ export function usePawdioLabController() {
   });
 
   // Measurement library (SQLite-backed; hooks/use-library.ts)
-  const library = useLibrary({ setError: (m) => setError(m) });
+  const library = useLibrary({
+    setError: (m) => setError(m),
+    notify: (m) => toast(m, { kind: "success" }),
+  });
 
   const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(
     mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
@@ -970,6 +981,7 @@ export function usePawdioLabController() {
         }));
       }
       appendLog("[calibration] selected presets complete");
+      toast("Calibration complete", { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1283,6 +1295,7 @@ export function usePawdioLabController() {
         latencyExportSuite,
       );
       appendLog(`[latency] report saved -> ${path}`);
+      toast(`Latency report saved to ${path}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1304,6 +1317,7 @@ export function usePawdioLabController() {
         "application/json;charset=utf-8",
       );
       appendLog(`[sweep_fr] exported LAST JSON -> ${filename}`);
+      toast(`Exported ${filename}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1335,6 +1349,7 @@ export function usePawdioLabController() {
       appendLog(
         `[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${filename}`,
       );
+      toast(`Exported ${filename}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1371,6 +1386,7 @@ export function usePawdioLabController() {
         "text/plain;charset=utf-8",
       );
       appendLog(`[sweep_fr] exported LAST Squiglink -> ${filename}`);
+      toast(`Exported ${filename}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1436,6 +1452,7 @@ export function usePawdioLabController() {
         "text/csv;charset=utf-8",
       );
       appendLog(`[sweep_fr] exported LAST CSV -> ${filename}`);
+      toast(`Exported ${filename}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1478,6 +1495,7 @@ export function usePawdioLabController() {
         "text/csv;charset=utf-8",
       );
       appendLog(`[latency] exported CSV -> ${filename}`);
+      toast(`Exported ${filename}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1673,6 +1691,7 @@ export function usePawdioLabController() {
         modes,
       });
       appendLog(`[anc] plots saved to ${ancRequest.outputDir}`);
+      toast(`ANC plots saved to ${ancRequest.outputDir}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[anc] export error: ${String(err)}`);
@@ -1710,6 +1729,7 @@ export function usePawdioLabController() {
         attenuationDb,
       });
       appendLog(`[anc] squiglink saved: anc_${modeKey}_${timestamp}.txt`);
+      toast(`Saved anc_${modeKey}_${timestamp}.txt`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[anc] squiglink error: ${String(err)}`);

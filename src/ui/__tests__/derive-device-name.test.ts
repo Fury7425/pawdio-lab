@@ -4,10 +4,22 @@ import { defaultSettings, type DeviceInventory } from "../model";
 
 const inventory: DeviceInventory = {
   inputs: [
-    { index: 0, name: "USB Mic", isInput: true, channels: 1, defaultSampleRate: 48000 },
+    {
+      index: 0,
+      name: "USB Mic",
+      isInput: true,
+      channels: 1,
+      defaultSampleRate: 48000,
+    },
   ],
   outputs: [
-    { index: 1, name: "Headphone Amp", isInput: false, channels: 2, defaultSampleRate: 48000 },
+    {
+      index: 1,
+      name: "Headphone Amp",
+      isInput: false,
+      channels: 2,
+      defaultSampleRate: 48000,
+    },
   ],
   defaultInputIndex: 0,
   defaultOutputIndex: 1,

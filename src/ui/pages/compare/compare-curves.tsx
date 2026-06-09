@@ -44,7 +44,10 @@ function autoRange(curves: number[][]): { yMin: number; yMax: number } {
   return { yMin: lo, yMax: hi };
 }
 
-function sweepCurve(rec: MeasurementRecord, channel: Channel): {
+function sweepCurve(
+  rec: MeasurementRecord,
+  channel: Channel,
+): {
   freqs: number[];
   values: number[];
 } | null {
@@ -146,7 +149,13 @@ export function CompareCurves({ entries, kind }: Props) {
         kind === "anc" && "modeLabel" in curve
           ? `${deviceName} · ${curve.modeLabel}`
           : deviceName;
-      out.push({ id: String(record.id), label, color, freqs: curve.freqs, values });
+      out.push({
+        id: String(record.id),
+        label,
+        color,
+        freqs: curve.freqs,
+        values,
+      });
     }
     return out;
   }, [entries, kind, channel, normalize, compareMode]);

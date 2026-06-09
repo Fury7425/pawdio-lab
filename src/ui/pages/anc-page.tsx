@@ -690,7 +690,7 @@ export function AncPage() {
           )}
           <button
             type="button"
-            className="skin-btn"
+            className={`skin-btn${running ? " is-loading" : ""}`}
             disabled={running || selectedModes.length === 0}
             onClick={onStart}
           >

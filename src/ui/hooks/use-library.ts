@@ -9,6 +9,8 @@ import type {
 
 type Deps = {
   setError: (message: string) => void;
+  /** Optional success feedback (e.g. a toast) after mutations. */
+  notify?: (message: string) => void;
 };
 
 /**
@@ -22,7 +24,7 @@ type Deps = {
  * A DB error is surfaced via `setError` and never throws, so a library failure
  * can't crash app init.
  */
-export function useLibrary({ setError }: Deps) {
+export function useLibrary({ setError, notify }: Deps) {
   const [devices, setDevices] = useState<DeviceRecord[]>([]);
   const [measurements, setMeasurements] = useState<MeasurementSummary[]>([]);
   const recordCache = useRef<Map<number, MeasurementRecord>>(new Map());
@@ -58,6 +60,7 @@ export function useLibrary({ setError }: Deps) {
     try {
       await ipc.dbRenameDevice(id, name);
       await loadLibrary();
+      notify?.(`Device renamed to "${name}"`);
     } catch (err) {
       setError(String(err));
     }
@@ -71,6 +74,7 @@ export function useLibrary({ setError }: Deps) {
         if (record.deviceId === id) recordCache.current.delete(key);
       }
       await loadLibrary();
+      notify?.("Device deleted");
     } catch (err) {
       setError(String(err));
     }
@@ -86,6 +90,7 @@ export function useLibrary({ setError }: Deps) {
       const record = await ipc.dbSaveMeasurement(args);
       recordCache.current.set(record.id, record);
       await loadLibrary();
+      notify?.("Measurement saved to library");
       return record;
     } catch (err) {
       setError(String(err));
@@ -98,15 +103,14 @@ export function useLibrary({ setError }: Deps) {
       await ipc.dbDeleteMeasurement(id);
       recordCache.current.delete(id);
       await loadLibrary();
+      notify?.("Measurement deleted");
     } catch (err) {
       setError(String(err));
     }
   }
 
   /** Cache-through fetch of a full record (payload included). */
-  async function getMeasurement(
-    id: number,
-  ): Promise<MeasurementRecord | null> {
+  async function getMeasurement(id: number): Promise<MeasurementRecord | null> {
     const cached = recordCache.current.get(id);
     if (cached) return cached;
     try {

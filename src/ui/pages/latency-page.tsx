@@ -285,7 +285,7 @@ export function LatencyPage() {
             <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
               <button
                 type="button"
-                className="skin-btn"
+                className={`skin-btn${running ? " is-loading" : ""}`}
                 disabled={running}
                 onClick={() => {
                   const keys = (

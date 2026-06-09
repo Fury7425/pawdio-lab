@@ -302,7 +302,7 @@ export function SweepFrPage() {
               </button>
               <button
                 type="button"
-                className="skin-btn"
+                className={`skin-btn${running ? " is-loading" : ""}`}
                 disabled={running}
                 onClick={onRun}
               >
