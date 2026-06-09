@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;600&display=swap");
+/* Fonts are self-hosted via @fontsource imports in src/main.tsx. */
 
 /* Base reset (preflight-equivalent; Tailwind itself was removed — no utilities were used). */
 *,
