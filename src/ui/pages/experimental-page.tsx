@@ -1,6 +1,8 @@
 import { ButtonHTMLAttributes } from "react";
 import { FlaskConical } from "lucide-react";
 import { toNumber, CrosstalkRequest } from "../model";
+import { SelectField } from "../components/form-fields";
+import { PageHeader } from "../components/page-header";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type RunButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
@@ -33,7 +35,10 @@ export function ExperimentalPage() {
   return (
     <div className="page-stack">
       <section className="page-card">
-        <h2 className="section-heading">Experimental Tests</h2>
+        <PageHeader
+          title="Experimental Tests"
+          description="Channel balance, crosstalk, THD, and isolation measurements."
+        />
 
         <div className="field-grid-2">
           <section className="page-card">
@@ -60,7 +65,7 @@ export function ExperimentalPage() {
           <section className="page-card">
             <h3 className="section-subheading">Crosstalk</h3>
             <div className="field-grid-4">
-              <label className="field-row" style={{ gridColumn: "span 3" }}>
+              <label className="field-row field-span-3">
                 <span className="field-label">Frequency (Hz)</span>
                 <input
                   className="skin-input"
@@ -74,23 +79,20 @@ export function ExperimentalPage() {
                   }
                 />
               </label>
-              <label className="field-row">
-                <span className="field-label">Direction</span>
-                <select
-                  className="skin-select"
-                  value={crosstalkRequest.direction}
-                  onChange={(event) =>
-                    onChangeCrosstalk({
-                      ...crosstalkRequest,
-                      direction: event.target
-                        .value as CrosstalkRequest["direction"],
-                    })
-                  }
-                >
-                  <option value="LtoR">LtoR</option>
-                  <option value="RtoL">RtoL</option>
-                </select>
-              </label>
+              <SelectField
+                label="Direction"
+                value={crosstalkRequest.direction}
+                onChange={(value) =>
+                  onChangeCrosstalk({
+                    ...crosstalkRequest,
+                    direction: value as CrosstalkRequest["direction"],
+                  })
+                }
+                options={[
+                  { value: "LtoR", label: "LtoR" },
+                  { value: "RtoL", label: "RtoL" },
+                ]}
+              />
             </div>
             <div className="row-end mt-12">
               <RunButton disabled={running} onClick={onRunCrosstalk} />

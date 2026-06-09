@@ -1,3 +1,4 @@
+import { PageHeader } from "../components/page-header";
 import { usePawdioLabContext } from "../pawdio-context";
 
 export function ResultsPage() {
@@ -5,27 +6,28 @@ export function ResultsPage() {
   return (
     <div className="page-stack">
       <section className="page-card">
-        <div className="section-header-row">
-          <h2 className="section-heading" style={{ marginBottom: 0 }}>
-            Logs
-          </h2>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              onClick={() => ctx.run(ctx.copyLogs())}
-            >
-              Copy Log
-            </button>
-            <button
-              type="button"
-              className="skin-btn secondary"
-              onClick={ctx.clearLogs}
-            >
-              Clear Log
-            </button>
-          </div>
-        </div>
+        <PageHeader
+          title="Logs"
+          description="Raw output from every test run this session."
+          actions={
+            <>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={() => ctx.run(ctx.copyLogs())}
+              >
+                Copy Log
+              </button>
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={ctx.clearLogs}
+              >
+                Clear Log
+              </button>
+            </>
+          }
+        />
 
         <div className="scroll-box">
           <pre className="mono-pre">

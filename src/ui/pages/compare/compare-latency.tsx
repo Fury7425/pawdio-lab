@@ -55,7 +55,10 @@ export function CompareLatency({ entries }: { entries: CompareEntry[] }) {
               {fmt(row.avg)}
               <span style={{ fontSize: 12, fontWeight: 400 }}> ms</span>
             </p>
-            <p className="metric-label" style={{ marginTop: 4, marginBottom: 0 }}>
+            <p
+              className="metric-label"
+              style={{ marginTop: 4, marginBottom: 0 }}
+            >
               ± {fmt(row.std)} ms · n={row.n}
               {delta !== null && delta !== 0 && (
                 <span>

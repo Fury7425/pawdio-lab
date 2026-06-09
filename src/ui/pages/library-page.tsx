@@ -8,11 +8,10 @@ import {
   type MeasurementSummary,
 } from "../model";
 import { deriveDeviceName } from "../hooks/use-results-log";
+import { Modal } from "../components/modal";
+import { PageHeader } from "../components/page-header";
 import { usePawdioLabContext } from "../pawdio-context";
-import {
-  ComparisonPanel,
-  type CompareEntry,
-} from "./compare/comparison-panel";
+import { ComparisonPanel, type CompareEntry } from "./compare/comparison-panel";
 import { compareColor } from "./compare/compare-colors";
 
 type SaveDraft = {
@@ -304,73 +303,12 @@ export function LibraryPage() {
     <div className="page-stack">
       {/* Save modal */}
       {saveDraft && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <h3 className="section-heading" style={{ marginBottom: 6 }}>
-              Save to Library
-            </h3>
-            <p className="muted" style={{ marginBottom: 12 }}>
-              Saving a {LIBRARY_TEST_LABELS[saveDraft.testType]} measurement.
-            </p>
-
-            <label className="field-row" style={{ marginBottom: 10 }}>
-              <span className="field-label">Device</span>
-              {devices.length > 0 ? (
-                <select
-                  className="skin-select"
-                  value={
-                    saveDeviceMode === "new" ? "__new__" : String(saveDeviceId)
-                  }
-                  onChange={(e) => {
-                    if (e.target.value === "__new__") {
-                      setSaveDeviceMode("new");
-                    } else {
-                      setSaveDeviceMode("existing");
-                      setSaveDeviceId(Number(e.target.value));
-                    }
-                  }}
-                >
-                  {devices.map((d) => (
-                    <option key={d.id} value={String(d.id)}>
-                      {d.name}
-                    </option>
-                  ))}
-                  <option value="__new__">＋ New device…</option>
-                </select>
-              ) : (
-                <span className="muted">First device — name it below.</span>
-              )}
-            </label>
-
-            {saveDeviceMode === "new" && (
-              <label className="field-row" style={{ marginBottom: 10 }}>
-                <span className="field-label">New device name</span>
-                <input
-                  className="skin-input"
-                  type="text"
-                  value={saveDeviceName}
-                  placeholder="e.g. AirPods Pro 2"
-                  onChange={(e) => setSaveDeviceName(e.target.value)}
-                />
-              </label>
-            )}
-
-            <label className="field-row" style={{ marginBottom: 4 }}>
-              <span className="field-label">Label (optional)</span>
-              <input
-                className="skin-input"
-                type="text"
-                value={saveDraft.label}
-                placeholder="e.g. ANC on, firmware 6.1"
-                onChange={(e) =>
-                  setSaveDraft((prev) =>
-                    prev ? { ...prev, label: e.target.value } : prev,
-                  )
-                }
-              />
-            </label>
-
-            <div className="modal-actions">
+        <Modal
+          open
+          onClose={() => setSaveDraft(null)}
+          title="Save to Library"
+          footer={
+            <>
               <button
                 type="button"
                 className="skin-btn secondary"
@@ -387,33 +325,80 @@ export function LibraryPage() {
               >
                 Save
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <p className="muted" style={{ marginBottom: 12 }}>
+            Saving a {LIBRARY_TEST_LABELS[saveDraft.testType]} measurement.
+          </p>
+
+          <label className="field-row" style={{ marginBottom: 10 }}>
+            <span className="field-label">Device</span>
+            {devices.length > 0 ? (
+              <select
+                className="skin-select"
+                value={
+                  saveDeviceMode === "new" ? "__new__" : String(saveDeviceId)
+                }
+                onChange={(e) => {
+                  if (e.target.value === "__new__") {
+                    setSaveDeviceMode("new");
+                  } else {
+                    setSaveDeviceMode("existing");
+                    setSaveDeviceId(Number(e.target.value));
+                  }
+                }}
+              >
+                {devices.map((d) => (
+                  <option key={d.id} value={String(d.id)}>
+                    {d.name}
+                  </option>
+                ))}
+                <option value="__new__">＋ New device…</option>
+              </select>
+            ) : (
+              <span className="muted">First device — name it below.</span>
+            )}
+          </label>
+
+          {saveDeviceMode === "new" && (
+            <label className="field-row" style={{ marginBottom: 10 }}>
+              <span className="field-label">New device name</span>
+              <input
+                className="skin-input"
+                type="text"
+                value={saveDeviceName}
+                placeholder="e.g. AirPods Pro 2"
+                onChange={(e) => setSaveDeviceName(e.target.value)}
+              />
+            </label>
+          )}
+
+          <label className="field-row" style={{ marginBottom: 4 }}>
+            <span className="field-label">Label (optional)</span>
+            <input
+              className="skin-input"
+              type="text"
+              value={saveDraft.label}
+              placeholder="e.g. ANC on, firmware 6.1"
+              onChange={(e) =>
+                setSaveDraft((prev) =>
+                  prev ? { ...prev, label: e.target.value } : prev,
+                )
+              }
+            />
+          </label>
+        </Modal>
       )}
 
       {/* Rename modal */}
       {renameDraft && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <h3 className="section-heading" style={{ marginBottom: 12 }}>
-              Rename Device
-            </h3>
-            <label className="field-row" style={{ marginBottom: 4 }}>
-              <span className="field-label">Name</span>
-              <input
-                className="skin-input"
-                type="text"
-                value={renameDraft.name}
-                autoFocus
-                onChange={(e) =>
-                  setRenameDraft((prev) =>
-                    prev ? { ...prev, name: e.target.value } : prev,
-                  )
-                }
-              />
-            </label>
-            <div className="modal-actions">
+        <Modal
+          open
+          onClose={() => setRenameDraft(null)}
+          title="Rename Device"
+          footer={
+            <>
               <button
                 type="button"
                 className="skin-btn secondary"
@@ -430,35 +415,37 @@ export function LibraryPage() {
               >
                 Save
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <label className="field-row" style={{ marginBottom: 4 }}>
+            <span className="field-label">Name</span>
+            <input
+              className="skin-input"
+              type="text"
+              value={renameDraft.name}
+              onChange={(e) =>
+                setRenameDraft((prev) =>
+                  prev ? { ...prev, name: e.target.value } : prev,
+                )
+              }
+            />
+          </label>
+        </Modal>
       )}
 
       {/* Delete confirm modal */}
       {pendingDelete && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <h3 className="section-heading" style={{ marginBottom: 12 }}>
-              {pendingDelete.kind === "device"
-                ? "Delete Device"
-                : "Delete Measurement"}
-            </h3>
-            <p className="muted" style={{ marginBottom: 12 }}>
-              {pendingDelete.kind === "device" ? (
-                <>
-                  Delete <strong>{pendingDelete.name}</strong> and its{" "}
-                  {pendingDelete.count} measurement
-                  {pendingDelete.count === 1 ? "" : "s"}? This cannot be undone.
-                </>
-              ) : (
-                <>
-                  Delete <strong>{pendingDelete.name}</strong>? This cannot be
-                  undone.
-                </>
-              )}
-            </p>
-            <div className="modal-actions">
+        <Modal
+          open
+          onClose={() => setPendingDelete(null)}
+          title={
+            pendingDelete.kind === "device"
+              ? "Delete Device"
+              : "Delete Measurement"
+          }
+          footer={
+            <>
               <button
                 type="button"
                 className="skin-btn secondary"
@@ -475,14 +462,32 @@ export function LibraryPage() {
               >
                 Delete
               </button>
-            </div>
-          </div>
-        </div>
+            </>
+          }
+        >
+          <p className="muted" style={{ marginBottom: 12 }}>
+            {pendingDelete.kind === "device" ? (
+              <>
+                Delete <strong>{pendingDelete.name}</strong> and its{" "}
+                {pendingDelete.count} measurement
+                {pendingDelete.count === 1 ? "" : "s"}? This cannot be undone.
+              </>
+            ) : (
+              <>
+                Delete <strong>{pendingDelete.name}</strong>? This cannot be
+                undone.
+              </>
+            )}
+          </p>
+        </Modal>
       )}
 
       {/* Session strip */}
       <section className="page-card">
-        <h2 className="section-heading">Save to Library</h2>
+        <PageHeader
+          title="Save to Library"
+          description="Persist session results per device to compare them later."
+        />
         {sessionItems.length === 0 ? (
           <div className="empty-state">
             <span>
@@ -491,9 +496,7 @@ export function LibraryPage() {
             </span>
           </div>
         ) : (
-          <div
-            style={{ display: "flex", flexDirection: "column", gap: 8 }}
-          >
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {sessionItems.map((item) => (
               <div key={item.key} className="section-header-row">
                 <span style={{ fontSize: 13 }}>{item.label}</span>
@@ -512,20 +515,20 @@ export function LibraryPage() {
 
       {/* Library browser */}
       <section className="page-card">
-        <div className="section-header-row">
-          <h2 className="section-heading" style={{ marginBottom: 0 }}>
-            Library
-          </h2>
-          {selectedIds.length > 0 && (
-            <button
-              type="button"
-              className="skin-btn secondary"
-              onClick={() => setSelectedIds([])}
-            >
-              Clear selection ({selectedIds.length})
-            </button>
-          )}
-        </div>
+        <PageHeader
+          title="Library"
+          actions={
+            selectedIds.length > 0 ? (
+              <button
+                type="button"
+                className="skin-btn secondary"
+                onClick={() => setSelectedIds([])}
+              >
+                Clear selection ({selectedIds.length})
+              </button>
+            ) : undefined
+          }
+        />
 
         {devices.length === 0 ? (
           <div className="empty-state">
@@ -547,7 +550,7 @@ export function LibraryPage() {
                     {open ? "▾" : "▸"} {device.name}{" "}
                     <span className="muted">({list.length})</span>
                   </button>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div className="btn-row">
                     <button
                       type="button"
                       className="skin-btn secondary"

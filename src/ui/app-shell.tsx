@@ -10,6 +10,7 @@ import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
 import { startAppearanceThemeSync } from "./theme";
 import { PageKeyEnum } from "./model";
+import { ToastProvider } from "./components/toast";
 import { PawdioLabProvider, usePawdioLabContext } from "./pawdio-context";
 
 export function PawdioLabApp() {
@@ -17,9 +18,11 @@ export function PawdioLabApp() {
 
   return (
     <ErrorBoundary fallbackTitle="App failed to start">
-      <PawdioLabProvider>
-        <PawdioLabShell />
-      </PawdioLabProvider>
+      <ToastProvider>
+        <PawdioLabProvider>
+          <PawdioLabShell />
+        </PawdioLabProvider>
+      </ToastProvider>
     </ErrorBoundary>
   );
 }

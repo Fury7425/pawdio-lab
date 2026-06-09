@@ -11,11 +11,10 @@ import {
   toNumber,
 } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
-import {
-  OverlayChart,
-  type OverlayHoverInfo,
-  type OverlaySeries,
-} from "../components/overlay-chart";
+import { Modal } from "../components/modal";
+import { PageHeader } from "../components/page-header";
+import { ChartLegend } from "../components/chart-legend";
+import { OverlayChart, type OverlaySeries } from "../components/overlay-chart";
 import { fmtHz } from "../lib/chart-scale";
 import { usePawdioLabContext } from "../pawdio-context";
 
@@ -114,7 +113,6 @@ export function AncPage() {
   const [stateConfirmed, setStateConfirmed] = useState(false);
   const [yAxisMode, setYAxisModeState] = useState<YAxisMode>(loadYAxisMode);
   const [manualBaseline, setManualBaseline] = useState<AncModeKey | null>(null);
-  const [hoverInfo, setHoverInfo] = useState<OverlayHoverInfo | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const setYAxisMode = (v: YAxisMode) => {
@@ -350,71 +348,13 @@ export function AncPage() {
     <div className="page-stack">
       {/* Step modal */}
       {stepPrompt && currentStep && (
-        <div className="modal-overlay">
-          <div className="modal-box">
-            <p className="modal-step-label">
-              Step {stepNum} of {totalSteps}
-            </p>
-            <div
-              className="modal-icon-circle"
-              style={{ background: modeMeta[currentStep.mode].color }}
-            >
-              <EarOff size={18} color="#fff" />
-            </div>
-            <h3 className="section-heading" style={{ marginBottom: 6 }}>
-              {modeMeta[currentStep.mode].captureTitle}
-              {sideLabel(currentStep.side) && (
-                <span style={{ color: modeMeta[currentStep.mode].color }}>
-                  {" — "}
-                  {sideLabel(currentStep.side)}
-                </span>
-              )}
-            </h3>
-            <p className="muted" style={{ marginBottom: 12 }}>
-              {modeMeta[currentStep.mode].captureDetail}
-              {sideLabel(currentStep.side) &&
-                ` Place the mic on the ${sideLabel(currentStep.side)} and keep this mode set.`}
-            </p>
-            {!running && (
-              <label
-                style={{
-                  display: "flex",
-                  alignItems: "flex-start",
-                  gap: 8,
-                  marginBottom: 12,
-                  fontSize: 12,
-                  cursor: "pointer",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={stateConfirmed}
-                  onChange={(e) => setStateConfirmed(e.target.checked)}
-                  style={{ marginTop: 2 }}
-                />
-                <span>
-                  I changed the headphone state — ready to capture this mode.
-                </span>
-              </label>
-            )}
-            {running && (
-              <div
-                className="modal-progress-track"
-                role="progressbar"
-                aria-label="Recording in progress"
-              >
-                <div className="modal-progress-pulse" />
-              </div>
-            )}
-            {running && lastTestProgress && (
-              <p
-                className="muted"
-                style={{ fontSize: 11, marginTop: 6, marginBottom: 0 }}
-              >
-                {lastTestProgress.message}
-              </p>
-            )}
-            <div className="modal-actions">
+        <Modal
+          open
+          onClose={() => {
+            if (!running) onCancelStep();
+          }}
+          footer={
+            <>
               <button
                 type="button"
                 className="skin-btn secondary"
@@ -431,9 +371,72 @@ export function AncPage() {
               >
                 {running ? "Recording…" : "Start Recording"}
               </button>
-            </div>
+            </>
+          }
+        >
+          <p className="modal-step-label">
+            Step {stepNum} of {totalSteps}
+          </p>
+          <div
+            className="modal-icon-circle"
+            style={{ background: modeMeta[currentStep.mode].color }}
+          >
+            <EarOff size={18} color="var(--button-text)" />
           </div>
-        </div>
+          <h3 className="section-heading" style={{ marginBottom: 6 }}>
+            {modeMeta[currentStep.mode].captureTitle}
+            {sideLabel(currentStep.side) && (
+              <span style={{ color: modeMeta[currentStep.mode].color }}>
+                {" — "}
+                {sideLabel(currentStep.side)}
+              </span>
+            )}
+          </h3>
+          <p className="muted" style={{ marginBottom: 12 }}>
+            {modeMeta[currentStep.mode].captureDetail}
+            {sideLabel(currentStep.side) &&
+              ` Place the mic on the ${sideLabel(currentStep.side)} and keep this mode set.`}
+          </p>
+          {!running && (
+            <label
+              style={{
+                display: "flex",
+                alignItems: "flex-start",
+                gap: 8,
+                marginBottom: 12,
+                fontSize: 12,
+                cursor: "pointer",
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={stateConfirmed}
+                onChange={(e) => setStateConfirmed(e.target.checked)}
+                style={{ marginTop: 2 }}
+              />
+              <span>
+                I changed the headphone state — ready to capture this mode.
+              </span>
+            </label>
+          )}
+          {running && (
+            <div
+              className="modal-progress-track"
+              role="progressbar"
+              aria-label="Recording in progress"
+            >
+              <div className="modal-progress-pulse" />
+            </div>
+          )}
+          {running && lastTestProgress && (
+            <p
+              className="muted"
+              style={{ fontSize: 11, marginTop: 6, marginBottom: 0 }}
+            >
+              {lastTestProgress.message}
+            </p>
+          )}
+        </Modal>
       )}
 
       {/* In-page sticky progress (B7) */}
@@ -483,7 +486,10 @@ export function AncPage() {
 
       {/* Config card */}
       <section className="page-card">
-        <h2 className="section-heading">ANC / Transparency Measurement</h2>
+        <PageHeader
+          title="ANC / Transparency Measurement"
+          description="Guided capture of per-frequency attenuation across headphone modes."
+        />
 
         <section className="page-section">
           <h3 className="section-subheading">Select Modes</h3>
@@ -684,7 +690,7 @@ export function AncPage() {
           )}
           <button
             type="button"
-            className="skin-btn"
+            className={`skin-btn${running ? " is-loading" : ""}`}
             disabled={running || selectedModes.length === 0}
             onClick={onStart}
           >
@@ -696,7 +702,7 @@ export function AncPage() {
       {/* Results card */}
       {hasAnyCapture && (
         <section className="page-card">
-          <h2 className="section-heading">Attenuation Results</h2>
+          <PageHeader title="Attenuation Results" />
 
           {/* Graph controls */}
           <div className="graph-controls-row">
@@ -719,7 +725,7 @@ export function AncPage() {
                     style={{
                       borderColor: meta.color,
                       background: active ? meta.color : "transparent",
-                      color: active ? "#fff" : meta.color,
+                      color: active ? "var(--button-text)" : meta.color,
                     }}
                   >
                     {meta.label}
@@ -805,7 +811,7 @@ export function AncPage() {
             )}
           </div>
 
-          {/* SVG attenuation graph */}
+          {/* SVG attenuation graph with built-in hover tooltip */}
           <div className="level-meter" style={{ marginBottom: 16 }}>
             <OverlayChart
               series={chartSeries}
@@ -813,32 +819,10 @@ export function AncPage() {
               yMax={yMax}
               ariaLabel="Attenuation frequency response graph"
               emptyMessage="Capture at least two modes to see attenuation"
-              onHover={setHoverInfo}
             />
           </div>
 
-          {/* Hover readout (B8) */}
-          {hoverInfo && hoverInfo.items.length > 0 && (
-            <div
-              className="muted"
-              style={{
-                fontSize: 11,
-                marginBottom: 12,
-                display: "flex",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <strong style={{ color: "var(--text)" }}>
-                {fmtHz(hoverInfo.hz)} Hz
-              </strong>
-              {hoverInfo.items.map((item) => (
-                <span key={item.id} style={{ color: item.color }}>
-                  {item.label}: <strong>{item.value.toFixed(1)} dB</strong>
-                </span>
-              ))}
-            </div>
-          )}
+          <ChartLegend items={chartSeries} />
 
           {/* Stats row */}
           {exportableModes.length > 0 && baseline && (
