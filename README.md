@@ -5,6 +5,7 @@
 [![Forks][forks-shield]][forks-url]
 [![Stargazers][stars-shield]][stars-url]
 [![Issues][issues-shield]][issues-url]
+[![MIT License][license-shield]][license-url]
 
 
 
@@ -57,6 +58,7 @@
     <li><a href="#project-layout">Project Layout</a></li>
     <li><a href="#roadmap">Roadmap</a></li>
     <li><a href="#contributing">Contributing</a></li>
+    <li><a href="#license">License</a></li>
     <li><a href="#contact">Contact</a></li>
     <li><a href="#acknowledgments">Acknowledgments</a></li>
   </ol>
@@ -306,6 +308,15 @@ If you have a suggestion that would make this better, please fork the repo and c
 
 
 
+<!-- LICENSE -->
+## License
+
+Distributed under the MIT License. See [`LICENSE`](LICENSE) for more information.
+
+<p align="right">(<a href="#readme-top">back to top</a>)</p>
+
+
+
 <!-- CONTACT -->
 ## Contact
 
@@ -425,6 +436,8 @@ xattr -dr com.apple.quarantine "/Applications/Pawdio Lab.app"
 [stars-url]: https://github.com/Fury7425/pawdio-lab/stargazers
 [issues-shield]: https://img.shields.io/github/issues/Fury7425/pawdio-lab.svg?style=for-the-badge
 [issues-url]: https://github.com/Fury7425/pawdio-lab/issues
+[license-shield]: https://img.shields.io/github/license/Fury7425/pawdio-lab.svg?style=for-the-badge
+[license-url]: https://github.com/Fury7425/pawdio-lab/blob/main/LICENSE
 [React.js]: https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB
 [React-url]: https://reactjs.org/
 [TypeScript]: https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white
