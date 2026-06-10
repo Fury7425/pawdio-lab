@@ -118,9 +118,7 @@ pub fn list_devices(conn: &Connection) -> Result<Vec<DeviceRecord>, String> {
     let mut stmt = conn
         .prepare("SELECT id, name, kind, notes, created_at FROM devices ORDER BY created_at DESC, id DESC")
         .map_err(|e| e.to_string())?;
-    let rows = stmt
-        .query_map([], map_device)
-        .map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], map_device).map_err(|e| e.to_string())?;
     let mut out = Vec::new();
     for row in rows {
         out.push(row.map_err(|e| e.to_string())?);
@@ -191,8 +189,9 @@ pub fn list_measurements(
     device_id: Option<i64>,
     test_type: Option<String>,
 ) -> Result<Vec<MeasurementSummary>, String> {
-    let mut sql =
-        String::from("SELECT id, device_id, test_type, captured_at, label FROM measurements WHERE 1=1");
+    let mut sql = String::from(
+        "SELECT id, device_id, test_type, captured_at, label FROM measurements WHERE 1=1",
+    );
     let mut binds: Vec<SqlValue> = Vec::new();
     if let Some(d) = device_id {
         sql.push_str(" AND device_id = ?");
@@ -275,7 +274,14 @@ pub fn save_measurement(
         "INSERT INTO measurements
             (device_id, test_type, captured_at, label, notes, payload_json, schema_ver)
          VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)",
-        params![device_id, test_type, captured_at, label, payload_json, DB_VERSION],
+        params![
+            device_id,
+            test_type,
+            captured_at,
+            label,
+            payload_json,
+            DB_VERSION
+        ],
     )
     .map_err(|e| e.to_string())?;
     Ok(MeasurementRecord {
@@ -313,7 +319,8 @@ mod tests {
         assert!(dev.id > 0);
 
         let payload = serde_json::json!({ "test": "latency", "averageDelayMs": 12.5 });
-        let rec = save_measurement(&conn, dev.id, "latency", Some("run 1".into()), &payload).unwrap();
+        let rec =
+            save_measurement(&conn, dev.id, "latency", Some("run 1".into()), &payload).unwrap();
         assert_eq!(rec.device_id, dev.id);
 
         let summaries = list_measurements(&conn, Some(dev.id), None).unwrap();

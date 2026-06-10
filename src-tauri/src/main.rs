@@ -651,15 +651,9 @@ fn main() {
             let db_path = app
                 .path()
                 .app_data_dir()
-                .map_err(|e| {
-                    std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!("could not resolve app data dir: {e}"),
-                    )
-                })?
+                .map_err(|e| std::io::Error::other(format!("could not resolve app data dir: {e}")))?
                 .join("pawdio-lab.db");
-            let conn = db::init(&db_path)
-                .map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, e))?;
+            let conn = db::init(&db_path).map_err(std::io::Error::other)?;
 
             app.manage(AppState {
                 audio: Arc::new(tokio::sync::Mutex::new(AudioEngine::new())),
