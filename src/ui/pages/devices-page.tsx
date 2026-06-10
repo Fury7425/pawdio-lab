@@ -155,6 +155,10 @@ export function DevicesPage() {
         <hr className="section-divider" />
         <section className="page-section">
           <h3 className="section-subheading">Audio Devices</h3>
+          <p className="muted mb-12">
+            Device selections apply immediately. Signal settings above apply
+            when you press Apply.
+          </p>
 
           <div className="field-grid-4">
             <label className="field-row field-span-3">

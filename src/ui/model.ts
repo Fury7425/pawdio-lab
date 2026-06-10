@@ -179,7 +179,7 @@ export const ANC_MODE_META: Record<
       "The default baseline. Put the headphones on but keep ANC and Transparency off.",
     captureTitle: "Baseline (Power Off)",
     captureDetail:
-      "Put the headphones on. Disable ANC and Transparency — fully off, not Transparency.",
+      "Put the headphones on. Disable ANC and Transparency: fully off, not Transparency.",
     color: "var(--gray-10)",
   },
   anc: {

@@ -35,7 +35,7 @@ export function Sidebar() {
       <p className="sidebar-subtitle">Audio Diagnostics</p>
 
       <nav className="sidebar-nav" aria-label="Primary">
-        {visiblePages.map((item) => {
+        {visiblePages.map((item, index) => {
           const Icon = PAGE_ICONS[item.key];
           return (
             <button
@@ -44,7 +44,7 @@ export function Sidebar() {
               className={`nav-btn${ctx.activePage === item.key ? " is-active" : ""}`}
               aria-current={ctx.activePage === item.key ? "page" : undefined}
               aria-label={item.label}
-              title={item.label}
+              title={`${item.label} (Ctrl+${index + 1})`}
               onClick={() => ctx.setActivePage(item.key)}
             >
               <Icon size={16} aria-hidden="true" />

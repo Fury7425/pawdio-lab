@@ -48,9 +48,13 @@ export function CompareLatency({ entries }: { entries: CompareEntry[] }) {
           <article
             key={row.id}
             className={`metric-card${isBest ? " metric-good" : ""}`}
-            style={{ borderLeft: `3px solid ${row.color}` }}
+            style={{
+              borderColor: `color-mix(in srgb, ${row.color} 40%, transparent)`,
+            }}
           >
-            <p className="metric-label">{row.deviceName}</p>
+            <p className="metric-label" style={{ color: row.color }}>
+              {row.deviceName}
+            </p>
             <p className="metric-value">
               {fmt(row.avg)}
               <span style={{ fontSize: 12, fontWeight: 400 }}> ms</span>

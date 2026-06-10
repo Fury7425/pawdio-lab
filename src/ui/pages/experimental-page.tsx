@@ -188,15 +188,10 @@ export function ExperimentalPage() {
             <div className="empty-state">
               <FlaskConical size={28} />
               <span>Run an experimental test to see results</span>
+              <span className="muted">
+                Results appear in the Logs page and can be saved from Library.
+              </span>
             </div>
-          </div>
-          <div className="row-end mt-12">
-            <button type="button" className="skin-btn secondary" disabled>
-              Export LAST (JSON)
-            </button>
-            <button type="button" className="skin-btn secondary" disabled>
-              Export ALL (JSON)
-            </button>
           </div>
         </section>
       </section>

@@ -4,6 +4,8 @@ type ModalProps = {
   open: boolean;
   onClose: () => void;
   title?: string;
+  /** Accessible dialog name when no visible title is rendered. */
+  ariaLabel?: string;
   children: ReactNode;
   footer?: ReactNode;
   closeOnOverlay?: boolean;
@@ -16,6 +18,7 @@ export function Modal({
   open,
   onClose,
   title,
+  ariaLabel,
   children,
   footer,
   closeOnOverlay = false,
@@ -34,13 +37,33 @@ export function Modal({
     const firstFocusable = box?.querySelector<HTMLElement>(FOCUSABLE_SELECTOR);
     (firstFocusable ?? box)?.focus();
 
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === "Escape") onCloseRef.current();
+    function handleKeydown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onCloseRef.current();
+        return;
+      }
+      // Cycle Tab focus inside the dialog.
+      if (event.key === "Tab" && boxRef.current) {
+        const focusables = Array.from(
+          boxRef.current.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR),
+        ).filter((el) => !el.hasAttribute("disabled"));
+        if (focusables.length === 0) return;
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+        const active = document.activeElement;
+        if (event.shiftKey && (active === first || active === boxRef.current)) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && active === last) {
+          event.preventDefault();
+          first.focus();
+        }
+      }
     }
 
-    document.addEventListener("keydown", handleEscape);
+    document.addEventListener("keydown", handleKeydown);
     return () => {
-      document.removeEventListener("keydown", handleEscape);
+      document.removeEventListener("keydown", handleKeydown);
       previouslyFocused?.focus?.();
     };
   }, [open]);
@@ -63,7 +86,7 @@ export function Modal({
         className="modal-box"
         role="dialog"
         aria-modal="true"
-        aria-label={title}
+        aria-label={title ?? ariaLabel ?? "Dialog"}
         ref={boxRef}
         tabIndex={-1}
       >

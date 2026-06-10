@@ -580,22 +580,22 @@ export function SweepFrPage() {
               disabled={running || (!hasSweepResult && !hasSweepHistory)}
               items={[
                 {
-                  label: "Export LAST (JSON)",
+                  label: "Export Last (JSON)",
                   onSelect: onExportLastJson,
                   disabled: running || !hasSweepResult,
                 },
                 {
-                  label: "Export ALL (JSON)",
+                  label: "Export All (JSON)",
                   onSelect: onExportAllJson,
                   disabled: running || !hasSweepHistory,
                 },
                 {
-                  label: "Export LAST to Squiglink",
+                  label: "Export Last to Squiglink",
                   onSelect: onExportLastSquiglink,
                   disabled: running || !hasSweepResult,
                 },
                 {
-                  label: "Export LAST (CSV)",
+                  label: "Export Last (CSV)",
                   onSelect: onExportLastCsv,
                   disabled: running || !hasSweepResult,
                 },

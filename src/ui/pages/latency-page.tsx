@@ -323,7 +323,7 @@ export function LatencyPage() {
                 disabled={running}
                 onClick={onRunAll}
               >
-                Run ALL
+                Run All
               </button>
             </div>
             <ExportMenu
@@ -449,7 +449,7 @@ export function LatencyPage() {
               disabled={running}
               onClick={() => onCalibrateAll(calibrationRepeats)}
             >
-              Calibrate ALL Presets
+              Calibrate All Presets
             </button>
           </div>
 

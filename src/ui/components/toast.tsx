@@ -8,11 +8,11 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Info, X } from "lucide-react";
 
 export type ToastKind = "info" | "success" | "error";
 
-type Toast = { id: number; kind: ToastKind; message: string };
+type Toast = { id: number; kind: ToastKind; message: string; leaving: boolean };
 
 type ToastOptions = { kind?: ToastKind; durationMs?: number };
 
@@ -25,13 +25,20 @@ const ToastContext = createContext<ToastContextValue | null>(null);
 const MAX_TOASTS = 4;
 const DEFAULT_DURATION_MS = 4000;
 const ERROR_DURATION_MS = 8000;
+const EXIT_MS = 120;
+
+const KIND_ICONS: Record<ToastKind, typeof Info> = {
+  info: Info,
+  success: CheckCircle2,
+  error: AlertCircle,
+};
 
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
 
-  const dismiss = useCallback((id: number) => {
+  const remove = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
     const timer = timers.current.get(id);
     if (timer) {
@@ -40,13 +47,35 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  // Two-phase dismiss: mark leaving so the exit transition plays, then unmount.
+  const dismiss = useCallback(
+    (id: number) => {
+      let already = false;
+      setToasts((prev) =>
+        prev.map((t) => {
+          if (t.id !== id) return t;
+          if (t.leaving) already = true;
+          return { ...t, leaving: true };
+        }),
+      );
+      if (already) return;
+      const timer = timers.current.get(id);
+      if (timer) clearTimeout(timer);
+      timers.current.set(
+        id,
+        setTimeout(() => remove(id), EXIT_MS),
+      );
+    },
+    [remove],
+  );
+
   const toast = useCallback(
     (message: string, opts?: ToastOptions) => {
       const kind = opts?.kind ?? "info";
       const id = nextId.current++;
       setToasts((prev) => [
         ...prev.slice(-(MAX_TOASTS - 1)),
-        { id, kind, message },
+        { id, kind, message, leaving: false },
       ]);
       const duration =
         opts?.durationMs ??
@@ -72,23 +101,29 @@ export function ToastProvider({ children }: { children: ReactNode }) {
     <ToastContext.Provider value={value}>
       {children}
       <div className="toast-stack" aria-live="polite">
-        {toasts.map((t) => (
-          <div
-            key={t.id}
-            className={`toast toast--${t.kind}`}
-            role={t.kind === "error" ? "alert" : "status"}
-          >
-            <span className="toast-message">{t.message}</span>
-            <button
-              type="button"
-              className="toast-close"
-              aria-label="Dismiss notification"
-              onClick={() => dismiss(t.id)}
+        {toasts.map((t) => {
+          const Icon = KIND_ICONS[t.kind];
+          return (
+            <div
+              key={t.id}
+              className={`toast toast--${t.kind}${t.leaving ? " is-leaving" : ""}`}
+              role={t.kind === "error" ? "alert" : "status"}
             >
-              <X size={14} />
-            </button>
-          </div>
-        ))}
+              <span className="toast-icon" aria-hidden="true">
+                <Icon size={15} />
+              </span>
+              <span className="toast-message">{t.message}</span>
+              <button
+                type="button"
+                className="toast-close"
+                aria-label="Dismiss notification"
+                onClick={() => dismiss(t.id)}
+              >
+                <X size={14} />
+              </button>
+            </div>
+          );
+        })}
       </div>
     </ToastContext.Provider>
   );

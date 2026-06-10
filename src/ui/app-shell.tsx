@@ -9,7 +9,7 @@ import { LibraryPage } from "./pages/library-page";
 import { ResultsPage } from "./pages/results-page";
 import { SweepFrPage } from "./pages/sweep-fr-page";
 import { startAppearanceThemeSync } from "./theme";
-import { PageKeyEnum } from "./model";
+import { PageKeyEnum, pageItems } from "./model";
 import { ToastProvider } from "./components/toast";
 import { PawdioLabProvider, usePawdioLabContext } from "./pawdio-context";
 
@@ -29,6 +29,26 @@ export function PawdioLabApp() {
 
 function PawdioLabShell() {
   const ctx = usePawdioLabContext();
+
+  // Ctrl+1..7 jumps between pages (power-user navigation).
+  useEffect(() => {
+    function onKeydown(event: KeyboardEvent) {
+      if (!event.ctrlKey || event.altKey || event.metaKey || event.shiftKey) {
+        return;
+      }
+      const digit = Number(event.key);
+      if (!Number.isInteger(digit) || digit < 1 || digit > 9) return;
+      const visible = ctx.experimentalEnabled
+        ? pageItems
+        : pageItems.filter((item) => item.key !== "experimental");
+      const item = visible[digit - 1];
+      if (!item) return;
+      event.preventDefault();
+      ctx.setActivePage(item.key);
+    }
+    window.addEventListener("keydown", onKeydown);
+    return () => window.removeEventListener("keydown", onKeydown);
+  }, [ctx]);
 
   return (
     <main className="app-canvas">

@@ -335,10 +335,11 @@ export function AncPage() {
   function interpretPeak(db: number, key: AncModeKey): string {
     if (key === "transparency") {
       return db > 3
-        ? "Transparency overshoot vs baseline — pass-through is amplifying ambient."
-        : "Transparency near baseline — pass-through restoring ambient sound.";
+        ? "Transparency overshoot vs baseline: pass-through is amplifying ambient."
+        : "Transparency near baseline: pass-through restoring ambient sound.";
     }
-    if (db <= -30) return "Strong cancellation — typical for closed-back ANC.";
+    if (db <= -30)
+      return "Strong cancellation, typical for closed-back ANC.";
     if (db <= -20) return "Solid cancellation in this band.";
     if (db <= -10) return "Mild cancellation.";
     return "Little or no cancellation in this band.";
@@ -353,6 +354,7 @@ export function AncPage() {
           onClose={() => {
             if (!running) onCancelStep();
           }}
+          ariaLabel={`Capture step ${stepNum} of ${totalSteps}: ${modeMeta[currentStep.mode].captureTitle}`}
           footer={
             <>
               <button
@@ -387,7 +389,7 @@ export function AncPage() {
             {modeMeta[currentStep.mode].captureTitle}
             {sideLabel(currentStep.side) && (
               <span style={{ color: modeMeta[currentStep.mode].color }}>
-                {" — "}
+                {" · "}
                 {sideLabel(currentStep.side)}
               </span>
             )}
@@ -398,24 +400,15 @@ export function AncPage() {
               ` Place the mic on the ${sideLabel(currentStep.side)} and keep this mode set.`}
           </p>
           {!running && (
-            <label
-              style={{
-                display: "flex",
-                alignItems: "flex-start",
-                gap: 8,
-                marginBottom: 12,
-                fontSize: 12,
-                cursor: "pointer",
-              }}
-            >
+            <label className="confirm-line">
               <input
                 type="checkbox"
                 checked={stateConfirmed}
                 onChange={(e) => setStateConfirmed(e.target.checked)}
-                style={{ marginTop: 2 }}
               />
               <span>
-                I changed the headphone state — ready to capture this mode.
+                I changed the headphone state and I'm ready to capture this
+                mode.
               </span>
             </label>
           )}
@@ -442,25 +435,14 @@ export function AncPage() {
       {/* In-page sticky progress (B7) */}
       {running && lastTestProgress && (
         <div
-          className="page-card"
-          style={{
-            position: "sticky",
-            top: 0,
-            zIndex: 5,
-            display: "flex",
-            alignItems: "center",
-            gap: 12,
-            padding: "8px 14px",
-            background: "var(--surface-2, var(--surface-1))",
-            borderLeft: "3px solid var(--accent-9)",
-          }}
+          className="page-card sticky-progress"
           role="status"
           aria-live="polite"
         >
-          <div className="modal-progress-track" style={{ flex: 1, height: 6 }}>
+          <div className="modal-progress-track sticky-progress-track">
             <div className="modal-progress-pulse" />
           </div>
-          <span style={{ fontSize: 11 }}>
+          <span className="sticky-progress-text">
             {currentStep && (
               <strong style={{ color: modeMeta[currentStep.mode].color }}>
                 {modeMeta[currentStep.mode].captureTitle}
@@ -514,7 +496,6 @@ export function AncPage() {
                   title={meta.helpText}
                   style={{
                     borderColor: selected ? meta.color : undefined,
-                    borderLeftColor: selected ? meta.color : undefined,
                     background: selected
                       ? `color-mix(in srgb, ${meta.color} 8%, transparent)`
                       : undefined,
@@ -535,22 +516,14 @@ export function AncPage() {
                     {meta.label}
                   </div>
                   <div className="mode-select-detail">{meta.detail}</div>
-                  <div
-                    className="muted"
-                    style={{
-                      fontSize: 10,
-                      marginTop: 6,
-                      lineHeight: 1.3,
-                    }}
-                  >
-                    {meta.helpText}
-                  </div>
+                  <div className="muted mode-select-help">{meta.helpText}</div>
                   {captured && (
                     <div
                       className="mode-select-timestamp"
                       style={{ color: meta.color }}
                     >
-                      ✓ {fmtTime(captured.timestamp)}
+                      <Check size={10} aria-hidden="true" />
+                      {fmtTime(captured.timestamp)}
                     </div>
                   )}
                 </button>
@@ -628,7 +601,7 @@ export function AncPage() {
           {(request.captureOrder ?? "stereo") !== "stereo" && (
             <p className="muted" style={{ marginTop: 8, fontSize: 11 }}>
               Mono mode: each selected mode is captured one ear at a time
-              {" — "}
+              {", "}
               {CAPTURE_ORDER_META[request.captureOrder].detail.toLowerCase()}.
               You will be prompted to reposition a single mic between sides.
             </p>
@@ -845,7 +818,9 @@ export function AncPage() {
                   <div
                     key={key}
                     className="stats-card"
-                    style={{ borderLeft: `3px solid ${meta.color}` }}
+                    style={{
+                      borderColor: `color-mix(in srgb, ${meta.color} 35%, transparent)`,
+                    }}
                     title={interpretPeak(peak, key)}
                   >
                     <div

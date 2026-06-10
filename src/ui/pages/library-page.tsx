@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Pencil, Trash2 } from "lucide-react";
 import {
   ANC_MODE_ORDERED,
   COMPARABLE_TEST_TYPES,
@@ -280,7 +281,11 @@ export function LibraryPage() {
               </label>
               <button
                 type="button"
-                className="skin-btn danger"
+                className="icon-btn danger"
+                aria-label={`Delete measurement ${
+                  summary.label || LIBRARY_TEST_LABELS[summary.testType]
+                }`}
+                title="Delete measurement"
                 onClick={() =>
                   setPendingDelete({
                     kind: "measurement",
@@ -290,7 +295,7 @@ export function LibraryPage() {
                   })
                 }
               >
-                Delete
+                <Trash2 size={14} aria-hidden="true" />
               </button>
             </div>
           );
@@ -357,7 +362,7 @@ export function LibraryPage() {
                 <option value="__new__">＋ New device…</option>
               </select>
             ) : (
-              <span className="muted">First device — name it below.</span>
+              <span className="muted">First device: name it below.</span>
             )}
           </label>
 
@@ -502,7 +507,7 @@ export function LibraryPage() {
                 <span style={{ fontSize: 13 }}>{item.label}</span>
                 <button
                   type="button"
-                  className="skin-btn"
+                  className="skin-btn secondary"
                   onClick={() => openSave(item)}
                 >
                   Save to Library
@@ -553,16 +558,20 @@ export function LibraryPage() {
                   <div className="btn-row">
                     <button
                       type="button"
-                      className="skin-btn secondary"
+                      className="icon-btn"
+                      aria-label={`Rename device ${device.name}`}
+                      title="Rename device"
                       onClick={() =>
                         setRenameDraft({ id: device.id, name: device.name })
                       }
                     >
-                      Rename
+                      <Pencil size={14} aria-hidden="true" />
                     </button>
                     <button
                       type="button"
-                      className="skin-btn danger"
+                      className="icon-btn danger"
+                      aria-label={`Delete device ${device.name}`}
+                      title="Delete device and its measurements"
                       onClick={() =>
                         setPendingDelete({
                           kind: "device",
@@ -572,7 +581,7 @@ export function LibraryPage() {
                         })
                       }
                     >
-                      Delete
+                      <Trash2 size={14} aria-hidden="true" />
                     </button>
                   </div>
                 </div>
