@@ -51,7 +51,8 @@ export function Modal({
         const first = focusables[0];
         const last = focusables[focusables.length - 1];
         const active = document.activeElement;
-        if (event.shiftKey && (active === first || active === boxRef.current)) {
+        const atStart = active === first || active === boxRef.current;
+        if (event.shiftKey && atStart) {
           event.preventDefault();
           last.focus();
         } else if (!event.shiftKey && active === last) {

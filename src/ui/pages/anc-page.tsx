@@ -338,8 +338,7 @@ export function AncPage() {
         ? "Transparency overshoot vs baseline: pass-through is amplifying ambient."
         : "Transparency near baseline: pass-through restoring ambient sound.";
     }
-    if (db <= -30)
-      return "Strong cancellation, typical for closed-back ANC.";
+    if (db <= -30) return "Strong cancellation, typical for closed-back ANC.";
     if (db <= -20) return "Solid cancellation in this band.";
     if (db <= -10) return "Mild cancellation.";
     return "Little or no cancellation in this band.";
