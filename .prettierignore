@@ -11,6 +11,7 @@ package-lock.json
 
 # Hand-authored docs — don't reflow prose/tables
 *.md
+docs/
 
 # Legacy Python tooling (Prettier has no Python parser; listed for clarity)
 app/
