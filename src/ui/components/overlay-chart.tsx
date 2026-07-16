@@ -17,10 +17,6 @@ export type OverlaySeries = {
   id: string;
   label: string;
   color: string;
-  /** Optional SVG opacity applied separately from the color value. */
-  opacity?: number;
-  /** Hide a series from hover readouts while still rendering it. */
-  showInHover?: boolean;
   /** Optional SVG `stroke-dasharray`, e.g. "2.5 2" for a dashed (R) channel. */
   dash?: string;
   freqs: number[];
@@ -38,7 +34,6 @@ export type OverlayHoverItem = {
   id: string;
   label: string;
   color: string;
-  opacity?: number;
   value: number;
 };
 
@@ -119,7 +114,6 @@ export function OverlayChart({
     let labelHz = hz;
     let labelHzSet = false;
     for (const s of series) {
-      if (s.showInHover === false) continue;
       const idx = nearestFreqIndex(s.freqs, hz);
       if (idx < 0) continue;
       if (!labelHzSet) {
@@ -128,13 +122,7 @@ export function OverlayChart({
       }
       const value = s.values[idx];
       if (value === undefined || !Number.isFinite(value)) continue;
-      items.push({
-        id: s.id,
-        label: s.label,
-        color: s.color,
-        opacity: s.opacity,
-        value,
-      });
+      items.push({ id: s.id, label: s.label, color: s.color, value });
     }
     return { hz: labelHz, items };
   }, [hoverX, series]);
@@ -147,8 +135,6 @@ export function OverlayChart({
   }, [hoverInfo]);
 
   const showZero = (zeroLine ?? true) && yMin <= 0 && yMax >= 0 ? toY(0) : null;
-  const clampOpacity = (value: number | undefined): number =>
-    Math.max(0, Math.min(1, value ?? 1));
 
   const chartLabel =
     ariaLabel ??
@@ -318,7 +304,6 @@ export function OverlayChart({
           {/* Variation envelopes */}
           {series.map((s) => {
             if (!s.band) return null;
-            const opacity = clampOpacity(s.opacity);
             const outerPath = buildBandPath(
               s.freqs,
               s.band.outerLow,
@@ -334,18 +319,10 @@ export function OverlayChart({
             return (
               <g key={`${s.id}-band`} pointerEvents="none">
                 {outerPath && (
-                  <path
-                    d={outerPath}
-                    fill={s.color}
-                    fillOpacity={0.12 * opacity}
-                  />
+                  <path d={outerPath} fill={s.color} opacity="0.12" />
                 )}
                 {innerPath && (
-                  <path
-                    d={innerPath}
-                    fill={s.color}
-                    fillOpacity={0.24 * opacity}
-                  />
+                  <path d={innerPath} fill={s.color} opacity="0.24" />
                 )}
               </g>
             );
@@ -355,14 +332,12 @@ export function OverlayChart({
           {series.map((s) => {
             const path = buildCurvePath(s.freqs, s.values, toY);
             if (!path) return null;
-            const opacity = clampOpacity(s.opacity);
             return (
               <path
                 key={s.id}
                 d={path}
                 fill="none"
                 stroke={s.color}
-                strokeOpacity={opacity}
                 strokeWidth="1"
                 strokeDasharray={s.dash}
                 strokeLinejoin="round"
@@ -390,7 +365,6 @@ export function OverlayChart({
                   cy={toY(item.value)}
                   r="1.5"
                   fill={item.color}
-                  fillOpacity={clampOpacity(item.opacity)}
                   stroke="var(--text-strong)"
                   strokeWidth="0.4"
                 />
@@ -428,10 +402,7 @@ export function OverlayChart({
               <span
                 className="chart-swatch"
                 aria-hidden="true"
-                style={{
-                  background: item.color,
-                  opacity: clampOpacity(item.opacity),
-                }}
+                style={{ background: item.color }}
               />
               <span className="chart-tooltip-label">{item.label}</span>
               <strong>

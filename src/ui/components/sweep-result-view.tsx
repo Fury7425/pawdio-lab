@@ -27,44 +27,6 @@ function normalizeAtOneKhz(freqs: number[], values: number[]): number[] {
   return values.slice(0, length).map((value) => value - reference);
 }
 
-function buildRunSeries(
-  freqs: number[],
-  curves: number[][],
-  color: string,
-  label: string,
-  channelId: string,
-): OverlaySeries[] {
-  if (freqs.length < 2 || curves.length < 2) return [];
-  return curves.map((curve, index) => ({
-    id: `${channelId}-run-${index + 1}`,
-    label: `${label} run ${index + 1}`,
-    color,
-    opacity: 0.28,
-    showInHover: false,
-    freqs,
-    values: normalizeAtOneKhz(freqs, curve),
-  }));
-}
-
-function buildAverageSeries(
-  freqs: number[],
-  values: number[],
-  color: string,
-  label: string,
-  id: string,
-  opacity = 1,
-): OverlaySeries | null {
-  if (freqs.length < 2 || values.length < 2) return null;
-  return {
-    id,
-    label,
-    color,
-    opacity,
-    freqs,
-    values: normalizeAtOneKhz(freqs, values),
-  };
-}
-
 function autoRange(series: OverlaySeries[]): { yMin: number; yMax: number } {
   const values = series
     .flatMap((item) => item.values)
@@ -91,64 +53,28 @@ export function SweepResultView({
     if (!result) return [];
     const data = recordOrEmpty(result.data);
     const freqs = sweepNumberList(data.freqs);
-    const leftRuns = (Array.isArray(data.left_mag_db_all)
-      ? data.left_mag_db_all
-      : []) as number[][];
-    const rightRuns = (Array.isArray(data.right_mag_db_all)
-      ? data.right_mag_db_all
-      : []) as number[][];
-    const leftAvg = sweepNumberList(data.left_mag_db_avg);
-    const rightAvg = sweepNumberList(data.right_mag_db_avg);
-    const allAvg = sweepNumberList(data.mag_db_avg_all);
-
+    const left = sweepNumberList(data.left_mag_db_avg);
+    const right = sweepNumberList(data.right_mag_db_avg);
     const next: OverlaySeries[] = [];
-    next.push(
-      ...buildRunSeries(
+    if (freqs.length > 1 && left.length > 1) {
+      next.push({
+        id: "sweep-left",
+        label: "Left",
+        color: "var(--accent-strong)",
         freqs,
-        leftRuns,
-        "var(--accent-strong)",
-        "Left",
-        "sweep-left",
-      ),
-    );
-    next.push(
-      ...buildRunSeries(
+        values: normalizeAtOneKhz(freqs, left),
+      });
+    }
+    if (freqs.length > 1 && right.length > 1) {
+      next.push({
+        id: "sweep-right",
+        label: "Right",
+        color: "hsl(175, 65%, 45%)",
+        dash: "3 2",
         freqs,
-        rightRuns,
-        "hsl(175, 65%, 45%)",
-        "Right",
-        "sweep-right",
-      ),
-    );
-
-    const overall = buildAverageSeries(
-      freqs,
-      allAvg,
-      "var(--accent-strong)",
-      "All average",
-      "sweep-all-avg",
-      1,
-    );
-    const left = buildAverageSeries(
-      freqs,
-      leftAvg,
-      "var(--accent-strong)",
-      "Left average",
-      "sweep-left-avg",
-      1,
-    );
-    const right = buildAverageSeries(
-      freqs,
-      rightAvg,
-      "hsl(175, 65%, 45%)",
-      "Right average",
-      "sweep-right-avg",
-      1,
-    );
-
-    if (overall) next.push({ ...overall, dash: "6 3" });
-    if (left) next.push(left);
-    if (right) next.push(right);
+        values: normalizeAtOneKhz(freqs, right),
+      });
+    }
     return next;
   }, [result]);
   const { yMin, yMax } = useMemo(() => autoRange(series), [series]);
@@ -163,8 +89,6 @@ export function SweepResultView({
       />
     );
   }
-
-  const legendItems = series.filter((item) => !item.id.includes("-run-"));
 
   const params = recordOrEmpty(result.params);
   const metrics = recordOrEmpty(result.metrics);
@@ -205,7 +129,7 @@ export function SweepResultView({
         )}
       </div>
 
-      <ChartLegend items={legendItems} />
+      <ChartLegend items={series} />
       <div className="sweep-result-chart">
         <OverlayChart
           series={series}
