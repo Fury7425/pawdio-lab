@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pawdio Lab · landing variants</title>
+<meta name="description" content="Seven distinct landing-page directions for Pawdio Lab. Pick one to view." />
+<meta name="theme-color" content="#101216" />
+<link rel="icon" type="image/png" href="../icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+<style>
+/* Neutral chooser. Deliberately plain so it does not bias any of the
+   four directions it links to. Each card hints at its variant's palette. */
+:root {
+  color-scheme: dark;
+  --bg: #101216; --surface: #171a1f; --line: #272c33; --line-2: #353c45;
+  --text: #e6e9ee; --muted: #969da8; --faint: #6c7480;
+  --sans: "Space Grotesk", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); line-height: 1.55; -webkit-font-smoothing: antialiased; padding: clamp(28px, 6vw, 72px) clamp(20px, 5vw, 48px); }
+a { color: inherit; text-decoration: none; }
+:focus-visible { outline: 2px solid #fff; outline-offset: 3px; border-radius: 6px; }
+.wrap { max-width: 980px; margin-inline: auto; }
+.head { display: flex; align-items: center; gap: 11px; }
+.head img { width: 26px; height: 26px; border-radius: 7px; }
+.head .nm { font-weight: 700; letter-spacing: -0.01em; font-size: 1.05rem; }
+.head .tag { margin-left: auto; font-family: var(--mono); font-size: 0.72rem; color: var(--faint); }
+h1 { margin-top: 30px; font-size: clamp(1.7rem, 4vw, 2.6rem); font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; max-width: 20ch; }
+.lede { margin-top: 12px; max-width: 56ch; color: var(--muted); }
+.grid { margin-top: 36px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 680px) { .grid { grid-template-columns: 1fr; } }
+.card { display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; background: var(--surface); padding: 22px; transition: transform 150ms cubic-bezier(.2,.8,.2,1), border-color 160ms; }
+.card:active { transform: translateY(1px); }
+@media (hover: hover) { .card:hover { transform: translateY(-3px); border-color: var(--line-2); } }
+.swatch { display: flex; gap: 6px; margin-bottom: 16px; }
+.swatch span { width: 26px; height: 26px; border-radius: 7px; border: 1px solid rgba(255,255,255,0.08); }
+.card .no { font-family: var(--mono); font-size: 0.7rem; color: var(--faint); }
+.card h2 { margin-top: 4px; font-size: 1.3rem; font-weight: 700; letter-spacing: -0.015em; }
+.card p { margin-top: 8px; color: var(--muted); font-size: 0.92rem; flex: 1; }
+.card .go { margin-top: 18px; display: inline-flex; align-items: center; gap: 7px; font-family: var(--mono); font-size: 0.78rem; color: var(--text); }
+.card .go::after { content: "\2192"; }
+.foot { margin-top: 38px; font-family: var(--mono); font-size: 0.74rem; color: var(--faint); display: flex; flex-wrap: wrap; gap: 8px 18px; }
+.foot a { border-bottom: 1px solid transparent; }
+@media (hover: hover) { .foot a:hover { border-bottom-color: var(--faint); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="head">
+    <img src="../icon.png" alt="" />
+    <span class="nm">Pawdio Lab</span>
+    <span class="tag">landing / variants</span>
+  </div>
+
+  <h1>Seven directions, one instrument.</h1>
+  <p class="lede">Three new builds join the four earlier explorations: a project-guided field manual, an independent signal universe, and a cinematic award-entry concept rooted in the real source code.</p>
+
+  <div class="grid">
+    <a class="card" href="../index.html">
+      <div class="swatch"><span style="background:#f2f0e7"></span><span style="background:#0b5fff"></span><span style="background:#ff5a36"></span></div>
+      <span class="no">NEW / GUIDED</span>
+      <h2>Field Manual</h2>
+      <p>Project-guided and measurement-first. Real sweeps, candid labels, accessible chart controls, and a bold calibration-sheet voice.</p>
+      <span class="go">View</span>
+    </a>
+    <a class="card" href="./creative.html">
+      <div class="swatch"><span style="background:#07070c"></span><span style="background:#9d72ff"></span><span style="background:#ff5f7a"></span></div>
+      <span class="no">NEW / INDEPENDENT</span>
+      <h2>Signal Universe</h2>
+      <p>A cinematic, reactive canvas with an interactive signal field, asymmetric test cards, and a high-energy product reveal.</p>
+      <span class="go">View</span>
+    </a>
+    <a class="card" href="./opus.html">
+      <div class="swatch"><span style="background:#050508"></span><span style="background:#d9ff43"></span><span style="background:#657cff"></span></div>
+      <span class="no">NEW / AWARD ENTRY</span>
+      <h2>The Shape of Sound</h2>
+      <p>A spatial source-code story with a Three.js signal sculpture, GSAP scroll direction, Web Audio reference chirp, and interactive ANC study.</p>
+      <span class="go">View</span>
+    </a>
+    <a class="card" href="./datasheet.html">
+      <div class="swatch"><span style="background:#f3f3ee"></span><span style="background:#18181a"></span><span style="background:#c43526"></span></div>
+      <span class="no">01</span>
+      <h2>Datasheet</h2>
+      <p>Light lab-printout. Dense, ink-on-paper, the response set as a labelled figure. Signal red on cool paper.</p>
+      <span class="go">View</span>
+    </a>
+    <a class="card" href="./console.html">
+      <div class="swatch"><span style="background:#08090b"></span><span style="background:#14171c"></span><span style="background:#ffb454"></span></div>
+      <span class="no">02</span>
+      <h2>Console</h2>
+      <p>Dark bench instrument. The curve reads on a scope in amber phosphor, with the log chirp running as a signal strip.</p>
+      <span class="go">View</span>
+    </a>
+    <a class="card" href="./editorial.html">
+      <div class="swatch"><span style="background:#eceae4"></span><span style="background:#1c1d1b"></span><span style="background:#145e63"></span></div>
+      <span class="no">03</span>
+      <h2>Editorial</h2>
+      <p>A measurement write-up. Serif body, asymmetric column, the chart as Figure 1. Petrol-teal on warm paper.</p>
+      <span class="go">View</span>
+    </a>
+    <a class="card" href="./showcase.html">
+      <div class="swatch"><span style="background:#14161b"></span><span style="background:#1b1f26"></span><span style="background:#34e1a0"></span></div>
+      <span class="no">04</span>
+      <h2>Showcase</h2>
+      <p>App-forward product page. The hero is a working slice of the app with the real chart inside. Mint on graphite.</p>
+      <span class="go">View</span>
+    </a>
+  </div>
+
+  <div class="foot">
+    <a href="https://github.com/Fury7425/pawdio-lab">GitHub</a>
+    <span>All four host as-is on GitHub Pages. No build step.</span>
+  </div>
+</div>
+</body>
+</html>

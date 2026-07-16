@@ -13,9 +13,16 @@ import {
 import { LabeledNumberInput } from "../components/labeled-input";
 import { Modal } from "../components/modal";
 import { PageHeader } from "../components/page-header";
+import { ExportMenu } from "../components/export-menu";
 import { ChartLegend } from "../components/chart-legend";
 import { OverlayChart, type OverlaySeries } from "../components/overlay-chart";
 import { fmtHz } from "../lib/chart-scale";
+import {
+  downloadCsv,
+  downloadJson,
+  exportTimestampTag,
+  rowsToCsv,
+} from "../lib/export-files";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type Channel = "L" | "R" | "both" | "avg";
@@ -269,20 +276,7 @@ export function AncPage() {
       captures,
       selectedModes,
     };
-    const blob = new Blob([JSON.stringify(payload, null, 2)], {
-      type: "application/json",
-    });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `pawdio-anc-session-${new Date()
-      .toISOString()
-      .replace(/[:.]/g, "-")
-      .slice(0, 19)}.json`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    downloadJson(`pawdio-anc-session-${exportTimestampTag()}.json`, payload);
   }
 
   function handleLoadSessionClick() {
@@ -329,6 +323,81 @@ export function AncPage() {
     for (const item of modesPayload) {
       onExportSquiglink(baseline, item.key, item.label, item.snapshot);
     }
+  }
+
+  function buildAncExport() {
+    if (!baseline || !baselineKey) return null;
+    return {
+      format: "pawdio-lab-anc-export",
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      baselineMode: baselineKey,
+      baselineLabel: modeMeta[baselineKey].label,
+      captures,
+      attenuation: exportableModes.map((key) => {
+        const snapshot = captures[key]!;
+        return {
+          mode: key,
+          label: modeMeta[key].label,
+          timestamp: snapshot.timestamp,
+          freqs: baseline.freqs,
+          leftDb: attenSide(snapshot, "L"),
+          rightDb: attenSide(snapshot, "R"),
+          averageDb: attenAvg(snapshot),
+        };
+      }),
+    };
+  }
+
+  function handleExportJson() {
+    const payload = buildAncExport();
+    if (!payload) return;
+    downloadJson(`anc_attenuation_${exportTimestampTag()}.json`, payload);
+  }
+
+  function handleExportCsv() {
+    if (!baseline || !baselineKey) return;
+    const rows: Array<Array<string | number | null>> = [];
+    for (const key of exportableModes) {
+      const snapshot = captures[key]!;
+      const left = attenSide(snapshot, "L");
+      const right = attenSide(snapshot, "R");
+      const average = attenAvg(snapshot);
+      const length = Math.min(
+        baseline.freqs.length,
+        Math.max(left.length, right.length, average.length),
+      );
+      for (let index = 0; index < length; index += 1) {
+        rows.push([
+          baselineKey,
+          modeMeta[baselineKey].label,
+          key,
+          modeMeta[key].label,
+          snapshot.timestamp,
+          baseline.freqs[index],
+          Number.isFinite(left[index]) ? left[index] : null,
+          Number.isFinite(right[index]) ? right[index] : null,
+          Number.isFinite(average[index]) ? average[index] : null,
+        ]);
+      }
+    }
+    downloadCsv(
+      `anc_attenuation_${exportTimestampTag()}.csv`,
+      rowsToCsv(
+        [
+          "BaselineMode",
+          "BaselineLabel",
+          "Mode",
+          "ModeLabel",
+          "CaptureTimestamp",
+          "Frequency(Hz)",
+          "Left(dB)",
+          "Right(dB)",
+          "Average(dB)",
+        ],
+        rows,
+      ),
+    );
   }
 
   // Stat tooltip helper — interpret peak attenuation.
@@ -849,6 +918,13 @@ export function AncPage() {
           <div className="action-row">
             {exportableModes.length > 0 && baseline && (
               <>
+                <ExportMenu
+                  label="Export Data"
+                  items={[
+                    { label: "Export JSON", onSelect: handleExportJson },
+                    { label: "Export CSV", onSelect: handleExportCsv },
+                  ]}
+                />
                 <button
                   type="button"
                   className="skin-btn"

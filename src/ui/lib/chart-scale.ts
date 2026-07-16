@@ -49,6 +49,44 @@ export function buildCurvePath(
   return path;
 }
 
+/**
+ * Build a closed SVG path between lower and upper bounds on the same frequency
+ * grid. Used for percentile/variation bands behind a median curve.
+ */
+export function buildBandPath(
+  freqs: number[],
+  lower: number[],
+  upper: number[],
+  toY: (value: number) => number,
+): string {
+  const length = Math.min(freqs.length, lower.length, upper.length);
+  const points = Array.from({ length }, (_, index) => ({
+    x: toX(freqs[index]),
+    lowerY: toY(lower[index]),
+    upperY: toY(upper[index]),
+  })).filter(
+    (point) =>
+      Number.isFinite(point.x) &&
+      Number.isFinite(point.lowerY) &&
+      Number.isFinite(point.upperY),
+  );
+  if (points.length < 2) return "";
+
+  const upperPath = points
+    .map(
+      (point, index) =>
+        `${index === 0 ? "M" : "L"} ${point.x.toFixed(2)} ${point.upperY.toFixed(2)}`,
+    )
+    .join(" ");
+  const lowerPath = [...points]
+    .reverse()
+    .map(
+      (point) => `L ${point.x.toFixed(2)} ${point.lowerY.toFixed(2)}`,
+    )
+    .join(" ");
+  return `${upperPath} ${lowerPath} Z`;
+}
+
 /** Index of the frequency nearest `hz` (log distance). -1 for empty input. */
 export function nearestFreqIndex(freqs: number[], hz: number): number {
   let bestIdx = -1;

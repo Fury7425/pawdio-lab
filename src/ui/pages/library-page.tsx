@@ -10,7 +10,14 @@ import {
 } from "../model";
 import { deriveDeviceName } from "../hooks/use-results-log";
 import { Modal } from "../components/modal";
+import { ExportMenu } from "../components/export-menu";
 import { PageHeader } from "../components/page-header";
+import {
+  downloadCsv,
+  downloadJson,
+  exportTimestampTag,
+  objectsToCsv,
+} from "../lib/export-files";
 import { usePawdioLabContext } from "../pawdio-context";
 import { ComparisonPanel, type CompareEntry } from "./compare/comparison-panel";
 import { compareColor } from "./compare/compare-colors";
@@ -157,7 +164,6 @@ export function LibraryPage() {
   }, [ctx.results, ctx.latencyReport, ctx.ancCaptures]);
 
   function canSelect(summary: MeasurementSummary): boolean {
-    if (!COMPARABLE_TEST_TYPES.has(summary.testType)) return false;
     if (selectedType && summary.testType !== selectedType) return false;
     return true;
   }
@@ -235,6 +241,46 @@ export function LibraryPage() {
     setPendingDelete(null);
   }
 
+  const selectedRecordsReady =
+    selectedIds.length > 0 && selectedEntries.length === selectedIds.length;
+
+  function exportSelectedJson() {
+    if (!selectedRecordsReady) return;
+    downloadJson(
+      `library_${selectedType ?? "records"}_${exportTimestampTag()}.json`,
+      {
+        format: "pawdio-lab-library-export",
+        version: 1,
+        generatedAt: new Date().toISOString(),
+        testType: selectedType,
+        count: selectedEntries.length,
+        records: selectedEntries.map(({ record, deviceName }) => ({
+          deviceName,
+          ...record,
+        })),
+      },
+    );
+  }
+
+  function exportSelectedCsv() {
+    if (!selectedRecordsReady) return;
+    const rows = selectedEntries.map(({ record, deviceName }) => ({
+      deviceName,
+      id: record.id,
+      deviceId: record.deviceId,
+      testType: record.testType,
+      capturedAt: record.capturedAt,
+      label: record.label ?? null,
+      notes: record.notes ?? null,
+      schemaVer: record.schemaVer,
+      payload: record.payload,
+    }));
+    downloadCsv(
+      `library_${selectedType ?? "records"}_${exportTimestampTag()}.csv`,
+      objectsToCsv(rows),
+    );
+  }
+
   function renderGroups(list: MeasurementSummary[]) {
     const groups = new Map<LibraryTestType, MeasurementSummary[]>();
     for (const summary of list) {
@@ -265,7 +311,7 @@ export function LibraryPage() {
                 title={
                   COMPARABLE_TEST_TYPES.has(summary.testType)
                     ? undefined
-                    : "Comparison for this test type is coming soon"
+                    : "Available for export; visual comparison is not yet available"
                 }
               >
                 <input
@@ -524,13 +570,23 @@ export function LibraryPage() {
           title="Library"
           actions={
             selectedIds.length > 0 ? (
-              <button
-                type="button"
-                className="skin-btn secondary"
-                onClick={() => setSelectedIds([])}
-              >
-                Clear selection ({selectedIds.length})
-              </button>
+              <>
+                <ExportMenu
+                  label={`Export Selected (${selectedIds.length})`}
+                  disabled={!selectedRecordsReady}
+                  items={[
+                    { label: "Export JSON", onSelect: exportSelectedJson },
+                    { label: "Export CSV", onSelect: exportSelectedCsv },
+                  ]}
+                />
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  onClick={() => setSelectedIds([])}
+                >
+                  Clear selection ({selectedIds.length})
+                </button>
+              </>
             ) : undefined
           }
         />
@@ -600,7 +656,9 @@ export function LibraryPage() {
       </section>
 
       {/* Comparison */}
-      {selectedEntries.length >= 2 && selectedType && (
+      {selectedEntries.length >= 2 &&
+        selectedType &&
+        COMPARABLE_TEST_TYPES.has(selectedType) && (
         <section className="page-card">
           <h2 className="section-heading">
             Comparison · {LIBRARY_TEST_LABELS[selectedType]}
@@ -608,6 +666,19 @@ export function LibraryPage() {
           <ComparisonPanel entries={selectedEntries} />
         </section>
       )}
+
+      {selectedEntries.length >= 2 &&
+        selectedType &&
+        !COMPARABLE_TEST_TYPES.has(selectedType) && (
+          <section className="page-card">
+            <div className="empty-state">
+              <span>
+                {LIBRARY_TEST_LABELS[selectedType]} records are ready to export;
+                visual comparison is not available for this test type yet.
+              </span>
+            </div>
+          </section>
+        )}
     </div>
   );
 }

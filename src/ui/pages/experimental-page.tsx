@@ -2,7 +2,14 @@ import { ButtonHTMLAttributes } from "react";
 import { FlaskConical } from "lucide-react";
 import { toNumber, CrosstalkRequest } from "../model";
 import { SelectField } from "../components/form-fields";
+import { ExportMenu } from "../components/export-menu";
 import { PageHeader } from "../components/page-header";
+import {
+  downloadCsv,
+  downloadJson,
+  exportTimestampTag,
+  objectsToCsv,
+} from "../lib/export-files";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type RunButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
@@ -32,12 +39,57 @@ export function ExperimentalPage() {
   const onRunCrosstalk = () => ctx.run(ctx.runCrosstalkTest());
   const onRunThd = () => ctx.run(ctx.runThdTest());
   const onRunIsolation = () => ctx.run(ctx.runIsolationTest());
+  const experimentalResults = ctx.results.filter((entry) =>
+    ["balance", "crosstalk", "thd", "isolation"].includes(
+      entry.payload.test,
+    ),
+  );
+
+  function exportExperimentalJson() {
+    downloadJson(`experimental_${exportTimestampTag()}.json`, {
+      format: "pawdio-lab-experimental-export",
+      version: 1,
+      generatedAt: new Date().toISOString(),
+      count: experimentalResults.length,
+      results: experimentalResults,
+    });
+  }
+
+  function exportExperimentalCsv() {
+    const rows = experimentalResults.map((entry) => ({
+      id: entry.id,
+      deviceName: entry.deviceName ?? null,
+      savedAt: entry.savedAt ?? null,
+      ...entry.payload,
+    }));
+    downloadCsv(
+      `experimental_${exportTimestampTag()}.csv`,
+      objectsToCsv(rows),
+    );
+  }
+
   return (
     <div className="page-stack">
       <section className="page-card">
         <PageHeader
           title="Experimental Tests"
           description="Channel balance, crosstalk, THD, and isolation measurements."
+          actions={
+            <ExportMenu
+              label={`Export Results (${experimentalResults.length})`}
+              disabled={experimentalResults.length === 0}
+              items={[
+                {
+                  label: "Export JSON",
+                  onSelect: exportExperimentalJson,
+                },
+                {
+                  label: "Export CSV",
+                  onSelect: exportExperimentalCsv,
+                },
+              ]}
+            />
+          }
         />
 
         <div className="field-grid-2">
@@ -184,15 +236,45 @@ export function ExperimentalPage() {
         <hr className="section-divider" />
         <section className="page-section">
           <h3 className="section-subheading">Experimental Results</h3>
-          <div className="placeholder-box" style={{ minHeight: 220 }}>
-            <div className="empty-state">
-              <FlaskConical size={28} />
-              <span>Run an experimental test to see results</span>
-              <span className="muted">
-                Results appear in the Logs page and can be saved from Library.
-              </span>
+          {experimentalResults.length === 0 ? (
+            <div className="placeholder-box" style={{ minHeight: 220 }}>
+              <div className="empty-state">
+                <FlaskConical size={28} />
+                <span>Run an experimental test to see results</span>
+                <span className="muted">
+                  Results appear here, in Logs, and can be saved from Library.
+                </span>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="scroll-box" style={{ maxHeight: 320 }}>
+              {experimentalResults
+                .slice()
+                .reverse()
+                .map((entry) => (
+                  <article key={entry.id} className="page-section">
+                    <div className="result-header">
+                      <h4>{entry.payload.test.replace(/_/g, " ")}</h4>
+                      <time>{entry.payload.timestamp}</time>
+                    </div>
+                    <div className="metric-grid mt-8">
+                      {Object.entries(entry.payload.metrics).map(
+                        ([key, value]) => (
+                          <article key={key} className="metric-card">
+                            <p className="metric-label">{key}</p>
+                            <p className="metric-value">
+                              {typeof value === "number"
+                                ? value.toFixed(3)
+                                : String(value)}
+                            </p>
+                          </article>
+                        ),
+                      )}
+                    </div>
+                  </article>
+                ))}
+            </div>
+          )}
         </section>
       </section>
     </div>

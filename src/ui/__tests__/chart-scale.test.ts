@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildBandPath,
   buildCurvePath,
   fromX,
   nearestFreqIndex,
@@ -52,5 +53,18 @@ describe("buildCurvePath", () => {
     const path = buildCurvePath([20, 1000, 20000], [0, NaN, -6], (v) => v);
     // Two finite points remain -> still draws.
     expect(path.startsWith("M ")).toBe(true);
+  });
+});
+
+describe("buildBandPath", () => {
+  it("closes a polygon between the upper and lower bounds", () => {
+    const path = buildBandPath(
+      [20, 1000, 20000],
+      [-2, -3, -4],
+      [2, 3, 4],
+      (value) => value,
+    );
+    expect(path.startsWith("M ")).toBe(true);
+    expect(path.endsWith(" Z")).toBe(true);
   });
 });

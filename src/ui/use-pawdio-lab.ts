@@ -8,6 +8,7 @@ import { useResultsLog } from "./hooks/use-results-log";
 import { useDevicesController } from "./hooks/use-devices-controller";
 import { useLibrary } from "./hooks/use-library";
 import { useToast } from "./components/toast";
+import { downloadText, exportTimestampTag } from "./lib/export-files";
 import {
   ANC_MODE_META,
   ANC_MODE_ORDERED,
@@ -255,34 +256,6 @@ function siblingPathByBasename(
     return undefined;
   }
   return `${dir}${base.replace(search, replacement)}`;
-}
-
-function exportTimestampTag(): string {
-  const now = new Date();
-  const yyyy = now.getFullYear();
-  const mm = String(now.getMonth() + 1).padStart(2, "0");
-  const dd = String(now.getDate()).padStart(2, "0");
-  const hh = String(now.getHours()).padStart(2, "0");
-  const mi = String(now.getMinutes()).padStart(2, "0");
-  const ss = String(now.getSeconds()).padStart(2, "0");
-  return `${yyyy}${mm}${dd}_${hh}${mi}${ss}`;
-}
-
-function triggerDownload(
-  content: string,
-  filename: string,
-  mimeType: string,
-): void {
-  const blob = new Blob([content], { type: mimeType });
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  anchor.rel = "noopener";
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
 
 function sweepAverageCurve(
@@ -1311,7 +1284,7 @@ export function usePawdioLabController() {
     setError(null);
     try {
       const filename = `sweep_fr_last_${exportTimestampTag()}.json`;
-      triggerDownload(
+      downloadText(
         `${JSON.stringify(sweepLastResult, null, 2)}\n`,
         filename,
         "application/json;charset=utf-8",
@@ -1341,7 +1314,7 @@ export function usePawdioLabController() {
         count: sweepResults.length,
         results: sweepResults,
       };
-      triggerDownload(
+      downloadText(
         `${JSON.stringify(bundle, null, 2)}\n`,
         filename,
         "application/json;charset=utf-8",
@@ -1380,7 +1353,7 @@ export function usePawdioLabController() {
           `${curve.freqs[index].toFixed(2)}\t${curve.mags[index].toFixed(3)}`,
         );
       }
-      triggerDownload(
+      downloadText(
         `${lines.join("\n")}\n`,
         filename,
         "text/plain;charset=utf-8",
@@ -1446,7 +1419,7 @@ export function usePawdioLabController() {
         lines.push(row);
       }
 
-      triggerDownload(
+      downloadText(
         `${lines.join("\n")}\n`,
         filename,
         "text/csv;charset=utf-8",
@@ -1489,7 +1462,7 @@ export function usePawdioLabController() {
         }
       }
 
-      triggerDownload(
+      downloadText(
         `${lines.join("\n")}\n`,
         filename,
         "text/csv;charset=utf-8",

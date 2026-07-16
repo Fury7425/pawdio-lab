@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  buildBandPath,
   buildCurvePath,
   fmtHz,
   fromX,
@@ -20,6 +21,13 @@ export type OverlaySeries = {
   dash?: string;
   freqs: number[];
   values: number[];
+  /** Optional percentile envelope rendered behind `values` (the median). */
+  band?: {
+    outerLow: number[];
+    outerHigh: number[];
+    innerLow: number[];
+    innerHigh: number[];
+  };
 };
 
 export type OverlayHoverItem = {
@@ -292,6 +300,33 @@ export function OverlayChart({
               </text>
             </>
           )}
+
+          {/* Variation envelopes */}
+          {series.map((s) => {
+            if (!s.band) return null;
+            const outerPath = buildBandPath(
+              s.freqs,
+              s.band.outerLow,
+              s.band.outerHigh,
+              toY,
+            );
+            const innerPath = buildBandPath(
+              s.freqs,
+              s.band.innerLow,
+              s.band.innerHigh,
+              toY,
+            );
+            return (
+              <g key={`${s.id}-band`} pointerEvents="none">
+                {outerPath && (
+                  <path d={outerPath} fill={s.color} opacity="0.12" />
+                )}
+                {innerPath && (
+                  <path d={innerPath} fill={s.color} opacity="0.24" />
+                )}
+              </g>
+            );
+          })}
 
           {/* Curves */}
           {series.map((s) => {

@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pawdio Lab · see what your headphones really do</title>
+<meta name="description" content="A free, open-source desktop app that measures headphones and IEMs: frequency response, latency, ANC attenuation, and more. Real AirPods Pro 3 and Sennheiser IE900 sweeps inside." />
+<meta name="theme-color" content="#14161b" />
+<link rel="icon" type="image/png" href="../icon.png" />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+/* ───────────────────────────────────────────────────────────────
+   Pawdio Lab / variant "Showcase".
+   App-forward product page on graphite, single mint accent (no
+   outer glows). The hero is a working slice of the app with the
+   real interactive chart inside, built from the app's own tokens.
+   Both sweeps are REAL exports (clone 711 coupler), normalized to
+   0 dB at 1 kHz. Never edit the arrays.
+   ─────────────────────────────────────────────────────────────── */
+:root {
+  color-scheme: dark;
+  --bg: #14161b;
+  --bg-2: #181b21;
+  --surface: #1b1f26;
+  --surface-2: #21262e;
+  --line: #2a3038;
+  --line-2: #353d47;
+  --text: #e7eaef;
+  --text-2: #aab2bd;
+  --muted: #7e8793;
+  --mint: #34e1a0;        /* single accent, used solid (no glow) */
+  --mint-2: #25b27d;
+  --mint-soft: rgba(52, 225, 160, 0.12);
+  --mint-ink: #06251a;
+  --r-trace: #6f7a86;
+  --sans: "Manrope", system-ui, sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, monospace;
+  --rad: 14px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-padding-top: 72px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+body { background: var(--bg); color: var(--text); font-family: var(--sans); font-size: 15.5px; line-height: 1.55; -webkit-font-smoothing: antialiased; }
+::selection { background: var(--mint); color: var(--mint-ink); }
+a { color: inherit; text-decoration: none; }
+svg { display: block; }
+:focus-visible { outline: 2px solid var(--mint); outline-offset: 2px; border-radius: 4px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 14px; top: -48px; z-index: 40; background: var(--surface); border: 1px solid var(--line-2); padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; }
+.skip:focus-visible { top: 12px; }
+.wrap { max-width: 1180px; margin-inline: auto; padding-inline: clamp(18px, 4vw, 40px); }
+.mono { font-family: var(--mono); }
+
+/* nav */
+.nav { position: sticky; top: 0; z-index: 30; background: rgba(20,22,27,0.82); backdrop-filter: blur(10px); border-bottom: 1px solid var(--line); }
+.nav-in { height: 60px; display: flex; align-items: center; gap: 16px; }
+.brand { display: flex; align-items: center; gap: 10px; font-weight: 700; letter-spacing: -0.015em; }
+.brand img { width: 22px; height: 22px; border-radius: 6px; }
+.nav-links { margin-left: auto; display: flex; align-items: center; gap: 22px; font-size: 0.9rem; color: var(--text-2); }
+.nav-links a.lk { transition: color 150ms ease; }
+@media (hover: hover) { .nav-links a.lk:hover { color: var(--text); } }
+.nav-cta { display: inline-flex; align-items: center; gap: 7px; background: var(--mint); color: var(--mint-ink); font-weight: 700; font-size: 0.85rem; padding: 8px 15px; border-radius: 9px; transition: transform 130ms cubic-bezier(.2,.8,.2,1), background-color 150ms; }
+.nav-cta:active { transform: translateY(1px); }
+@media (hover: hover) { .nav-cta:hover { background: #45f0ae; } }
+@media (max-width: 680px) { .nav-links .lk { display: none; } }
+
+/* hero */
+.hero { padding-block: clamp(40px, 7vw, 78px) clamp(26px, 4vw, 40px); text-align: center; }
+.badge { display: inline-flex; align-items: center; gap: 8px; font-size: 0.78rem; font-weight: 600; color: var(--mint); background: var(--mint-soft); border: 1px solid rgba(52,225,160,0.28); border-radius: 999px; padding: 5px 13px; }
+h1 { margin-top: 22px; font-size: clamp(2.2rem, 5.6vw, 4rem); font-weight: 800; letter-spacing: -0.03em; line-height: 1.02; text-wrap: balance; max-width: 16ch; margin-inline: auto; }
+h1 .g { color: var(--mint); }
+.sub { margin-top: 18px; max-width: 50ch; margin-inline: auto; font-size: clamp(1.02rem, 2vw, 1.18rem); color: var(--text-2); text-wrap: pretty; }
+.cta { margin-top: 26px; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; align-items: center; }
+.btn { display: inline-flex; align-items: center; gap: 8px; font-family: var(--sans); font-weight: 700; font-size: 0.95rem; padding: 12px 22px; border-radius: 11px; border: 1px solid transparent; transition: transform 130ms cubic-bezier(.2,.8,.2,1), background-color 160ms, border-color 160ms; }
+.btn:active { transform: translateY(1px); }
+.btn-mint { background: var(--mint); color: var(--mint-ink); }
+.btn-ghost { background: var(--surface); border-color: var(--line-2); color: var(--text); }
+@media (hover: hover) { .btn-mint:hover { background: #45f0ae; } .btn-ghost:hover { border-color: var(--mint-2); } }
+.free { font-size: 0.82rem; color: var(--muted); }
+
+/* hero app showcase */
+.showcase { margin-top: clamp(30px, 4vw, 48px); }
+.win { border: 1px solid var(--line-2); border-radius: 18px; background: var(--bg-2); overflow: hidden; box-shadow: 0 30px 80px -40px rgba(0,0,0,0.8); }
+.win-bar { display: flex; align-items: center; gap: 8px; padding: 11px 15px; border-bottom: 1px solid var(--line); background: var(--surface); }
+.win-bar .dot { width: 11px; height: 11px; border-radius: 50%; background: var(--line-2); }
+.win-bar .title { margin-left: 8px; font-size: 0.82rem; color: var(--muted); font-family: var(--mono); }
+.win-body { display: grid; grid-template-columns: 206px 1fr; }
+.win-side { background: var(--bg); border-right: 1px solid var(--line); padding: 16px 13px; display: flex; flex-direction: column; gap: 3px; }
+.win-side .grp { font-family: var(--mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--muted); padding: 8px 10px 6px; }
+.navi { display: flex; align-items: center; gap: 10px; padding: 9px 11px; border-radius: 9px; font-size: 0.88rem; color: var(--text-2); cursor: default; }
+.navi.act { background: var(--surface-2); color: var(--text); font-weight: 600; }
+.navi .ic { width: 7px; height: 7px; border-radius: 2px; background: var(--muted); }
+.navi.act .ic { background: var(--mint); }
+.win-main { padding: clamp(14px, 2vw, 22px); }
+.wm-head { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; justify-content: space-between; }
+.wm-title { font-size: 1.05rem; font-weight: 700; letter-spacing: -0.01em; }
+.wm-meta { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); margin-top: 2px; }
+.seg { display: none; gap: 4px; padding: 3px; background: var(--bg); border: 1px solid var(--line); border-radius: 10px; }
+html.js .seg { display: inline-flex; flex-wrap: wrap; }
+.seg button { font-family: var(--sans); font-weight: 600; font-size: 0.76rem; padding: 6px 12px; border-radius: 7px; border: 0; background: transparent; color: var(--text-2); cursor: pointer; transition: color 130ms, background-color 130ms; }
+.seg button[aria-pressed="true"] { background: var(--surface-2); color: var(--mint); }
+@media (hover: hover) { .seg button[aria-pressed="false"]:hover { color: var(--text); } }
+.chart-card { margin-top: 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--bg); padding: 8px; }
+.plot-scroll { overflow-x: auto; scrollbar-width: thin; }
+.plot-scroll svg { min-width: 600px; }
+.wm-foot { display: flex; flex-wrap: wrap; gap: 8px 16px; justify-content: space-between; align-items: baseline; padding: 10px 4px 2px; }
+.readout { font-family: var(--mono); font-size: 0.72rem; color: var(--text); display: inline-flex; gap: 12px; min-height: 1em; }
+.readout .k { color: var(--muted); } .readout .v1 { color: var(--mint); }
+.wm-cap { font-family: var(--mono); font-size: 0.66rem; color: var(--muted); }
+.nojs { padding: 22px 10px; font-size: 0.85rem; color: var(--text-2); }
+.shot-cap { margin-top: 14px; text-align: center; font-size: 0.82rem; color: var(--muted); }
+
+/* chart internals */
+.grid-min { stroke: rgba(255,255,255,0.04); stroke-width: 1; }
+.grid-maj { stroke: rgba(255,255,255,0.08); stroke-width: 1; }
+.grid-zero { stroke: rgba(255,255,255,0.22); stroke-width: 1; stroke-dasharray: 2 3; }
+.ax { font-family: var(--mono); font-size: 11px; fill: var(--muted); }
+.trace-l { stroke: var(--mint); }
+.trace-r { stroke: var(--r-trace); }
+.fill-l { fill: var(--mint-soft); }
+.xh-line { stroke: var(--mint); stroke-width: 1; stroke-dasharray: 2 3; opacity: 0.7; }
+.xh-dot-l { fill: var(--mint); } .xh-dot-r { fill: var(--r-trace); }
+.dev { display: none; } .dev.on { display: block; }
+@media (prefers-reduced-motion: no-preference) {
+  html.js .trace { stroke-dasharray: 1; stroke-dashoffset: 1; }
+  html.js .lit .dev.on .trace { animation: draw 1.5s cubic-bezier(.4,0,.1,1) forwards; }
+  html.js .lit .dev.on .trace-r { animation-delay: 0.1s; }
+}
+@keyframes draw { to { stroke-dashoffset: 0; } }
+
+/* sections */
+.sec { padding-block: clamp(50px, 7vw, 92px); }
+.sec-top { max-width: 60ch; }
+.tag { font-size: 0.78rem; font-weight: 700; letter-spacing: 0.02em; color: var(--mint); }
+h2 { margin-top: 10px; font-size: clamp(1.7rem, 3.6vw, 2.5rem); font-weight: 800; letter-spacing: -0.025em; line-height: 1.08; }
+.sec-lede { margin-top: 14px; color: var(--text-2); max-width: 54ch; }
+
+/* bento */
+.bento { margin-top: 34px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+@media (max-width: 860px) { .bento { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 560px) { .bento { grid-template-columns: 1fr; } }
+.cell { border: 1px solid var(--line); border-radius: var(--rad); background: var(--surface); padding: 20px; display: flex; flex-direction: column; gap: 9px; min-height: 168px; }
+.cell.w2 { grid-column: span 2; }
+@media (max-width: 560px) { .cell.w2 { grid-column: span 1; } }
+.cell.accent { background: linear-gradient(160deg, rgba(52,225,160,0.10), var(--surface) 60%); border-color: rgba(52,225,160,0.25); }
+.cell .ch { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cell h3 { font-size: 1.08rem; font-weight: 700; letter-spacing: -0.01em; }
+.pill { font-family: var(--mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--mint); border: 1px solid var(--mint-2); border-radius: 6px; padding: 2px 7px; }
+.pill.q { color: var(--muted); border-color: var(--line-2); }
+.cell p { font-size: 0.92rem; color: var(--text-2); }
+.cell .mini { margin-top: auto; border: 1px solid var(--line); border-radius: 9px; background: var(--bg); padding: 5px; }
+.cell .mini svg { width: 100%; height: auto; }
+.cell .stat { margin-top: auto; font-family: var(--mono); font-size: 0.72rem; color: var(--muted); display: flex; gap: 14px; flex-wrap: wrap; }
+.cell .stat b { color: var(--mint); font-weight: 600; }
+.cell.engine { justify-content: center; }
+.eng-chips { display: flex; flex-wrap: wrap; gap: 7px; }
+.eng-chips span { font-family: var(--mono); font-size: 0.7rem; color: var(--text-2); border: 1px solid var(--line-2); border-radius: 6px; padding: 4px 10px; }
+@media (prefers-reduced-motion: no-preference) {
+  html.js .cell { opacity: 0; transform: translateY(16px); transition: opacity .55s cubic-bezier(.16,1,.3,1), transform .55s cubic-bezier(.16,1,.3,1); }
+  html.js .cell.show { opacity: 1; transform: none; }
+}
+
+/* how it works */
+.how { display: grid; grid-template-columns: 1.1fr 1fr; gap: clamp(28px, 5vw, 64px); align-items: center; }
+@media (max-width: 820px) { .how { grid-template-columns: 1fr; gap: 30px; } }
+.steps { margin-top: 26px; display: flex; flex-direction: column; }
+.st { display: grid; grid-template-columns: 34px 1fr; gap: 14px; padding-block: 16px; border-top: 1px solid var(--line); align-items: start; }
+.st:first-child { border-top: 0; }
+.st .n { width: 30px; height: 30px; border-radius: 9px; background: var(--mint-soft); color: var(--mint); display: grid; place-items: center; font-weight: 700; font-size: 0.85rem; }
+.st .t { font-weight: 700; }
+.st .d { font-size: 0.92rem; color: var(--text-2); margin-top: 3px; }
+.eqn-card { border: 1px solid var(--line); border-radius: var(--rad); background: var(--surface); padding: clamp(20px, 3vw, 30px); }
+.eqn-card .lbl { font-family: var(--mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.eqn-card .eqn { margin-top: 14px; font-family: var(--mono); font-size: clamp(0.92rem, 2vw, 1.16rem); color: var(--text); line-height: 1.7; }
+.eqn-card .eqn .op { color: var(--mint); }
+.eqn-card .note { margin-top: 16px; font-size: 0.9rem; color: var(--text-2); }
+
+/* closing CTA band */
+.band { margin-block: clamp(20px, 3vw, 30px); }
+.band-in { border: 1px solid rgba(52,225,160,0.3); border-radius: 20px; background: linear-gradient(150deg, rgba(52,225,160,0.12), var(--surface) 55%); padding: clamp(30px, 5vw, 56px); text-align: center; }
+.band-in h2 { max-width: 20ch; margin-inline: auto; }
+.band-in .sub { margin-top: 14px; }
+.band-in .cta { margin-top: 24px; }
+.src-line { margin-top: 22px; font-family: var(--mono); font-size: 0.74rem; color: var(--muted); }
+
+footer { border-top: 1px solid var(--line); padding-block: 26px; }
+.foot { display: flex; flex-wrap: wrap; gap: 10px 20px; justify-content: space-between; align-items: center; font-size: 0.84rem; color: var(--muted); }
+.foot-links { display: flex; gap: 18px; }
+@media (hover: hover) { .foot-links a:hover { color: var(--text); } }
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+
+<header class="nav">
+  <div class="wrap nav-in">
+    <a class="brand" href="#main" aria-label="Pawdio Lab, home"><img src="../icon.png" alt="" />Pawdio Lab</a>
+    <nav class="nav-links" aria-label="Primary">
+      <a class="lk" href="#features">Features</a>
+      <a class="lk" href="#how">How it works</a>
+      <a class="lk" href="https://github.com/Fury7425/pawdio-lab">GitHub</a>
+      <a class="nav-cta" href="https://github.com/Fury7425/pawdio-lab/releases">Download</a>
+    </nav>
+  </div>
+</header>
+
+<main id="main">
+  <section class="hero">
+    <div class="wrap">
+      <span class="badge">Free &amp; open source · MIT</span>
+      <h1>See what your headphones <span class="g">really</span> do.</h1>
+      <p class="sub">Pawdio Lab sweeps your gear with a Rust engine and exports the real curve. No account, no beautified data.</p>
+      <div class="cta">
+        <a class="btn btn-mint" href="https://github.com/Fury7425/pawdio-lab/releases">Download for Windows</a>
+        <a class="btn btn-ghost" href="https://github.com/Fury7425/pawdio-lab">Source on GitHub</a>
+        <span class="free">Windows ready. macOS &amp; Linux from source.</span>
+      </div>
+
+      <div class="showcase" id="showcase">
+        <div class="win">
+          <div class="win-bar">
+            <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+            <span class="title mono">pawdio-lab</span>
+          </div>
+          <div class="win-body">
+            <nav class="win-side" aria-label="App pages (preview)">
+              <span class="grp">Measure</span>
+              <div class="navi"><span class="ic"></span>Devices</div>
+              <div class="navi"><span class="ic"></span>Latency</div>
+              <div class="navi act"><span class="ic"></span>Sweep / FR</div>
+              <div class="navi"><span class="ic"></span>ANC</div>
+              <span class="grp">Data</span>
+              <div class="navi"><span class="ic"></span>Library</div>
+              <div class="navi"><span class="ic"></span>Results</div>
+            </nav>
+            <div class="win-main">
+              <div class="wm-head">
+                <div>
+                  <div class="wm-title">Frequency response</div>
+                  <div class="wm-meta mono">log chirp, clone 711 coupler · 0 dB @ 1 kHz</div>
+                </div>
+                <div class="seg" role="group" aria-label="Device" data-tabs>
+                  <button type="button" data-dev="app3" aria-pressed="true">AirPods Pro 3</button>
+                  <button type="button" data-dev="ie900" aria-pressed="false">IE900</button>
+                  <button type="button" data-dev="cmp" aria-pressed="false">Overlay</button>
+                </div>
+              </div>
+              <div class="chart-card">
+                <div class="plot-scroll" data-scroll>
+                  <svg data-chart></svg>
+                  <noscript><p class="nojs">The interactive chart needs JavaScript. The same curves ship from the app as Squiglink text and PNG.</p></noscript>
+                </div>
+              </div>
+              <div class="wm-foot">
+                <span class="wm-cap mono">200 points / channel · hover, drag, or arrow keys</span>
+                <span class="readout mono" data-readout aria-hidden="true"></span>
+                <span class="sr-only" data-live aria-live="polite"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <p class="shot-cap">A working slice of the app, drawn from real measured sweeps. Not a screenshot.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="features">
+    <div class="wrap">
+      <div class="sec-top">
+        <p class="tag">On the bench</p>
+        <h2>One signal chain. Everything you'd want to check.</h2>
+        <p class="sec-lede">Play a known signal, record what returns, compare. Each test is a different question asked of the same engine.</p>
+      </div>
+      <div class="bento" id="bento">
+        <div class="cell w2 accent">
+          <div class="ch"><h3>Frequency response</h3><span class="pill">20 Hz to 20 kHz</span></div>
+          <p>A log chirp sweep, stereo or mono-guided. Export PNG or Squiglink text and drop it straight into a database.</p>
+          <div class="mini"><svg viewBox="0 0 1200 230" id="mini-fr" aria-label="Example frequency response curve"></svg></div>
+        </div>
+        <div class="cell">
+          <div class="ch"><h3>Latency</h3><span class="pill">5 presets</span></div>
+          <p>Output-to-input delay by FFT cross-correlation with sub-sample interpolation.</p>
+          <div class="stat"><span>per-preset <b>calibration</b></span></div>
+        </div>
+        <div class="cell">
+          <div class="ch"><h3>ANC / transparency</h3><span class="pill">4 modes</span></div>
+          <p>A guided four-mode capture turns a noise-cancelling claim into a per-frequency attenuation curve.</p>
+          <div class="stat"><span>off, anc, transparency, ref</span></div>
+        </div>
+        <div class="cell w2">
+          <div class="ch"><h3>Library &amp; compare</h3><span class="pill q">beta</span></div>
+          <p>Runs persist to a local SQLite library. Overlay any two stored measurements on one axis.</p>
+          <div class="mini"><svg viewBox="0 0 1200 200" id="mini-ov" aria-label="Example overlay of two measurements"></svg></div>
+        </div>
+        <div class="cell">
+          <div class="ch"><h3>Input monitor</h3><span class="pill q">live</span></div>
+          <p>A real-time dBFS meter with peak hold and clip detection, plus pink noise for placement checks.</p>
+        </div>
+        <div class="cell">
+          <div class="ch"><h3>THD &amp; friends</h3><span class="pill q">in validation</span></div>
+          <p>Distortion, channel balance, crosstalk, and isolation, on the experimental page until the numbers hold.</p>
+        </div>
+        <div class="cell engine">
+          <p style="color:var(--muted);font-family:var(--mono);font-size:0.66rem;text-transform:uppercase;letter-spacing:0.06em;">Built with</p>
+          <div class="eng-chips"><span>Tauri 2</span><span>cpal</span><span>rustfft</span><span>plotters</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="sec" id="how">
+    <div class="wrap how">
+      <div>
+        <p class="tag">How it works</p>
+        <h2>A number becomes a curve.</h2>
+        <div class="steps">
+          <div class="st"><span class="n">1</span><div><div class="t">Generate</div><div class="d">A sine, impulse, or log chirp with a fade envelope, written by the Rust engine.</div></div></div>
+          <div class="st"><span class="n">2</span><div><div class="t">Record, aligned</div><div class="d">Input and output streams run at once with a safety margin; cross-correlation lines the return back up.</div></div></div>
+          <div class="st"><span class="n">3</span><div><div class="t">Compare</div><div class="d">Magnitude ratios become the curve, averaged across repeats.</div></div></div>
+        </div>
+      </div>
+      <div class="eqn-card">
+        <p class="lbl">The whole trick</p>
+        <p class="eqn">curve(f) = 20 <span class="op">·</span> log₁₀<br>( rec(f) <span class="op">/</span> ref(f) )</p>
+        <p class="note">No magic, no model fitting. The curve is the measured ratio between what came back and what went out.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="band">
+    <div class="wrap">
+      <div class="band-in">
+        <h2>Measure your own gear tonight.</h2>
+        <p class="sub">Download the Windows build, or clone the repo and build it anywhere. It is genuinely free.</p>
+        <div class="cta">
+          <a class="btn btn-mint" href="https://github.com/Fury7425/pawdio-lab/releases">Download for Windows</a>
+          <a class="btn btn-ghost" href="https://github.com/Fury7425/pawdio-lab">Source on GitHub</a>
+        </div>
+        <p class="src-line mono">git clone github.com/Fury7425/pawdio-lab &amp;&amp; npm install &amp;&amp; npm run tauri:build</p>
+      </div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  <div class="wrap foot">
+    <span>Pawdio Lab. A bench instrument with a paw print. MIT licensed.</span>
+    <nav class="foot-links" aria-label="Footer">
+      <a href="https://github.com/Fury7425/pawdio-lab">GitHub</a>
+      <a href="https://github.com/Fury7425/pawdio-lab/issues/new?labels=bug">Report a bug</a>
+      <a href="./">Other layouts</a>
+    </nav>
+  </div>
+</footer>
+
+<script>
+document.documentElement.classList.add("js");
+/* Real measurement data exported by Pawdio Lab (clone 711 coupler).
+   [freq Hz, left dB, right dB], normalized to 0 dB at the 1 kHz bin.
+   NEVER edit, round, or regenerate these arrays. */
+var ARR = {
+  app3: [[20,8.31,13.53],[20.7,8.42,13.44],[21.4,8.46,13.31],[22.2,8.5,13.18],[23,8.59,13.01],[23.8,8.67,12.83],[24.6,8.77,12.65],[25.5,8.9,12.42],[26.4,8.89,12.2],[27.3,8.47,11.98],[28.3,8.34,11.74],[29.3,8.63,11.5],[30.3,8.43,11.25],[31.4,8.11,11.04],[32.5,8.45,10.76],[33.7,7.87,10.53],[34.8,8.27,10.21],[36.1,7.78,9.99],[37.4,7.8,9.72],[38.7,7.97,9.42],[40,7.65,9.15],[41.5,7.39,8.89],[42.9,7.25,8.61],[44.4,7.18,8.37],[46,7.13,8.03],[47.6,7.16,7.74],[49.3,7.09,7.46],[51.1,6.81,7.1],[52.9,6.73,6.88],[54.7,6.55,6.61],[56.7,6.52,6.33],[58.7,6.32,6.02],[60.7,6.14,5.76],[62.9,5.97,5.46],[65.1,5.84,5.17],[67.4,5.8,4.91],[69.8,5.46,4.66],[72.2,5.44,4.35],[74.8,5.29,4.08],[77.4,5.11,3.81],[80.2,4.84,3.52],[83,4.58,3.26],[85.9,4.49,3.02],[89,4.31,2.69],[92.1,4.15,2.43],[95.4,3.84,2.16],[98.7,3.7,1.84],[102.2,3.45,1.59],[105.8,3.19,1.32],[109.6,3.11,1.1],[113.4,2.82,0.83],[117.5,2.72,0.66],[121.6,2.56,0.42],[125.9,2.49,0.25],[130.4,2.24,0.12],[135,2.29,-0.04],[139.7,2.31,-0.08],[144.6,2.25,-0.12],[149.8,2.34,-0.1],[155,2.49,0.03],[160.5,2.59,0],[166.2,2.8,0.19],[172.1,3,0.35],[178.2,3.21,0.58],[184.4,3.42,0.94],[191,3.75,1.19],[197.7,3.92,1.5],[204.7,4.17,1.68],[211.9,4.25,1.9],[219.4,4.38,2.07],[227.2,4.42,2.2],[235.2,4.45,2.25],[243.5,4.4,2.34],[252.1,4.24,2.31],[261,4.14,2.3],[270.2,3.89,2.28],[279.7,3.84,2.25],[289.6,3.8,2.24],[299.8,3.72,2.28],[310.4,3.64,2.33],[321.4,3.58,2.38],[332.8,3.54,2.47],[344.5,3.45,2.53],[356.7,3.38,2.58],[369.3,3.19,2.64],[382.3,3.04,2.61],[395.8,2.88,2.52],[409.8,2.65,2.39],[424.3,2.44,2.26],[439.3,2.2,2.14],[454.8,1.94,1.99],[470.9,1.77,1.87],[487.5,1.66,1.73],[504.7,1.43,1.6],[522.5,1.42,1.48],[541,1.32,1.39],[560.1,1.17,1.32],[579.9,1.13,1.22],[600.4,1.08,1.07],[621.6,0.93,0.82],[643.5,0.73,0.59],[666.3,0.56,0.32],[689.8,0.37,0.09],[714.2,0.18,-0.2],[739.4,-0.03,-0.47],[765.5,-0.15,-0.66],[792.5,-0.23,-0.75],[820.5,-0.27,-0.79],[849.5,-0.22,-0.74],[879.5,-0.16,-0.64],[910.6,-0.19,-0.57],[942.8,-0.1,-0.38],[976,-0.08,-0.21],[1010.5,0,0],[1046.2,0.11,0.29],[1083.2,0.23,0.67],[1121.4,0.37,1],[1161,0.53,1.39],[1202.1,0.69,1.77],[1244.5,0.88,2.21],[1288.5,1.05,2.71],[1334,1.22,3.1],[1381.1,1.35,3.52],[1429.9,1.55,4.02],[1480.4,1.76,4.47],[1532.7,1.96,4.86],[1586.8,2.16,5.36],[1642.9,2.46,5.81],[1700.9,2.74,6.3],[1761,3.05,6.88],[1823.2,3.37,7.35],[1887.6,3.71,7.79],[1954.2,4.04,8.29],[2023.3,4.32,8.64],[2094.7,4.59,9.04],[2168.7,4.94,9.34],[2245.3,5.17,9.54],[2324.6,5.44,9.75],[2406.8,5.65,9.78],[2491.8,5.77,9.68],[2579.8,5.72,9.44],[2670.9,5.62,9.1],[2765.2,5.44,8.75],[2862.9,5.05,8.28],[2964,4.63,7.73],[3068.7,4.17,7.24],[3177.1,3.63,6.93],[3289.4,3.19,6.66],[3405.5,2.71,6.45],[3525.8,2.42,6.25],[3650.4,2.12,5.98],[3779.3,1.93,5.96],[3912.8,1.8,5.91],[4051,1.74,6.02],[4194.1,1.8,6.17],[4342.2,1.98,6.6],[4495.6,2.33,7.06],[4654.4,2.78,7.69],[4818.8,3.49,8.5],[4989,4.37,9.37],[5165.2,5.23,10.18],[5347.7,6.01,10.77],[5536.6,6.34,10.71],[5732.1,6.08,10.15],[5934.6,4.98,9.04],[6144.2,3.61,7.76],[6361.2,2.36,6.69],[6585.9,1.36,5.86],[6818.6,0.46,5.34],[7059.4,-0.28,4.97],[7308.8,-0.65,4.91],[7566.9,-0.64,5.33],[7834.2,-0.24,6.32],[8110.9,0.85,8.09],[8397.4,2.98,10.98],[8694,6.37,13.61],[9001.1,8.66,12.29],[9319,6.4,9.28],[9648.2,2.91,6.41],[9989,-0.37,4],[10341.8,-2.64,2.24],[10707.1,-4.14,0.99],[11085.3,-5.32,-0.12],[11476.9,-6.33,-1.02],[11882.3,-7.12,-1.57],[12302,-7.41,-1.54],[12736.5,-7.16,-1.21],[13186.4,-6.29,-0.28],[13652.2,-4.76,1.15],[14134.4,-3.4,2.78],[14633.6,-3.82,3.06],[15150.5,-6.5,1.13],[15685.6,-9.66,-1.49],[16239.7,-14.71,-4.59],[16813.3,-18.44,-9.31],[17407.2,-20.27,-14.01],[18022,-21.96,-19.41],[18658.6,-25.4,-25.54],[19317.6,-56.12,-41.9],[20000,-36.67,-25.27]],
+  ie900: [[20,7.04,8.06],[20.7,7.02,8.06],[21.4,7.04,8.04],[22.2,6.9,8.02],[23,6.98,8],[23.8,6.93,7.97],[24.6,6.8,7.94],[25.5,6.81,7.9],[26.4,6.82,7.86],[27.3,6.75,7.81],[28.3,6.68,7.75],[29.3,6.61,7.69],[30.3,6.54,7.62],[31.4,6.47,7.54],[32.5,6.39,7.48],[33.7,6.3,7.38],[34.8,6.22,7.3],[36.1,6.1,7.2],[37.4,6.02,7.12],[38.7,5.89,7.02],[40,5.78,6.89],[41.5,5.68,6.77],[42.9,5.69,6.68],[44.4,5.53,6.6],[46,5.42,6.47],[47.6,5.31,6.36],[49.3,5.21,6.21],[51.1,5.06,6.08],[52.9,4.95,5.94],[54.7,4.76,5.77],[56.7,4.56,5.61],[58.7,4.45,5.5],[60.7,4.38,5.4],[62.9,4.21,5.22],[65.1,4.06,5.05],[67.4,3.98,4.97],[69.8,3.82,4.76],[72.2,3.72,4.66],[74.8,3.52,4.46],[77.4,3.41,4.37],[80.2,3.25,4.17],[83,3.2,4.02],[85.9,3.09,3.92],[89,2.96,3.78],[92.1,2.82,3.61],[95.4,2.72,3.46],[98.7,2.65,3.32],[102.2,2.48,3.19],[105.8,2.39,3.05],[109.6,2.14,2.87],[113.4,2.14,2.72],[117.5,2.24,2.64],[121.6,1.5,2.45],[125.9,1.95,2.37],[130.4,1.78,2.23],[135,1.66,2.06],[139.7,1.17,1.94],[144.6,1.38,1.82],[149.8,1.32,1.7],[155,1.25,1.6],[160.5,1.12,1.52],[166.2,1.01,1.37],[172.1,1.03,1.3],[178.2,0.95,1.15],[184.4,0.85,1.06],[191,0.71,0.98],[197.7,0.67,0.88],[204.7,0.54,0.77],[211.9,0.49,0.72],[219.4,0.38,0.6],[227.2,0.4,0.55],[235.2,0.28,0.46],[243.5,0.23,0.38],[252.1,0.18,0.31],[261,0.07,0.2],[270.2,0.06,0.16],[279.7,-0.05,0.07],[289.6,-0.1,0],[299.8,-0.19,-0.04],[310.4,-0.23,-0.11],[321.4,-0.18,-0.17],[332.8,-0.28,-0.25],[344.5,-0.29,-0.3],[356.7,-0.34,-0.33],[369.3,-0.43,-0.42],[382.3,-0.5,-0.47],[395.8,-0.55,-0.52],[409.8,-0.57,-0.54],[424.3,-0.65,-0.61],[439.3,-0.69,-0.66],[454.8,-0.73,-0.69],[470.9,-0.78,-0.74],[487.5,-0.83,-0.78],[504.7,-0.88,-0.82],[522.5,-0.92,-0.86],[541,-0.95,-0.89],[560.1,-1.02,-0.96],[579.9,-1.07,-0.98],[600.4,-1.07,-1],[621.6,-1.13,-1.04],[643.5,-1.15,-1.05],[666.3,-1.17,-1.07],[689.8,-1.19,-1.08],[714.2,-1.18,-1.07],[739.4,-1.18,-1.07],[765.5,-1.13,-1.02],[792.5,-1.11,-1],[820.5,-1.05,-0.93],[849.5,-0.97,-0.84],[879.5,-0.87,-0.73],[910.6,-0.75,-0.61],[942.8,-0.54,-0.41],[976,-0.29,-0.21],[1010.5,0,0],[1046.2,0.34,0.25],[1083.2,0.63,0.52],[1121.4,0.93,0.82],[1161,1.22,1.11],[1202.1,1.51,1.4],[1244.5,1.74,1.64],[1288.5,1.98,1.89],[1334,2.17,2.07],[1381.1,2.35,2.26],[1429.9,2.5,2.41],[1480.4,2.62,2.52],[1532.7,2.73,2.64],[1586.8,2.8,2.69],[1642.9,2.85,2.74],[1700.9,2.88,2.78],[1761,2.88,2.8],[1823.2,2.87,2.8],[1887.6,2.81,2.76],[1954.2,2.74,2.71],[2023.3,2.61,2.61],[2094.7,2.46,2.5],[2168.7,2.3,2.37],[2245.3,2.08,2.2],[2324.6,1.85,2.02],[2406.8,1.58,1.79],[2491.8,1.3,1.56],[2579.8,1.02,1.32],[2670.9,0.72,1.06],[2765.2,0.44,0.8],[2862.9,0.17,0.55],[2964,-0.09,0.3],[3068.7,-0.34,0.05],[3177.1,-0.58,-0.21],[3289.4,-0.79,-0.44],[3405.5,-0.96,-0.65],[3525.8,-1.07,-0.82],[3650.4,-1.18,-0.97],[3779.3,-1.28,-1.11],[3912.8,-1.29,-1.17],[4051,-1.28,-1.22],[4194.1,-1.21,-1.21],[4342.2,-1.04,-1.11],[4495.6,-0.77,-0.92],[4654.4,-0.45,-0.7],[4818.8,0,-0.34],[4989,0.6,0.15],[5165.2,1.32,0.71],[5347.7,2.1,1.36],[5536.6,2.7,1.94],[5732.1,2.62,2],[5934.6,1.47,1.14],[6144.2,-0.17,-0.44],[6361.2,-0.93,-1.41],[6585.9,-0.02,-0.81],[6818.6,1.88,0.93],[7059.4,3.49,2.9],[7308.8,3.8,4.09],[7566.9,2.87,3.76],[7834.2,1.56,2.41],[8110.9,0.41,0.88],[8397.4,-0.43,-0.44],[8694,-0.84,-1.42],[9001.1,-0.72,-1.75],[9319,0.04,-1.09],[9648.2,1.01,0.07],[9989,2.12,1.37],[10341.8,3.22,3.15],[10707.1,4.54,5.16],[11085.3,6.97,7.96],[11476.9,7.68,9.92],[11882.3,4.83,6.85],[12302,1.98,2.92],[12736.5,1.1,0.25],[13186.4,1.03,-1.35],[13652.2,2.18,-1.89],[14134.4,3.19,-1.34],[14633.6,-0.66,0.18],[15150.5,-6.17,-0.56],[15685.6,-10.58,-5.76],[16239.7,-14.01,-10.96],[16813.3,-16.75,-15.14],[17407.2,-18.86,-19.2],[18022,-20.27,-22.39],[18658.6,-20.5,-24.52],[19317.6,-22.02,-29.64],[20000,-29.44,-31.72]]
+};
+
+(function () {
+  "use strict";
+  if (!ARR.app3) return;
+  var NS = "http://www.w3.org/2000/svg";
+  var LOG20 = Math.log10(20), W = 1200, H = 360, T = 16, B = 330;
+  function el(t, a, p) { var n = document.createElementNS(NS, t); if (a) for (var k in a) n.setAttribute(k, a[k]); if (p) p.appendChild(n); return n; }
+  function r1(v) { return Math.round(v * 10) / 10; }
+  function xF(f) { return r1((Math.log10(f) - LOG20) / 3 * W); }
+  function yF(db, h, t, b) { h = h || H; t = t == null ? T : t; b = b == null ? B : b; var y = t + (15 - db) * ((b - t) / 45); return r1(y < t ? t : y > b ? b : y); }
+  function path(a, ch, h, t, b) { var d = ""; for (var i = 0; i < a.length; i++) d += (i ? "L" : "M") + xF(a[i][0]) + " " + yF(a[i][ch], h, t, b); return d; }
+  function fmtF(f) { return f >= 1000 ? (Math.round(f / 10) / 100) + "k" : Math.round(f) + ""; }
+  function fmtD(v) { return (v >= 0 ? "+" : "") + v.toFixed(1); }
+  function txt(p, c, x, y, s, an) { var t = el("text", { "class": c, x: x, y: y }, p); if (an) t.setAttribute("text-anchor", an); t.appendChild(document.createTextNode(s)); return t; }
+  var MIN = [30,40,60,70,80,90,300,400,600,700,800,900,3000,4000,6000,7000,8000,9000];
+  var MAJ = [50,100,200,500,1000,2000,5000,10000];
+
+  function mount(root) {
+    var svg = root.querySelector("svg[data-chart]");
+    if (!svg) return;
+    svg.setAttribute("viewBox", "0 0 " + W + " " + H);
+    svg.setAttribute("role", "application");
+    svg.setAttribute("tabindex", "0");
+    svg.setAttribute("aria-label", "Measured frequency response, 20 hertz to 20 kilohertz, normalized to 0 decibels at 1 kilohertz. Views: AirPods Pro 3, Sennheiser IE900, or both overlaid. Arrow keys move a readout when focused.");
+    var sc = svg.parentElement;
+    if (sc && sc.hasAttribute("data-scroll")) { sc.setAttribute("tabindex", "0"); sc.setAttribute("role", "region"); sc.setAttribute("aria-label", "Frequency response chart, scrollable"); }
+    var gmin = el("g", null, svg), gmaj = el("g", null, svg), i, x;
+    for (i = 0; i < MIN.length; i++) { x = xF(MIN[i]); el("line", { "class": "grid-min", x1: x, y1: T, x2: x, y2: B }, gmin); }
+    for (i = 0; i < MAJ.length; i++) { x = xF(MAJ[i]); el("line", { "class": "grid-maj", x1: x, y1: T, x2: x, y2: B }, gmaj); }
+    var DB = [12, 6, -6, -12, -18, -24, -30];
+    for (i = 0; i < DB.length; i++) { var gy = yF(DB[i]); el("line", { "class": "grid-maj", x1: 0, y1: gy, x2: W, y2: gy }, gmaj); }
+    el("line", { "class": "grid-zero", x1: 0, y1: yF(0), x2: W, y2: yF(0) }, svg);
+
+    function dev(key, label) {
+      var g = el("g", { "class": "dev" }, svg);
+      el("path", { "class": "fill-l", d: path(ARR[key], 1) + "L" + W + " " + B + "L0 " + B + "Z" }, g);
+      el("path", { "class": "trace trace-r", pathLength: 1, fill: "none", "stroke-width": 1.4, "stroke-linejoin": "round", d: path(ARR[key], 2) }, g);
+      el("path", { "class": "trace trace-l", pathLength: 1, fill: "none", "stroke-width": 2, "stroke-linejoin": "round", d: path(ARR[key], 1) }, g);
+      txt(g, "ax", 10, B - 8, label);
+      return g;
+    }
+    var groups = { app3: dev("app3", "AirPods Pro 3"), ie900: dev("ie900", "Sennheiser IE900") };
+    groups.app3.classList.add("on");
+
+    var xh = el("g", { "aria-hidden": "true" }, svg); xh.style.display = "none";
+    var xhl = el("line", { "class": "xh-line", y1: T, y2: B }, xh);
+    var d1 = el("circle", { "class": "xh-dot-l", r: 3 }, xh), d2 = el("circle", { "class": "xh-dot-r", r: 3 }, xh);
+
+    var ax = el("g", null, svg);
+    txt(ax, "ax", 6, T + 4, "+12"); txt(ax, "ax", 6, yF(0) + 4, "0"); txt(ax, "ax", 6, yF(-12) + 4, "-12"); txt(ax, "ax", 6, yF(-24) + 4, "-24");
+    txt(ax, "ax", 4, H - 4, "20"); txt(ax, "ax", xF(100), H - 4, "100", "middle"); txt(ax, "ax", xF(1000), H - 4, "1k", "middle"); txt(ax, "ax", xF(10000), H - 4, "10k", "middle"); txt(ax, "ax", W - 4, H - 4, "20k", "end");
+
+    var out = root.querySelector("[data-readout]"), live = root.querySelector("[data-live]");
+    var cur = "app3", N = ARR.app3.length, idx = 0;
+    while (idx < N - 1 && ARR.app3[idx][0] < 1000) idx++;
+
+    function hide() { xh.style.display = "none"; if (out) out.textContent = ""; }
+    function show(i) {
+      i = i < 0 ? 0 : i > N - 1 ? N - 1 : i; idx = i;
+      var a = ARR.app3[i], b = ARR.ie900[i], d = cur === "ie900" ? b : a;
+      var v1 = cur === "cmp" ? a[1] : d[1], v2 = cur === "cmp" ? b[1] : d[2];
+      var l1 = cur === "cmp" ? "AP3" : "L", l2 = cur === "cmp" ? "IE9" : "R";
+      var px = xF(d[0]);
+      xhl.setAttribute("x1", px); xhl.setAttribute("x2", px);
+      d1.setAttribute("cx", px); d1.setAttribute("cy", yF(v1)); d2.setAttribute("cx", px); d2.setAttribute("cy", yF(v2));
+      xh.style.display = "";
+      if (out) out.innerHTML = "<span class='k'>" + fmtF(d[0]) + " Hz</span><span class='v1'>" + l1 + " " + fmtD(v1) + "</span><span>" + l2 + " " + fmtD(v2) + " dB</span>";
+      if (live) live.textContent = fmtF(d[0]) + " hertz, " + l1 + " " + fmtD(v1) + ", " + l2 + " " + fmtD(v2) + " decibels";
+    }
+    function setDev(k) {
+      cur = k;
+      groups.app3.classList.toggle("on", k === "app3" || k === "cmp");
+      groups.ie900.classList.toggle("on", k === "ie900" || k === "cmp");
+      var apR = groups.app3.querySelector(".trace-r"), ieR = groups.ie900.querySelector(".trace-r"), ieL = groups.ie900.querySelector(".trace-l");
+      if (k === "cmp") { apR.style.display = "none"; ieR.style.display = "none"; ieL.setAttribute("stroke", "#6f7a86"); }
+      else { apR.style.display = ""; ieR.style.display = ""; ieL.removeAttribute("stroke"); }
+    }
+
+    var tabs = root.querySelectorAll("[data-tabs] button");
+    Array.prototype.forEach.call(tabs, function (t) {
+      t.addEventListener("click", function () {
+        Array.prototype.forEach.call(tabs, function (o) { o.setAttribute("aria-pressed", "false"); });
+        t.setAttribute("aria-pressed", "true"); setDev(t.getAttribute("data-dev")); hide();
+      });
+    });
+
+    function near(cx) {
+      var rect = svg.getBoundingClientRect(), rx = (cx - rect.left) / rect.width * W, best = 0, bd = 1e9;
+      for (var i = 0; i < N; i++) { var dd = Math.abs(xF(ARR.app3[i][0]) - rx); if (dd < bd) { bd = dd; best = i; } }
+      return best;
+    }
+    svg.addEventListener("pointermove", function (e) { if (e.pointerType === "touch") return; show(near(e.clientX)); });
+    svg.addEventListener("pointerleave", function () { hide(); });
+    svg.addEventListener("pointerdown", function (e) { show(near(e.clientX)); });
+    svg.addEventListener("keydown", function (e) {
+      if (e.key === "ArrowRight") { show(idx + 1); e.preventDefault(); }
+      else if (e.key === "ArrowLeft") { show(idx - 1); e.preventDefault(); }
+      else if (e.key === "Home") { show(0); e.preventDefault(); }
+      else if (e.key === "End") { show(N - 1); e.preventDefault(); }
+    });
+
+    var host = document.getElementById("showcase");
+    if ("IntersectionObserver" in window && host) {
+      var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { host.classList.add("lit"); io.disconnect(); } }); }, { threshold: 0.2 });
+      io.observe(host);
+    } else if (host) { host.classList.add("lit"); }
+  }
+  mount(document.getElementById("showcase"));
+
+  /* mini bento charts (static, real data) */
+  function mini(id, key2, h) {
+    var svg = document.getElementById(id);
+    if (!svg) return;
+    var t = 10, b = h - 18;
+    var dbs = [12, 0, -12, -24];
+    for (var i = 0; i < dbs.length; i++) { var gy = yF(dbs[i], h, t, b); el("line", { x1: 0, y1: gy, x2: W, y2: gy, "class": "grid-maj" }, svg); }
+    el("line", { x1: 0, y1: yF(0, h, t, b), x2: W, y2: yF(0, h, t, b), "class": "grid-zero" }, svg);
+    if (key2) {
+      el("path", { d: path(ARR.app3, 1, h, t, b), fill: "none", stroke: "#34e1a0", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+      el("path", { d: path(ARR.ie900, 1, h, t, b), fill: "none", stroke: "#6f7a86", "stroke-width": 1.7, "stroke-linejoin": "round" }, svg);
+    } else {
+      el("path", { d: path(ARR.app3, 1, h, t, b) + "L" + W + " " + b + "L0 " + b + "Z", fill: "rgba(52,225,160,0.12)" }, svg);
+      el("path", { d: path(ARR.app3, 1, h, t, b), fill: "none", stroke: "#34e1a0", "stroke-width": 2, "stroke-linejoin": "round" }, svg);
+    }
+  }
+  mini("mini-fr", false, 230);
+  mini("mini-ov", true, 200);
+
+  /* bento reveal stagger */
+  var cells = document.querySelectorAll("#bento .cell");
+  if ("IntersectionObserver" in window) {
+    var io2 = new IntersectionObserver(function (es) {
+      es.forEach(function (e) { if (e.isIntersecting) { var c = e.target; var k = +c.getAttribute("data-i") || 0; setTimeout(function () { c.classList.add("show"); }, k * 60); io2.unobserve(c); } });
+    }, { threshold: 0.2 });
+    Array.prototype.forEach.call(cells, function (c, i) { c.setAttribute("data-i", i); io2.observe(c); });
+  } else {
+    Array.prototype.forEach.call(cells, function (c) { c.classList.add("show"); });
+  }
+})();
+</script>
+</body>
+</html>
