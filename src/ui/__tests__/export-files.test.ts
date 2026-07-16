@@ -14,7 +14,9 @@ describe("export files", () => {
   });
 
   it("writes rectangular rows with CRLF endings", () => {
-    expect(rowsToCsv(["a", "b"], [[1], [2, 3]])).toBe("a,b\r\n1,\r\n2,3\r\n");
+    expect(rowsToCsv(["a", "b"], [[1], [2, 3]])).toBe(
+      "a,b\r\n1,\r\n2,3\r\n",
+    );
   });
 
   it("flattens objects while retaining arrays as JSON", () => {
@@ -24,6 +26,8 @@ describe("export files", () => {
   });
 
   it("creates stable timestamp tags", () => {
-    expect(exportTimestampTag(new Date(2026, 6, 16, 9, 8, 7))).toBe("20260716_090807");
+    expect(exportTimestampTag(new Date(2026, 6, 16, 9, 8, 7))).toBe(
+      "20260716_090807",
+    );
   });
 });

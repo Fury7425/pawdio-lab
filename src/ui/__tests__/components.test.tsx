@@ -36,7 +36,7 @@ vi.mock("../components/empty-state", () => ({
         {hint ? <span>{hint}</span> : null}
       </div>
     ),
-  ),
+  )),
 }));
 
 function makeSweepResult(overrides: Record<string, unknown> = {}) {
