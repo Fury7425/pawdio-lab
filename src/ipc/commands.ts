@@ -142,6 +142,12 @@ export const saveSweepCombinedPlots = (params: {
 export const ensureOutputDir = (path: string): Promise<void> =>
   invoke("ensure_output_dir", { path });
 
+export const writeTextExport = (params: {
+  outputDir: string;
+  filename: string;
+  content: string;
+}): Promise<string> => invoke<string>("write_text_export", params);
+
 // ANC ------------------------------------------------------------------------
 
 export type AncSnapshotRequestShape = {

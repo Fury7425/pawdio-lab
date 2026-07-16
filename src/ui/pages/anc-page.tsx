@@ -17,12 +17,7 @@ import { ExportMenu } from "../components/export-menu";
 import { ChartLegend } from "../components/chart-legend";
 import { OverlayChart, type OverlaySeries } from "../components/overlay-chart";
 import { fmtHz } from "../lib/chart-scale";
-import {
-  downloadCsv,
-  downloadJson,
-  exportTimestampTag,
-  rowsToCsv,
-} from "../lib/export-files";
+import { exportTimestampTag, rowsToCsv } from "../lib/export-files";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type Channel = "L" | "R" | "both" | "avg";
@@ -267,7 +262,7 @@ export function AncPage() {
   ).length;
 
   // ---- Session save / load (B9) ----
-  function handleSaveSession() {
+  async function handleSaveSession() {
     const payload: SessionFile = {
       app: "pawdio-lab-anc",
       version: 1,
@@ -276,7 +271,13 @@ export function AncPage() {
       captures,
       selectedModes,
     };
-    downloadJson(`pawdio-anc-session-${exportTimestampTag()}.json`, payload);
+    const filename = `pawdio-anc-session-${exportTimestampTag()}.json`;
+    await ctx.exportTextFile(
+      request.outputDir,
+      filename,
+      `${JSON.stringify(payload, null, 2)}\n`,
+      "application/json;charset=utf-8",
+    );
   }
 
   function handleLoadSessionClick() {
@@ -349,13 +350,19 @@ export function AncPage() {
     };
   }
 
-  function handleExportJson() {
+  async function handleExportJson() {
     const payload = buildAncExport();
     if (!payload) return;
-    downloadJson(`anc_attenuation_${exportTimestampTag()}.json`, payload);
+    const filename = `anc_attenuation_${exportTimestampTag()}.json`;
+    await ctx.exportTextFile(
+      request.outputDir,
+      filename,
+      `${JSON.stringify(payload, null, 2)}\n`,
+      "application/json;charset=utf-8",
+    );
   }
 
-  function handleExportCsv() {
+  async function handleExportCsv() {
     if (!baseline || !baselineKey) return;
     const rows: Array<Array<string | number | null>> = [];
     for (const key of exportableModes) {
@@ -381,8 +388,10 @@ export function AncPage() {
         ]);
       }
     }
-    downloadCsv(
-      `anc_attenuation_${exportTimestampTag()}.csv`,
+    const filename = `anc_attenuation_${exportTimestampTag()}.csv`;
+    await ctx.exportTextFile(
+      request.outputDir,
+      filename,
       rowsToCsv(
         [
           "BaselineMode",
@@ -397,6 +406,7 @@ export function AncPage() {
         ],
         rows,
       ),
+      "text/csv;charset=utf-8",
     );
   }
 
@@ -723,7 +733,7 @@ export function AncPage() {
             <button
               type="button"
               className="skin-btn secondary"
-              onClick={handleSaveSession}
+              onClick={() => ctx.run(handleSaveSession())}
               title="Download all captures + selected modes as JSON"
             >
               Save Session
@@ -921,8 +931,14 @@ export function AncPage() {
                 <ExportMenu
                   label="Export Data"
                   items={[
-                    { label: "Export JSON", onSelect: handleExportJson },
-                    { label: "Export CSV", onSelect: handleExportCsv },
+                    {
+                      label: "Export JSON",
+                      onSelect: () => ctx.run(handleExportJson()),
+                    },
+                    {
+                      label: "Export CSV",
+                      onSelect: () => ctx.run(handleExportCsv()),
+                    },
                   ]}
                 />
                 <button

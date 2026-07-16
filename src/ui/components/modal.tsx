@@ -9,6 +9,7 @@ type ModalProps = {
   children: ReactNode;
   footer?: ReactNode;
   closeOnOverlay?: boolean;
+  className?: string;
 };
 
 const FOCUSABLE_SELECTOR =
@@ -22,6 +23,7 @@ export function Modal({
   children,
   footer,
   closeOnOverlay = false,
+  className,
 }: ModalProps) {
   const boxRef = useRef<HTMLDivElement>(null);
   // Keep the latest onClose in a ref so the focus/escape effect only runs on
@@ -84,7 +86,7 @@ export function Modal({
       }
     >
       <div
-        className="modal-box"
+        className={`modal-box${className ? ` ${className}` : ""}`}
         role="dialog"
         aria-modal="true"
         aria-label={title ?? ariaLabel ?? "Dialog"}

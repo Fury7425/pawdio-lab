@@ -9,6 +9,7 @@ import { useDevicesController } from "./hooks/use-devices-controller";
 import { useLibrary } from "./hooks/use-library";
 import { useToast } from "./components/toast";
 import { downloadText, exportTimestampTag } from "./lib/export-files";
+import { combineAcceptedSweepPayloads } from "./lib/sweep-results";
 import {
   ANC_MODE_META,
   ANC_MODE_ORDERED,
@@ -172,6 +173,27 @@ function mergeWithDefaults<T extends Record<string, unknown>>(
 type SweepMonoSide = "left" | "right" | "both";
 type SweepInvokeRequest = SweepRequest & { monoSide?: SweepMonoSide };
 
+type SweepCaptureSide = "stereo" | "left" | "right";
+
+type SweepReviewState = {
+  payload: TestPayload;
+  side: SweepCaptureSide;
+  attempt: number;
+  accepted: number;
+  target: number;
+  resolve: (accepted: boolean) => void;
+};
+
+type SweepRunProgress = {
+  side: SweepCaptureSide | "complete";
+  accepted: number;
+  target: number;
+  attempts: number;
+  phase: "capturing" | "reviewing" | "complete";
+};
+
+type SweepLastResultStatus = "pending" | "accepted" | "rejected" | "final";
+
 type AncCaptureSide = "both" | "left" | "right";
 type AncStep = { mode: AncModeKey; side: AncCaptureSide };
 
@@ -307,31 +329,6 @@ function sweepAverageCurve(
   return null;
 }
 
-function averageCurveList(curves: number[][]): number[] {
-  if (curves.length === 0) {
-    return [];
-  }
-  const length = curves[0].length;
-  if (length === 0) {
-    return [];
-  }
-  const sums = new Array<number>(length).fill(0);
-  let rows = 0;
-  for (const curve of curves) {
-    if (curve.length < length) {
-      continue;
-    }
-    for (let index = 0; index < length; index += 1) {
-      sums[index] += curve[index];
-    }
-    rows += 1;
-  }
-  if (rows === 0) {
-    return [];
-  }
-  return sums.map((sum) => sum / rows);
-}
-
 function mean(values: number[]): number {
   if (values.length === 0) {
     return 0;
@@ -424,53 +421,6 @@ function requestForPreset(
   };
 }
 
-function combineGuidedMonoSweepPayload(
-  leftPayload: TestPayload,
-  rightPayload: TestPayload,
-): TestPayload {
-  const leftParams = recordOrEmpty(leftPayload.params);
-  const rightParams = recordOrEmpty(rightPayload.params);
-  const leftMetrics = recordOrEmpty(leftPayload.metrics);
-  const rightMetrics = recordOrEmpty(rightPayload.metrics);
-  const leftData = recordOrEmpty(leftPayload.data);
-  const rightData = recordOrEmpty(rightPayload.data);
-  const leftFiles = recordOrEmpty(leftPayload.files);
-  const rightFiles = recordOrEmpty(rightPayload.files);
-
-  const leftAll = numberCurveList(leftData.left_mag_db_all);
-  const rightAll = numberCurveList(rightData.right_mag_db_all);
-  const combinedAll = [...leftAll, ...rightAll];
-  const combinedAvg = averageCurveList(combinedAll);
-
-  return {
-    test: "sweep_fr",
-    timestamp: rightPayload.timestamp,
-    params: {
-      ...leftParams,
-      ...rightParams,
-      mono_mode: true,
-      mono_side: "guided_left_then_right",
-    },
-    metrics: {
-      delay_ms_left: leftMetrics.delay_ms_left ?? null,
-      delay_ms_right: rightMetrics.delay_ms_right ?? null,
-    },
-    data: {
-      freqs: leftData.freqs ?? rightData.freqs ?? [],
-      left_mag_db_avg: leftData.left_mag_db_avg ?? [],
-      left_mag_db_all: leftAll,
-      right_mag_db_avg: rightData.right_mag_db_avg ?? [],
-      right_mag_db_all: rightAll,
-      mag_db_all: combinedAll,
-      mag_db_avg_all: combinedAvg,
-    },
-    files: {
-      ...leftFiles,
-      ...rightFiles,
-    },
-  };
-}
-
 export function usePawdioLabController() {
   const persistedUiState = useMemo(() => readPersistedUiState(), []);
 
@@ -555,6 +505,14 @@ export function usePawdioLabController() {
   const [sweepLastResult, setSweepLastResult] = useState<TestPayload | null>(
     null,
   );
+  const [sweepLastResultStatus, setSweepLastResultStatus] =
+    useState<SweepLastResultStatus | null>(null);
+  const [sweepReviewState, setSweepReviewState] =
+    useState<SweepReviewState | null>(null);
+  const [sweepRunProgress, setSweepRunProgress] =
+    useState<SweepRunProgress | null>(null);
+  const [sweepSessionActive, setSweepSessionActive] = useState(false);
+  const sweepSessionActiveRef = useRef(false);
   // Input monitor + pink noise (extracted to hooks/use-monitor-and-noise.ts)
   const {
     inputMonitor,
@@ -642,9 +600,9 @@ export function usePawdioLabController() {
   async function refreshRuntimeStatus() {
     try {
       const status = await ipc.getRuntimeStatus();
-      setRunning(status.running);
+      setRunning(status.running || sweepSessionActiveRef.current);
     } catch {
-      setRunning(false);
+      setRunning(sweepSessionActiveRef.current);
     }
   }
 
@@ -996,10 +954,141 @@ export function usePawdioLabController() {
     }
   }
 
+  function requestSweepReview(
+    payload: TestPayload,
+    side: SweepCaptureSide,
+    attempt: number,
+    accepted: number,
+    target: number,
+  ): Promise<boolean> {
+    setSweepLastResult(payload);
+    setSweepLastResultStatus("pending");
+    setSweepRunProgress((progress) => ({
+      side,
+      accepted,
+      target,
+      attempts: progress?.attempts ?? attempt,
+      phase: "reviewing",
+    }));
+    return new Promise<boolean>((resolve) => {
+      setSweepReviewState({
+        payload,
+        side,
+        attempt,
+        accepted,
+        target,
+        resolve,
+      });
+    });
+  }
+
+  function resolveSweepReview(accepted: boolean) {
+    if (!sweepReviewState) return;
+    const review = sweepReviewState;
+    setSweepLastResultStatus(accepted ? "accepted" : "rejected");
+    setSweepReviewState(null);
+    review.resolve(accepted);
+  }
+
+  function acceptSweepReview() {
+    resolveSweepReview(true);
+  }
+
+  function rejectSweepReview() {
+    resolveSweepReview(false);
+  }
+
+  async function rewriteAcceptedSweepArtifacts(
+    payload: TestPayload,
+  ): Promise<TestPayload> {
+    const files = recordOrEmpty(payload.files);
+    const data = recordOrEmpty(payload.data);
+    const freqs = numberList(data.freqs);
+    const leftAvg = numberList(data.left_mag_db_avg);
+    const rightAvg = numberList(data.right_mag_db_avg);
+    const allCurves = numberCurveList(data.mag_db_all);
+    const avgAll = numberList(data.mag_db_avg_all);
+    const extraFiles: Record<string, string> = {};
+
+    const existingBoth =
+      typeof files.squiglink_both === "string" ? files.squiglink_both : "";
+    const leftSquiglink =
+      typeof files.squiglink_left === "string" ? files.squiglink_left : "";
+    const bothSquiglink =
+      existingBoth ||
+      (leftSquiglink
+        ? siblingPathByBasename(
+            leftSquiglink,
+            "squiglink_left_",
+            "squiglink_both_",
+          )
+        : undefined);
+    if (
+      bothSquiglink &&
+      freqs.length > 0 &&
+      leftAvg.length > 0 &&
+      rightAvg.length > 0
+    ) {
+      await ipc
+        .writeSquiglinkCombined({
+          outputPath: bothSquiglink,
+          freqs,
+          leftDb: leftAvg,
+          rightDb: rightAvg,
+        })
+        .catch(logCaughtError("writeSquiglinkCombined"));
+      extraFiles.squiglink_both = bothSquiglink;
+    }
+
+    const allPlotPath =
+      typeof files.plot_all === "string" ? files.plot_all : "";
+    const avgAllPlotPath =
+      typeof files.plot_avg_all === "string" ? files.plot_avg_all : "";
+    const existingLrPath =
+      typeof files.plot_lr_avg === "string" ? files.plot_lr_avg : "";
+    const lrAvgPlotPath =
+      existingLrPath ||
+      (allPlotPath
+        ? siblingPathByBasename(
+            allPlotPath,
+            "sweep_fr_all_",
+            "sweep_fr_lr_avg_",
+          )
+        : undefined);
+    if (freqs.length > 0 && (allPlotPath || avgAllPlotPath || lrAvgPlotPath)) {
+      const written = await ipc
+        .saveSweepCombinedPlots({
+          allPlotPath: allPlotPath || undefined,
+          avgAllPlotPath: avgAllPlotPath || undefined,
+          lrAvgPlotPath,
+          freqs,
+          allCurves,
+          avgAll,
+          leftAvg,
+          rightAvg,
+        })
+        .then(() => true)
+        .catch((err) => {
+          logCaughtError("saveSweepCombinedPlots")(err);
+          return false;
+        });
+      if (written && lrAvgPlotPath && leftAvg.length && rightAvg.length) {
+        extraFiles.plot_lr_avg = lrAvgPlotPath;
+      }
+    }
+
+    return Object.keys(extraFiles).length > 0
+      ? { ...payload, files: { ...payload.files, ...extraFiles } }
+      : payload;
+  }
+
   async function runSweepFrTest() {
-    if (running) {
+    if (running || sweepSessionActiveRef.current) {
       return;
     }
+    sweepSessionActiveRef.current = true;
+    setSweepSessionActive(true);
+    setRunning(true);
     // captureOrder is the source of truth; fall back to the legacy monoMode flag
     // for state persisted before the 3-way control existed.
     const order =
@@ -1012,7 +1101,69 @@ export function usePawdioLabController() {
       firstSide === "left" ? "right" : "left";
     const sideWord = (side: "left" | "right") =>
       side === "left" ? "LEFT" : "RIGHT";
+    const target = Math.max(1, Math.round(sweepRequest.repeats));
+    const sharedRunTag = exportTimestampTag();
+    let totalAttempts = 0;
 
+    async function collectAcceptedSweeps(
+      side: SweepCaptureSide,
+    ): Promise<TestPayload[]> {
+      const acceptedPayloads: TestPayload[] = [];
+      let sideAttempts = 0;
+      while (acceptedPayloads.length < target) {
+        sideAttempts += 1;
+        totalAttempts += 1;
+        setSweepRunProgress({
+          side,
+          accepted: acceptedPayloads.length,
+          target,
+          attempts: totalAttempts,
+          phase: "capturing",
+        });
+        const sideLabel = side === "stereo" ? "STEREO" : sideWord(side);
+        appendLog(
+          `[SWEEP FR] ${sideLabel} attempt ${sideAttempts}; ${acceptedPayloads.length}/${target} accepted`,
+        );
+        const payload = await invokeSweepFrRaw({
+          ...sweepRequest,
+          repeats: 1,
+          monoMode: side !== "stereo",
+          monoSide: side === "stereo" ? undefined : side,
+          sharedRunTag,
+        });
+        const normalized = {
+          ...payload,
+          timestamp: legacyTimestamp(payload.timestamp),
+        };
+        const accepted = await requestSweepReview(
+          normalized,
+          side,
+          sideAttempts,
+          acceptedPayloads.length,
+          target,
+        );
+        if (accepted) {
+          acceptedPayloads.push(normalized);
+          appendLog(
+            `[SWEEP FR] ${sideLabel} sweep accepted (${acceptedPayloads.length}/${target})`,
+          );
+        } else {
+          appendLog(
+            `[SWEEP FR] ${sideLabel} sweep discarded; accepted count remains ${acceptedPayloads.length}/${target}`,
+          );
+        }
+        setSweepRunProgress({
+          side,
+          accepted: acceptedPayloads.length,
+          target,
+          attempts: totalAttempts,
+          phase: "capturing",
+        });
+      }
+      return acceptedPayloads;
+    }
+
+    setSweepRunProgress(null);
     if (guided) {
       try {
         await requestMonoConfirm(
@@ -1022,6 +1173,9 @@ export function usePawdioLabController() {
         appendLog(
           `[SWEEP FR] mono run cancelled before ${sideWord(firstSide)} sweep`,
         );
+        sweepSessionActiveRef.current = false;
+        setSweepSessionActive(false);
+        setRunning(false);
         return;
       }
     }
@@ -1049,169 +1203,68 @@ export function usePawdioLabController() {
         : "[SWEEP FR] running",
     );
     try {
+      let acceptedPayloads: TestPayload[];
       if (!guided) {
-        const payload = await invokeSweepFrRaw({
-          ...sweepRequest,
-          monoMode: false,
-        });
-        const normalized = {
-          ...payload,
-          timestamp: legacyTimestamp(payload.timestamp),
-        };
-        setSweepLastResult(normalized);
-        appendResult(normalized);
+        acceptedPayloads = await collectAcceptedSweeps("stereo");
       } else {
-        const sharedRunTag = exportTimestampTag();
-        const sidePayloads: Partial<Record<"left" | "right", TestPayload>> = {};
-
-        appendLog(`[SWEEP FR] running ${sideWord(firstSide)} sweep`);
-        sidePayloads[firstSide] = await invokeSweepFrRaw({
-          ...sweepRequest,
-          monoMode: true,
-          monoSide: firstSide,
-          sharedRunTag,
+        const firstAccepted = await collectAcceptedSweeps(firstSide);
+        const firstSideResult = combineAcceptedSweepPayloads(firstAccepted, {
+          acceptedPerSide: target,
+          attempts: totalAttempts,
+          captureOrder: order,
         });
-        appendLog(`[SWEEP FR] ${sideWord(firstSide)} sweep complete`);
+        setSweepLastResult(firstSideResult);
+        setSweepLastResultStatus("accepted");
 
-        setRunning(false);
         try {
           await requestMonoConfirm(
-            `Now place the ${sideWord(secondSide)} earphone/driver on the measurement position, then click OK to run the ${sideWord(secondSide)} sweep.`,
+            `${target} ${sideWord(firstSide)} sweeps accepted. Move the measurement position to the ${sideWord(secondSide)} earphone/driver, then click OK.`,
           );
         } catch {
-          const firstOnly = {
-            ...sidePayloads[firstSide]!,
-            timestamp: legacyTimestamp(sidePayloads[firstSide]!.timestamp),
-          };
-          setSweepLastResult(firstOnly);
-          appendResult(firstOnly);
+          setSweepRunProgress({
+            side: firstSide,
+            accepted: target,
+            target,
+            attempts: totalAttempts,
+            phase: "complete",
+          });
           appendLog(
-            `[SWEEP FR] mono run stopped after ${sideWord(firstSide)} sweep`,
+            `[SWEEP FR] mono run stopped after ${target} accepted ${sideWord(firstSide)} sweeps; no final result recorded`,
           );
           return;
         }
-        setRunning(true);
-
-        appendLog(`[SWEEP FR] running ${sideWord(secondSide)} sweep`);
-        sidePayloads[secondSide] = await invokeSweepFrRaw({
-          ...sweepRequest,
-          monoMode: true,
-          monoSide: secondSide,
-          sharedRunTag,
-        });
-        const leftPayload = sidePayloads.left!;
-        const rightPayload = sidePayloads.right!;
-        const combinedPayload = combineGuidedMonoSweepPayload(
-          leftPayload,
-          rightPayload,
-        );
-
-        // Write squiglink_both by combining left+right avg data.
-        // Derive the path from the left sweep's squiglink_left file.
-        let squiglinkBothPath: string | undefined;
-        const leftSquiglinkPath = String(
-          leftPayload.files?.squiglink_left ?? "",
-        );
-        if (leftSquiglinkPath) {
-          const bothPath = leftSquiglinkPath.replace(
-            "squiglink_left_",
-            "squiglink_both_",
-          );
-          const freqs = numberList(leftPayload.data["freqs"]);
-          const leftDb = numberList(leftPayload.data["left_mag_db_avg"]);
-          const rightDb = numberList(rightPayload.data["right_mag_db_avg"]);
-          if (freqs.length && leftDb.length && rightDb.length) {
-            await ipc
-              .writeSquiglinkCombined({
-                outputPath: bothPath,
-                freqs,
-                leftDb,
-                rightDb,
-              })
-              .catch(logCaughtError("writeSquiglinkCombined"));
-            squiglinkBothPath = bothPath;
-          }
-        }
-
-        // Each per-side mono sweep only renders its own bud into the aggregate
-        // plots ("All Sweeps", "Average of All", L/R Average), and the naive
-        // file merge keeps just one side. Regenerate them from the merged
-        // left+right curves so both buds are accounted for.
-        let lrAvgPlotPath: string | undefined;
-        const allPlotPath = String(combinedPayload.files?.plot_all ?? "");
-        const avgAllPlotPath = String(
-          combinedPayload.files?.plot_avg_all ?? "",
-        );
-        const combinedFreqs = numberList(combinedPayload.data["freqs"]);
-        const combinedAllCurves = numberCurveList(
-          combinedPayload.data["mag_db_all"],
-        );
-        const combinedAvgAll = numberList(
-          combinedPayload.data["mag_db_avg_all"],
-        );
-        const combinedLeftAvg = numberList(
-          combinedPayload.data["left_mag_db_avg"],
-        );
-        const combinedRightAvg = numberList(
-          combinedPayload.data["right_mag_db_avg"],
-        );
-        const hasLrAvg =
-          combinedLeftAvg.length > 0 && combinedRightAvg.length > 0;
-        // Derive the L/R-average path from the basename only so a directory
-        // segment containing "sweep_fr_all_" can't be rewritten by mistake.
-        if (allPlotPath && hasLrAvg) {
-          lrAvgPlotPath = siblingPathByBasename(
-            allPlotPath,
-            "sweep_fr_all_",
-            "sweep_fr_lr_avg_",
-          );
-        }
-        let combinedPlotsWritten = false;
-        if (combinedFreqs.length && (allPlotPath || avgAllPlotPath)) {
-          combinedPlotsWritten = await ipc
-            .saveSweepCombinedPlots({
-              allPlotPath: allPlotPath || undefined,
-              avgAllPlotPath: avgAllPlotPath || undefined,
-              lrAvgPlotPath,
-              freqs: combinedFreqs,
-              allCurves: combinedAllCurves,
-              avgAll: combinedAvgAll,
-              leftAvg: combinedLeftAvg,
-              rightAvg: combinedRightAvg,
-            })
-            .then(() => true)
-            .catch((err) => {
-              logCaughtError("saveSweepCombinedPlots")(err);
-              return false;
-            });
-        }
-
-        const extraFiles: Record<string, string> = {};
-        if (squiglinkBothPath) {
-          extraFiles.squiglink_both = squiglinkBothPath;
-        }
-        // Only record the L/R-average plot once it was actually written.
-        if (lrAvgPlotPath && combinedPlotsWritten) {
-          extraFiles.plot_lr_avg = lrAvgPlotPath;
-        }
-        const normalized = {
-          ...combinedPayload,
-          timestamp: legacyTimestamp(combinedPayload.timestamp),
-          ...(Object.keys(extraFiles).length > 0 && {
-            files: {
-              ...combinedPayload.files,
-              ...extraFiles,
-            },
-          }),
-        };
-        setSweepLastResult(normalized);
-        appendResult(normalized);
-        appendLog("[SWEEP FR] mono guided run completed");
+        const secondAccepted = await collectAcceptedSweeps(secondSide);
+        acceptedPayloads = [...firstAccepted, ...secondAccepted];
       }
+
+      let acceptedResult = combineAcceptedSweepPayloads(acceptedPayloads, {
+        acceptedPerSide: target,
+        attempts: totalAttempts,
+        captureOrder: order,
+      });
+      acceptedResult = await rewriteAcceptedSweepArtifacts(acceptedResult);
+      setSweepLastResult(acceptedResult);
+      setSweepLastResultStatus("final");
+      appendResult(acceptedResult);
+      setSweepRunProgress({
+        side: "complete",
+        accepted: target,
+        target,
+        attempts: totalAttempts,
+        phase: "complete",
+      });
+      appendLog(
+        guided
+          ? `[SWEEP FR] mono guided run completed with ${target} accepted sweeps per side`
+          : `[SWEEP FR] completed with ${target} accepted sweeps`,
+      );
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
     } finally {
+      setSweepReviewState(null);
+      sweepSessionActiveRef.current = false;
+      setSweepSessionActive(false);
       refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
@@ -1275,6 +1328,19 @@ export function usePawdioLabController() {
     }
   }
 
+  async function exportTextFile(
+    outputDir: string,
+    filename: string,
+    content: string,
+    mimeType: string,
+  ): Promise<string> {
+    if (outputDir.trim()) {
+      return ipc.writeTextExport({ outputDir, filename, content });
+    }
+    downloadText(content, filename, mimeType);
+    return filename;
+  }
+
   async function exportSweepLastJson() {
     if (!sweepLastResult) {
       setError("No Sweep FR result to export yet.");
@@ -1284,13 +1350,14 @@ export function usePawdioLabController() {
     setError(null);
     try {
       const filename = `sweep_fr_last_${exportTimestampTag()}.json`;
-      downloadText(
-        `${JSON.stringify(sweepLastResult, null, 2)}\n`,
+      const path = await exportTextFile(
+        sweepRequest.outputDir,
         filename,
+        `${JSON.stringify(sweepLastResult, null, 2)}\n`,
         "application/json;charset=utf-8",
       );
-      appendLog(`[sweep_fr] exported LAST JSON -> ${filename}`);
-      toast(`Exported ${filename}`, { kind: "success" });
+      appendLog(`[sweep_fr] exported LAST JSON -> ${path}`);
+      toast(`Exported ${path}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1314,15 +1381,16 @@ export function usePawdioLabController() {
         count: sweepResults.length,
         results: sweepResults,
       };
-      downloadText(
-        `${JSON.stringify(bundle, null, 2)}\n`,
+      const path = await exportTextFile(
+        sweepRequest.outputDir,
         filename,
+        `${JSON.stringify(bundle, null, 2)}\n`,
         "application/json;charset=utf-8",
       );
       appendLog(
-        `[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${filename}`,
+        `[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${path}`,
       );
-      toast(`Exported ${filename}`, { kind: "success" });
+      toast(`Exported ${path}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1353,13 +1421,14 @@ export function usePawdioLabController() {
           `${curve.freqs[index].toFixed(2)}\t${curve.mags[index].toFixed(3)}`,
         );
       }
-      downloadText(
-        `${lines.join("\n")}\n`,
+      const path = await exportTextFile(
+        sweepRequest.outputDir,
         filename,
+        `${lines.join("\n")}\n`,
         "text/plain;charset=utf-8",
       );
-      appendLog(`[sweep_fr] exported LAST Squiglink -> ${filename}`);
-      toast(`Exported ${filename}`, { kind: "success" });
+      appendLog(`[sweep_fr] exported LAST Squiglink -> ${path}`);
+      toast(`Exported ${path}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1419,13 +1488,14 @@ export function usePawdioLabController() {
         lines.push(row);
       }
 
-      downloadText(
-        `${lines.join("\n")}\n`,
+      const path = await exportTextFile(
+        sweepRequest.outputDir,
         filename,
+        `${lines.join("\n")}\n`,
         "text/csv;charset=utf-8",
       );
-      appendLog(`[sweep_fr] exported LAST CSV -> ${filename}`);
-      toast(`Exported ${filename}`, { kind: "success" });
+      appendLog(`[sweep_fr] exported LAST CSV -> ${path}`);
+      toast(`Exported ${path}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1462,13 +1532,14 @@ export function usePawdioLabController() {
         }
       }
 
-      downloadText(
-        `${lines.join("\n")}\n`,
+      const path = await exportTextFile(
+        latencyRequest.outputDir,
         filename,
+        `${lines.join("\n")}\n`,
         "text/csv;charset=utf-8",
       );
-      appendLog(`[latency] exported CSV -> ${filename}`);
-      toast(`Exported ${filename}`, { kind: "success" });
+      appendLog(`[latency] exported CSV -> ${path}`);
+      toast(`Exported ${path}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1925,6 +1996,12 @@ export function usePawdioLabController() {
     sweepRequest,
     setSweepRequest,
     sweepLastResult,
+    sweepLastResultStatus,
+    sweepReviewState,
+    sweepRunProgress,
+    sweepSessionActive,
+    acceptSweepReview,
+    rejectSweepReview,
     inputMonitor,
     pinkNoisePlaying,
     monoConfirmState,
@@ -1980,6 +2057,7 @@ export function usePawdioLabController() {
     exportAncPlots,
     exportAncSquiglink,
     exportLatencyReport,
+    exportTextFile,
     exportSweepLastJson,
     exportSweepAllJson,
     exportSweepLastSquiglink,

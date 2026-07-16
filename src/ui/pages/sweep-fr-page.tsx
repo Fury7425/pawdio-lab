@@ -1,12 +1,11 @@
 import { useEffect, useState } from "react";
-import { AudioWaveform } from "lucide-react";
 import { CAPTURE_ORDER_META, toNumber, type CaptureOrder } from "../model";
 import { LabeledNumberInput } from "../components/labeled-input";
-import { EmptyState } from "../components/empty-state";
 import { ExportMenu } from "../components/export-menu";
 import { CheckboxField } from "../components/form-fields";
 import { Modal } from "../components/modal";
 import { PageHeader } from "../components/page-header";
+import { SweepResultView } from "../components/sweep-result-view";
 import { usePawdioLabContext } from "../pawdio-context";
 
 export function SweepFrPage() {
@@ -14,12 +13,15 @@ export function SweepFrPage() {
   const request = ctx.sweepRequest;
   const onChangeRequest = ctx.setSweepRequest;
   const running = ctx.running;
+  const busy = running || ctx.sweepSessionActive;
   const onRun = () => ctx.run(ctx.runSweepFrTest());
   const onBrowseOutputFolder = () => ctx.run(ctx.browseSweepOutputFolder());
   const lastResult = ctx.sweepLastResult;
   const monitor = ctx.inputMonitor;
   const pinkNoisePlaying = ctx.pinkNoisePlaying;
   const monoConfirmMessage = ctx.monoConfirmState?.message ?? null;
+  const review = ctx.sweepReviewState;
+  const sweepProgress = ctx.sweepRunProgress;
   const onMonoConfirmOk = ctx.confirmMonoDialog;
   const onMonoConfirmCancel = ctx.cancelMonoDialog;
   const onStartMonitor = () => ctx.run(ctx.startInputMonitor());
@@ -27,7 +29,8 @@ export function SweepFrPage() {
   const onStartPinkNoise = () => ctx.run(ctx.startPinkNoise());
   const onStopPinkNoise = () => ctx.run(ctx.stopPinkNoise());
   const onResetPeak = () => ctx.run(ctx.resetInputMonitorPeak());
-  const hasSweepResult = ctx.sweepLastResult !== null;
+  const hasSweepResult =
+    ctx.sweepLastResult !== null && ctx.sweepLastResultStatus === "final";
   const hasSweepHistory = ctx.results.some(
     (entry) => entry.payload.test === "sweep_fr",
   );
@@ -142,6 +145,47 @@ export function SweepFrPage() {
         <p className="modal-message">{monoConfirmMessage}</p>
       </Modal>
 
+      <Modal
+        open={Boolean(review)}
+        onClose={ctx.rejectSweepReview}
+        title="Accept this sweep?"
+        className="sweep-review-modal"
+        footer={
+          <>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              onClick={ctx.rejectSweepReview}
+            >
+              No, discard
+            </button>
+            <button
+              type="button"
+              className="skin-btn"
+              onClick={ctx.acceptSweepReview}
+            >
+              Yes, accept
+            </button>
+          </>
+        }
+      >
+        {review && (
+          <>
+            <p className="modal-message sweep-review-copy">
+              {review.side === "stereo"
+                ? "Stereo"
+                : review.side === "left"
+                  ? "Left"
+                  : "Right"}{" "}
+              attempt {review.attempt} is ready. Accepting it will advance the
+              valid count from {review.accepted} to {review.accepted + 1} of{" "}
+              {review.target}; discarding it leaves the count unchanged.
+            </p>
+            <SweepResultView result={review.payload} status="pending" compact />
+          </>
+        )}
+      </Modal>
+
       <section className="page-card">
         <PageHeader
           title="Sweep Frequency Response"
@@ -185,7 +229,7 @@ export function SweepFrPage() {
             />
 
             <div className="field-row">
-              <span className="field-label">Repeats</span>
+              <span className="field-label">Accepted Sweeps</span>
               <div className="range-line">
                 <input
                   className="skin-range"
@@ -306,14 +350,61 @@ export function SweepFrPage() {
               </button>
               <button
                 type="button"
-                className={`skin-btn${running ? " is-loading" : ""}`}
-                disabled={running}
+                className={`skin-btn${busy ? " is-loading" : ""}`}
+                disabled={busy}
                 onClick={onRun}
               >
-                Run Sweep
+                {sweepProgress && sweepProgress.phase !== "complete"
+                  ? "Sweep in Progress"
+                  : "Run Sweep"}
               </button>
             </div>
           </div>
+
+          {sweepProgress && (
+            <div
+              className={
+                "sweep-accept-progress" +
+                (sweepProgress.phase === "complete" ? " is-complete" : "")
+              }
+              role="status"
+            >
+              <div className="sweep-accept-progress-copy">
+                <span>
+                  {sweepProgress.side === "complete"
+                    ? "Sweep set complete"
+                    : `${
+                        sweepProgress.side === "stereo"
+                          ? "Stereo"
+                          : sweepProgress.side === "left"
+                            ? "Left"
+                            : "Right"
+                      } - ${
+                        sweepProgress.phase === "reviewing"
+                          ? "waiting for approval"
+                          : "capturing"
+                      }`}
+                </span>
+                <strong>
+                  {sweepProgress.accepted}/{sweepProgress.target} accepted
+                </strong>
+                <span>{sweepProgress.attempts} attempts</span>
+              </div>
+              <div className="sweep-accept-progress-track">
+                <span
+                  style={{
+                    width:
+                      String(
+                        Math.min(
+                          100,
+                          (sweepProgress.accepted / sweepProgress.target) * 100,
+                        ),
+                      ) + "%",
+                  }}
+                />
+              </div>
+            </div>
+          )}
         </section>
 
         <hr className="section-divider" />
@@ -375,6 +466,7 @@ export function SweepFrPage() {
                 <button
                   type="button"
                   className="skin-btn secondary"
+                  disabled={ctx.sweepSessionActive}
                   onClick={monitor.monitoring ? onStopMonitor : onStartMonitor}
                 >
                   {monitor.monitoring ? "Stop Monitoring" : "Start Monitoring"}
@@ -382,7 +474,7 @@ export function SweepFrPage() {
                 <button
                   type="button"
                   className="skin-btn secondary"
-                  disabled={running}
+                  disabled={busy}
                   onClick={
                     pinkNoisePlaying ? onStopPinkNoise : onStartPinkNoise
                   }
@@ -495,114 +587,59 @@ export function SweepFrPage() {
           </div>
         </section>
 
-        <hr className="section-divider" />
-        <section className="page-section">
-          <h3 className="section-subheading">Sweep FR Results</h3>
-          <div
-            className="scroll-box"
-            style={{ minHeight: 468, maxHeight: 468 }}
-          >
-            {lastResult ? (
-              <div>
-                <div className="result-header">
-                  <h4>{lastResult.test}</h4>
-                  <time>{lastResult.timestamp}</time>
-                </div>
+      </section>
 
-                {lastResult.metrics &&
-                  Object.keys(lastResult.metrics).length > 0 && (
-                    <>
-                      <p
-                        className="section-subheading"
-                        style={{ marginTop: 12 }}
-                      >
-                        Metrics
-                      </p>
-                      <div className="metric-grid">
-                        {Object.entries(lastResult.metrics).map(
-                          ([key, value]) => (
-                            <article key={key} className="metric-card">
-                              <p className="metric-label">{key}</p>
-                              <p
-                                className="metric-value"
-                                style={{ fontSize: 16 }}
-                              >
-                                {typeof value === "number"
-                                  ? value.toFixed(2)
-                                  : String(value)}
-                              </p>
-                            </article>
-                          ),
-                        )}
-                      </div>
-                    </>
-                  )}
-
-                {lastResult.params &&
-                  Object.keys(lastResult.params).length > 0 && (
-                    <>
-                      <p
-                        className="section-subheading"
-                        style={{ marginTop: 14 }}
-                      >
-                        Parameters
-                      </p>
-                      <dl className="kv-grid">
-                        {Object.entries(lastResult.params).map(
-                          ([key, value]) => (
-                            <span key={key} style={{ display: "contents" }}>
-                              <dt>{key}</dt>
-                              <dd>{String(value)}</dd>
-                            </span>
-                          ),
-                        )}
-                      </dl>
-                    </>
-                  )}
-
-                <details className="raw-json-details">
-                  <summary>Raw JSON</summary>
-                  <pre className="mono-pre" style={{ marginTop: 8 }}>
-                    {JSON.stringify(lastResult, null, 2)}
-                  </pre>
-                </details>
-              </div>
-            ) : (
-              <EmptyState
-                icon={<AudioWaveform size={32} />}
-                message="Run a sweep to see results here"
-                style={{ minHeight: 400 }}
-              />
-            )}
+      <section className="page-card sweep-result-page">
+        <div className="sweep-result-page-heading">
+          <div>
+            <h3 className="section-heading">Latest Sweep Result</h3>
+            <p className="muted">
+              Full-size review of the most recently captured sweep. During a
+              run, this updates before the Accept or Discard decision.
+            </p>
           </div>
-          <div className="row-end mt-12">
+          <div className="row-end">
             <ExportMenu
-              disabled={running || (!hasSweepResult && !hasSweepHistory)}
+              disabled={busy || (!hasSweepResult && !hasSweepHistory)}
               items={[
                 {
                   label: "Export Last (JSON)",
                   onSelect: onExportLastJson,
-                  disabled: running || !hasSweepResult,
+                  disabled: busy || !hasSweepResult,
                 },
                 {
                   label: "Export All (JSON)",
                   onSelect: onExportAllJson,
-                  disabled: running || !hasSweepHistory,
+                  disabled: busy || !hasSweepHistory,
                 },
                 {
                   label: "Export Last to Squiglink",
                   onSelect: onExportLastSquiglink,
-                  disabled: running || !hasSweepResult,
+                  disabled: busy || !hasSweepResult,
                 },
                 {
                   label: "Export Last (CSV)",
                   onSelect: onExportLastCsv,
-                  disabled: running || !hasSweepResult,
+                  disabled: busy || !hasSweepResult,
                 },
               ]}
             />
           </div>
-        </section>
+        </div>
+
+        <SweepResultView
+          result={lastResult}
+          status={ctx.sweepLastResultStatus}
+        />
+
+        {lastResult && (
+          <details className="raw-json-details">
+            <summary>Raw sweep data</summary>
+            <pre className="mono-pre" style={{ marginTop: 8 }}>
+              {JSON.stringify(lastResult, null, 2)}
+            </pre>
+          </details>
+        )}
       </section>
     </div>
   );

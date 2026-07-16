@@ -1747,6 +1747,185 @@ details.raw-json-details summary:hover {
   gap: 6px;
 }
 
+/* Sweep FR review and accepted-result workflow */
+.sweep-review-modal {
+  width: min(760px, 92vw);
+  max-width: 760px;
+  max-height: 90vh;
+  overflow: auto;
+}
+
+.sweep-review-copy {
+  margin-bottom: 14px;
+}
+
+.sweep-review-modal .modal-actions {
+  position: sticky;
+  bottom: -28px;
+  margin: 18px -32px -28px;
+  padding: 14px 32px;
+  border-top: 1px solid var(--stroke);
+  background: var(--bg-elevated);
+}
+
+.sweep-accept-progress {
+  margin-top: 14px;
+  padding: 11px 12px;
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.sweep-accept-progress.is-complete {
+  border-color: color-mix(in srgb, var(--status-idle) 45%, var(--stroke));
+  background: var(--status-idle-soft);
+}
+
+.sweep-accept-progress-copy {
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 14px;
+  align-items: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.sweep-accept-progress-copy strong {
+  color: var(--text-strong);
+}
+
+.sweep-accept-progress-track {
+  height: 4px;
+  margin-top: 9px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--surface-3);
+}
+
+.sweep-accept-progress-track span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-strong);
+  transition: width var(--dur-med) var(--ease-out);
+}
+
+.sweep-accept-progress.is-complete .sweep-accept-progress-track span {
+  background: var(--status-idle);
+}
+
+.sweep-result-page {
+  min-height: calc(100vh - 72px);
+  display: flex;
+  flex-direction: column;
+}
+
+.sweep-result-page-heading,
+.sweep-result-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.sweep-result-page-heading {
+  margin-bottom: 18px;
+}
+
+.sweep-result-page-heading .section-heading {
+  margin-bottom: 3px;
+}
+
+.sweep-result {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.sweep-result.compact {
+  display: block;
+}
+
+.sweep-result-header time {
+  display: block;
+  margin-top: 3px;
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 25px;
+  padding: 3px 9px;
+  border: 1px solid var(--stroke);
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: var(--surface-2);
+  font-size: 11px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.status-badge.is-success {
+  color: var(--status-idle);
+  border-color: color-mix(in srgb, var(--status-idle) 45%, var(--stroke));
+  background: var(--status-idle-soft);
+}
+
+.status-badge.is-danger {
+  color: var(--danger-text);
+  border-color: color-mix(in srgb, var(--danger) 45%, var(--stroke));
+  background: var(--danger-soft);
+}
+
+.sweep-result-chart {
+  flex: 1;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  padding: 14px;
+  border: 1px solid var(--level-border);
+  border-radius: 9px;
+  background: var(--level-bg);
+}
+
+.sweep-result-chart .overlay-chart-wrap {
+  width: 100%;
+}
+
+.sweep-result.compact .sweep-result-chart {
+  min-height: 220px;
+  padding: 8px;
+}
+
+.sweep-result-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.metric-value.sweep-result-mode {
+  font-size: 14px;
+  text-transform: capitalize;
+}
+
+@media (max-width: 720px) {
+  .sweep-accept-progress-copy,
+  .sweep-result-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .sweep-result-page-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .sweep-result-chart {
+    min-height: 280px;
+  }
+}
+
 /* ── Reduced motion ──
    Movement and infinite loops collapse; quick opacity/color feedback stays. */
 @media (prefers-reduced-motion: reduce) {

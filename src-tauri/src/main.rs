@@ -524,6 +524,31 @@ fn ensure_output_dir(path: String) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn write_text_export(
+    output_dir: String,
+    filename: String,
+    content: String,
+) -> Result<String, String> {
+    let dir = std::path::Path::new(&output_dir);
+    validate_output_path(dir)?;
+
+    let filename_path = std::path::Path::new(&filename);
+    if filename.is_empty()
+        || filename_path.is_absolute()
+        || filename_path.file_name() != Some(std::ffi::OsStr::new(&filename))
+    {
+        return Err(format!("Invalid export filename: '{filename}'"));
+    }
+
+    std::fs::create_dir_all(dir)
+        .map_err(|e| format!("failed to create output directory {}: {e}", dir.display()))?;
+    let path = dir.join(filename_path);
+    std::fs::write(&path, content)
+        .map_err(|e| format!("failed to write export {}: {e}", path.display()))?;
+    Ok(path.to_string_lossy().into_owned())
+}
+
+#[tauri::command]
 fn write_squiglink_combined(
     output_path: String,
     freqs: Vec<f32>,
@@ -691,6 +716,7 @@ fn main() {
             stop_test,
             get_runtime_status,
             ensure_output_dir,
+            write_text_export,
             write_squiglink_combined,
             save_sweep_combined_plots,
             db_list_devices,
