@@ -10,6 +10,53 @@ import {
 } from "../components/form-fields";
 import { MetricCard } from "../components/metric-card";
 import { Modal } from "../components/modal";
+import { SweepResultView } from "../components/sweep-result-view";
+
+vi.mock("../components/overlay-chart", async () => {
+  const actual = await vi.importActual<typeof import("../components/overlay-chart")>(
+    "../components/overlay-chart",
+  );
+  return {
+    ...actual,
+    OverlayChart: vi.fn(() => <div data-testid="overlay-chart" />),
+  };
+});
+
+vi.mock("../components/chart-legend", () => ({
+  ChartLegend: vi.fn(({ items }: { items: Array<{ id: string; label: string }> }) => (
+    <div data-testid="chart-legend">{items.map((item) => item.label).join("|")}</div>
+  )),
+}));
+
+vi.mock("../components/empty-state", () => ({
+  EmptyState: vi.fn(
+    ({ message, hint }: { message: string; hint?: string }) => (
+      <div data-testid="empty-state">
+        <span>{message}</span>
+        {hint ? <span>{hint}</span> : null}
+      </div>
+    ),
+  )),
+}));
+
+function makeSweepResult(overrides: Record<string, unknown> = {}) {
+  return {
+    test: "sweep_fr",
+    timestamp: "2026-07-17T12:00:00Z",
+    params: {},
+    metrics: {},
+    data: {
+      freqs: [100, 1000],
+      left_mag_db_all: [[0, 0], [1, 1]],
+      right_mag_db_all: [[2, 2], [3, 3], [4, 4]],
+      left_mag_db_avg: [0.5, 0.5],
+      right_mag_db_avg: [3, 3],
+      mag_db_avg_all: [1.75, 1.75],
+      ...overrides,
+    },
+    files: {},
+  };
+}
 
 describe("ChipGroup", () => {
   const options = [
@@ -109,6 +156,56 @@ describe("EmptyState", () => {
     render(<EmptyState message="Nothing yet" hint="Run a test first" />);
     expect(screen.getByText("Nothing yet")).toBeInTheDocument();
     expect(screen.getByText("Run a test first")).toBeInTheDocument();
+  });
+});
+
+describe("SweepResultView", () => {
+  it("renders accepted runs with channel colors, hides them from the legend, and skips per-channel single-run overlays", async () => {
+    const { rerender } = render(
+      <SweepResultView result={makeSweepResult()} status="final" />,
+    );
+
+    const overlayMock = vi.mocked(OverlayChart);
+    const firstSeries = overlayMock.mock.calls[0]?.[0]?.series ?? [];
+    expect(firstSeries).toHaveLength(8);
+    expect(
+      firstSeries
+        .filter((series) => series.id.includes("-run-"))
+        .every((series) => series.opacity === 0.28),
+    ).toBe(true);
+    expect(
+      firstSeries
+        .filter((series) => series.id.includes("-avg"))
+        .every((series) => series.opacity === 1),
+    ).toBe(true);
+    const overall = firstSeries.find((series) => series.id === "sweep-all-avg");
+    const leftAverage = firstSeries.find((series) => series.id === "sweep-left-avg");
+    expect(overall?.dash).toBe("6 3");
+    expect(overall?.dash).not.toBe(leftAverage?.dash);
+
+    expect(screen.getByTestId("chart-legend")).toHaveTextContent(
+      "All average|Left average|Right average",
+    );
+
+    rerender(
+      <SweepResultView
+        result={makeSweepResult({
+          left_mag_db_all: [[0, 0]],
+          left_mag_db_avg: [0, 0],
+          right_mag_db_all: [[2, 2], [3, 3], [4, 4]],
+          right_mag_db_avg: [3, 3],
+        })}
+        status="final"
+      />,
+    );
+
+    const secondSeries = overlayMock.mock.calls.at(-1)?.[0]?.series ?? [];
+    expect(
+      secondSeries.filter((series) => series.id.startsWith("sweep-left-run-")).length,
+    ).toBe(0);
+    expect(
+      secondSeries.filter((series) => series.id.startsWith("sweep-right-run-")).length,
+    ).toBe(3);
   });
 });
 
