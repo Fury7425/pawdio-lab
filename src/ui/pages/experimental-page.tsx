@@ -40,9 +40,7 @@ export function ExperimentalPage() {
   const onRunThd = () => ctx.run(ctx.runThdTest());
   const onRunIsolation = () => ctx.run(ctx.runIsolationTest());
   const experimentalResults = ctx.results.filter((entry) =>
-    ["balance", "crosstalk", "thd", "isolation"].includes(
-      entry.payload.test,
-    ),
+    ["balance", "crosstalk", "thd", "isolation"].includes(entry.payload.test),
   );
 
   function exportExperimentalJson() {
@@ -62,10 +60,7 @@ export function ExperimentalPage() {
       savedAt: entry.savedAt ?? null,
       ...entry.payload,
     }));
-    downloadCsv(
-      `experimental_${exportTimestampTag()}.csv`,
-      objectsToCsv(rows),
-    );
+    downloadCsv(`experimental_${exportTimestampTag()}.csv`, objectsToCsv(rows));
   }
 
   return (

@@ -25,9 +25,7 @@ function averageCurves(curves: number[][]): number[] {
   if (usable.length === 0) return [];
   const length = Math.min(...usable.map((curve) => curve.length));
   return Array.from({ length }, (_, index) => {
-    return (
-      usable.reduce((sum, curve) => sum + curve[index], 0) / usable.length
-    );
+    return usable.reduce((sum, curve) => sum + curve[index], 0) / usable.length;
   });
 }
 

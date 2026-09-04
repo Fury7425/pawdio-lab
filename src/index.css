@@ -1257,6 +1257,14 @@ body {
     opacity var(--dur-fast) var(--ease-out);
 }
 
+/* Flipped by DropdownMenu when the trigger sits too close to the top of the
+   window for the menu to fit above it. */
+.dropdown-menu.is-below {
+  top: calc(100% + 6px);
+  bottom: auto;
+  transform-origin: top right;
+}
+
 @starting-style {
   .dropdown-menu {
     opacity: 0;
@@ -1940,6 +1948,14 @@ details.raw-json-details summary:hover {
     animation: none;
   }
 
+  /* The button spinner is an infinite loop like the rest, so it stops too.
+     The border stays as a static ring, keeping the busy state visible. */
+  .skin-btn.is-loading::after {
+    animation: none;
+    border-top-color: var(--button-text);
+    opacity: 0.5;
+  }
+
   .modal-progress-pulse {
     width: 100%;
     opacity: 1;
@@ -1968,4 +1984,109 @@ details.raw-json-details summary:hover {
   .mode-select-btn:active {
     transform: none;
   }
+}
+
+/* Curve view controls -------------------------------------------------------
+   Smoothing, normalisation, compensation and bounds, shared by the sweep view
+   and anywhere else a measured curve is drawn. */
+
+.curve-view-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.curve-view-controls .chip-row {
+  align-items: center;
+}
+
+.curve-view-controls .chip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-row.inline-field {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-row.inline-field .field-label {
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.skin-input.compact {
+  width: auto;
+  max-width: 92px;
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.compact-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.field-error {
+  margin: 0;
+  color: var(--danger, #d9534f);
+  font-size: 12px;
+}
+
+/* Alignment diagnostics ---------------------------------------------------- */
+
+.diagnostic-grid {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  margin-top: 12px;
+}
+
+.diagnostic-cell {
+  border: 1px solid var(--card-border, var(--chip-border));
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.diagnostic-cell dt {
+  color: var(--text-muted);
+  font-size: 11px;
+  margin: 0 0 2px;
+}
+
+.diagnostic-cell dd {
+  margin: 0;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Shortcut editor ---------------------------------------------------------- */
+
+.shortcut-table {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.shortcut-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.shortcut-row .field-label {
+  font-size: 13px;
+}
+
+.shortcut-key {
+  min-width: 132px;
+  font-variant-numeric: tabular-nums;
+}
+
+.shortcut-row.is-conflicting .shortcut-key {
+  border-color: var(--danger, #d9534f);
 }

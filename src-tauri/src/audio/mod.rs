@@ -22,6 +22,13 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 use thiserror::Error;
 
+pub mod alignment;
+
+use alignment::{
+    align_recording, build_measurement_layout, AlignedMeasurement, AlignmentDiagnostics,
+    AlignmentSettings, MeasurementProfile,
+};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AudioSettings {
@@ -33,6 +40,18 @@ pub struct AudioSettings {
     pub chunk_size: u32,
     #[serde(default)]
     pub item_name: String,
+    /// Wireless capture mode.
+    ///
+    /// A Bluetooth link resamples and buffers, so its clock never matches the
+    /// capture clock exactly. Turning this on wraps every excitation in timing
+    /// markers, widens the silences around it, and measures the drift so the
+    /// recorded window can be corrected before analysis.
+    ///
+    /// The latency test deliberately ignores this flag. Its entire job is to
+    /// report the delay a link adds, and marker-locked alignment would remove
+    /// the very quantity it exists to measure.
+    #[serde(default)]
+    pub bluetooth_mode: bool,
 }
 
 impl Default for AudioSettings {
@@ -45,6 +64,7 @@ impl Default for AudioSettings {
             duration_secs: 0.5,
             chunk_size: 1024,
             item_name: String::new(),
+            bluetooth_mode: false,
         }
     }
 }
@@ -399,6 +419,9 @@ struct AudioRuntime {
     input_format: SampleFormat,
     output_rate: u32,
     input_rate: u32,
+    /// Copied from settings so every capture helper can reach it without
+    /// threading the whole settings struct through.
+    bluetooth_mode: bool,
 }
 
 impl AudioEngine {
@@ -442,6 +465,14 @@ impl AudioEngine {
         })
     }
 
+    /// Round-trip latency.
+    ///
+    /// This test deliberately ignores `bluetooth_mode`. Every other test treats
+    /// link delay as an obstacle and removes it; here the delay is the
+    /// measurement. Wrapping the signal in timing markers, widening the
+    /// silences, or picking an analysis window by energy would all change the
+    /// number this test exists to report, so the wireless path stays out of it
+    /// and the raw signal is timed exactly as it was before.
     pub fn run_latency_test(
         settings: AudioSettings,
         request: LatencyTestRequest,
@@ -788,6 +819,7 @@ impl AudioEngine {
         let mut mags_r: Vec<Vec<f32>> = Vec::new();
         let mut delays_l: Vec<Option<f32>> = Vec::new();
         let mut delays_r: Vec<Option<f32>> = Vec::new();
+        let mut last_diagnostics: Option<AlignmentDiagnostics> = None;
 
         for i in 1..=request.repeats {
             if cancel.load(Ordering::SeqCst) {
@@ -807,71 +839,94 @@ impl AudioEngine {
                 chirp.clone()
             };
 
-            let (rec_l, rec_r) = if request.mono_mode {
-                let left = if mono_side != SweepMonoSide::Right {
-                    let captured_l = runtime.play_and_record_channels(
-                        chirp.clone(),
-                        OutputRouting::LeftOnly,
-                        request.duration_secs + 0.5,
-                    )?;
-                    channel_or_mix(&captured_l, 0)
-                } else {
-                    Vec::new()
-                };
-
-                let right = if mono_side != SweepMonoSide::Left {
-                    let captured_r = runtime.play_and_record_channels(
-                        chirp.clone(),
-                        OutputRouting::RightOnly,
-                        request.duration_secs + 0.5,
-                    )?;
-                    if captured_r.len() > 1 {
-                        channel_or_mix(&captured_r, 1)
+            // Wireless captures take the marker-locked path, which measures the
+            // clock drift over the sweep and undoes it. Wired captures keep the
+            // original single-delay alignment, unchanged.
+            let (aligned_l, aligned_r, delay_l, delay_r) = if runtime.bluetooth_mode {
+                capture_marked_sweep(
+                    &runtime,
+                    &chirp,
+                    &ref_signal,
+                    request.mono_mode,
+                    mono_side,
+                    &mut last_diagnostics,
+                )?
+            } else {
+                let (rec_l, rec_r) = if request.mono_mode {
+                    let left = if mono_side != SweepMonoSide::Right {
+                        let captured_l = runtime.play_and_record_channels(
+                            chirp.clone(),
+                            OutputRouting::LeftOnly,
+                            request.duration_secs + 0.5,
+                        )?;
+                        channel_or_mix(&captured_l, 0)
                     } else {
-                        channel_or_mix(&captured_r, 0)
-                    }
+                        Vec::new()
+                    };
+
+                    let right = if mono_side != SweepMonoSide::Left {
+                        let captured_r = runtime.play_and_record_channels(
+                            chirp.clone(),
+                            OutputRouting::RightOnly,
+                            request.duration_secs + 0.5,
+                        )?;
+                        if captured_r.len() > 1 {
+                            channel_or_mix(&captured_r, 1)
+                        } else {
+                            channel_or_mix(&captured_r, 0)
+                        }
+                    } else {
+                        Vec::new()
+                    };
+                    (left, right)
                 } else {
+                    let captured = runtime.play_and_record_channels(
+                        chirp.clone(),
+                        OutputRouting::Both,
+                        request.duration_secs + 0.5,
+                    )?;
+                    let left = channel_or_mix(&captured, 0);
+                    let right = if captured.len() > 1 {
+                        channel_or_mix(&captured, 1)
+                    } else {
+                        left.clone()
+                    };
+                    (left, right)
+                };
+
+                let delay_l = if rec_l.is_empty() {
+                    None
+                } else {
+                    find_delay_ms(&rec_l, &ref_signal, runtime.input_rate)
+                };
+                let delay_r = if rec_r.is_empty() {
+                    None
+                } else {
+                    find_delay_ms(&rec_r, &ref_signal, runtime.input_rate)
+                };
+
+                let aligned_l = if rec_l.is_empty() {
                     Vec::new()
-                };
-                (left, right)
-            } else {
-                let captured = runtime.play_and_record_channels(
-                    chirp.clone(),
-                    OutputRouting::Both,
-                    request.duration_secs + 0.5,
-                )?;
-                let left = channel_or_mix(&captured, 0);
-                let right = if captured.len() > 1 {
-                    channel_or_mix(&captured, 1)
                 } else {
-                    left.clone()
+                    align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate)
                 };
-                (left, right)
+                let aligned_r = if rec_r.is_empty() {
+                    Vec::new()
+                } else {
+                    align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate)
+                };
+                (aligned_l, aligned_r, delay_l, delay_r)
             };
 
-            let delay_l = if rec_l.is_empty() {
-                None
-            } else {
-                find_delay_ms(&rec_l, &ref_signal, runtime.input_rate)
-            };
-            let delay_r = if rec_r.is_empty() {
-                None
-            } else {
-                find_delay_ms(&rec_r, &ref_signal, runtime.input_rate)
-            };
             delays_l.push(delay_l);
             delays_r.push(delay_r);
 
-            let aligned_l =
-                align_to_reference(&rec_l, ref_signal.len(), delay_l, runtime.input_rate);
-            let aligned_r =
-                align_to_reference(&rec_r, ref_signal.len(), delay_r, runtime.input_rate);
-            let mag_db_l = if rec_l.is_empty() {
+            let mag_db_l = if aligned_l.is_empty() {
                 Vec::new()
             } else {
                 frequency_response_curve(&aligned_l, &ref_signal, runtime.input_rate, &grid)
             };
-            let mag_db_r = if rec_r.is_empty() {
+            let mag_db_r = if aligned_r.is_empty() {
                 Vec::new()
             } else {
                 frequency_response_curve(&aligned_r, &ref_signal, runtime.input_rate, &grid)
@@ -952,11 +1007,13 @@ impl AudioEngine {
                 "mono_side": request.mono_side,
                 "save_plots": request.save_plots,
                 "save_squiglink": request.save_squiglink,
-                "output_dir": request.output_dir.clone()
+                "output_dir": request.output_dir.clone(),
+                "bluetooth_mode": runtime.bluetooth_mode
             }),
             metrics: json!({
                 "delay_ms_left": avg_delay_l,
-                "delay_ms_right": avg_delay_r
+                "delay_ms_right": avg_delay_r,
+                "alignment": last_diagnostics
             }),
             data: json!({
                 "freqs": grid,
@@ -1112,8 +1169,12 @@ impl AudioEngine {
                 break;
             }
             let signal = generate_sine(*freq, tone_duration, amp, runtime.output_rate);
-            let recorded =
-                runtime.play_and_record_mono(signal, OutputRouting::Both, tone_duration + 0.3)?;
+            let recorded = runtime.play_and_record_mono(
+                signal,
+                OutputRouting::Both,
+                runtime.tone_record_secs(tone_duration),
+            )?;
+            let recorded = runtime.steady_window(recorded, tone_duration);
             let thd = compute_thd(&recorded, *freq, runtime.input_rate, 10);
             items.push(json!({"freq": *freq, "thd_percent": thd}));
             let _ = app.emit(
@@ -1164,14 +1225,19 @@ impl AudioEngine {
         let rec_l = runtime.play_and_record_mono(
             signal.clone(),
             OutputRouting::LeftOnly,
-            duration + 0.3,
+            runtime.tone_record_secs(duration),
         )?;
-        std::thread::sleep(Duration::from_secs_f32(settle));
+        let rec_l = runtime.steady_window(rec_l, duration);
+        std::thread::sleep(Duration::from_secs_f32(settle + runtime.settle_secs()));
         if cancel.load(Ordering::SeqCst) {
             return Err(AudioError::Cancelled);
         }
-        let rec_r =
-            runtime.play_and_record_mono(signal, OutputRouting::RightOnly, duration + 0.3)?;
+        let rec_r = runtime.play_and_record_mono(
+            signal,
+            OutputRouting::RightOnly,
+            runtime.tone_record_secs(duration),
+        )?;
+        let rec_r = runtime.steady_window(rec_r, duration);
 
         let level_l = dbfs(&rec_l);
         let level_r = dbfs(&rec_r);
@@ -1218,15 +1284,22 @@ impl AudioEngine {
         } else {
             OutputRouting::LeftOnly
         };
-        let captured = runtime.play_and_record_channels(signal.clone(), routing, duration + 0.3)?;
+        let captured = runtime.play_and_record_channels(
+            signal.clone(),
+            routing,
+            runtime.tone_record_secs(duration),
+        )?;
         let (rec_primary, rec_leak) = if captured.len() > 1 {
+            // Raw channels, never channel_or_mix: the leak channel is supposed
+            // to be near-silent, and a dead-channel fallback would hand it the
+            // driven signal and report ~0 dB crosstalk for perfect isolation.
             if direction == "RtoL" {
-                (channel_or_mix(&captured, 1), channel_or_mix(&captured, 0))
+                (channel_raw(&captured, 1), channel_raw(&captured, 0))
             } else {
-                (channel_or_mix(&captured, 0), channel_or_mix(&captured, 1))
+                (channel_raw(&captured, 0), channel_raw(&captured, 1))
             }
         } else {
-            std::thread::sleep(Duration::from_secs_f32(settle));
+            std::thread::sleep(Duration::from_secs_f32(settle + runtime.settle_secs()));
             if cancel.load(Ordering::SeqCst) {
                 return Err(AudioError::Cancelled);
             }
@@ -1236,10 +1309,15 @@ impl AudioEngine {
                 OutputRouting::RightOnly
             };
             let primary = mixdown_channels(&captured);
-            let leak = runtime.play_and_record_mono(signal, leak_routing, duration + 0.3)?;
+            let leak = runtime.play_and_record_mono(
+                signal,
+                leak_routing,
+                runtime.tone_record_secs(duration),
+            )?;
             (primary, leak)
         };
 
+        let (rec_primary, rec_leak) = runtime.steady_window_pair(rec_primary, rec_leak, duration);
         let primary_rms = rms(&rec_primary);
         let leak_rms = rms(&rec_leak);
         let crosstalk_db = 20.0 * (leak_rms.max(1e-12) / primary_rms.max(1e-12)).log10();
@@ -1275,12 +1353,21 @@ impl AudioEngine {
             return Err(AudioError::Cancelled);
         }
         let noise = generate_pink_noise(duration, amp, runtime.output_rate);
-        let rec_in =
-            runtime.play_and_record_mono(noise.clone(), OutputRouting::Both, duration + 0.3)?;
+        let rec_in = runtime.play_and_record_mono(
+            noise.clone(),
+            OutputRouting::Both,
+            runtime.tone_record_secs(duration),
+        )?;
+        let rec_in = runtime.steady_window(rec_in, duration);
         if cancel.load(Ordering::SeqCst) {
             return Err(AudioError::Cancelled);
         }
-        let rec_out = runtime.play_and_record_mono(noise, OutputRouting::Both, duration + 0.3)?;
+        let rec_out = runtime.play_and_record_mono(
+            noise,
+            OutputRouting::Both,
+            runtime.tone_record_secs(duration),
+        )?;
+        let rec_out = runtime.steady_window(rec_out, duration);
 
         let inside_db = dbfs(&rec_in);
         let outside_db = dbfs(&rec_out);
@@ -1333,26 +1420,62 @@ impl AudioEngine {
                 AncCaptureSide::Left => OutputRouting::LeftOnly,
                 AncCaptureSide::Right => OutputRouting::RightOnly,
             };
-            let captured = runtime.play_and_record_channels(chirp, routing, duration + 0.5)?;
-            // Reference-aligned magnitude curve for one recorded channel.
-            let curve = |rec: &[f32]| -> Vec<f32> {
-                let delay = find_delay_ms(rec, &ref_signal, runtime.input_rate);
-                let aligned = align_to_reference(rec, ref_signal.len(), delay, runtime.input_rate);
-                frequency_response_curve(&aligned, &ref_signal, runtime.input_rate, &grid)
+            // Wireless captures are played inside a marker layout so the sweep
+            // window can be drift-corrected; wired captures keep the original
+            // single-delay alignment.
+            let (captured, marked_layout) = if runtime.bluetooth_mode {
+                let (channels, layout) =
+                    runtime.play_and_record_marked(chirp, &ref_signal, routing)?;
+                (channels, Some(layout))
+            } else {
+                (
+                    runtime.play_and_record_channels(chirp, routing, duration + 0.5)?,
+                    None,
+                )
             };
+            // Aligned magnitude curve for one recorded channel.
+            let curve = |rec: &[f32]| -> Result<Vec<f32>, AudioError> {
+                let aligned = match marked_layout.as_ref() {
+                    Some(layout) => runtime.align_channel(layout, rec)?.samples,
+                    None => {
+                        let delay = find_delay_ms(rec, &ref_signal, runtime.input_rate);
+                        align_to_reference(rec, ref_signal.len(), delay, runtime.input_rate)
+                    }
+                };
+                Ok(frequency_response_curve(
+                    &aligned,
+                    &ref_signal,
+                    runtime.input_rate,
+                    &grid,
+                ))
+            };
+            // A both-sides capture on a single-mic rig legitimately mirrors one
+            // channel onto the other, but a genuinely broken mic looks
+            // identical, so say so rather than shipping two identical curves as
+            // if both sides were measured.
+            let mut mirrored_side: Option<&str> = None;
             match request.capture_side {
                 AncCaptureSide::Both => {
+                    if captured.len() > 1 {
+                        if is_dead_channel(&captured[1]) {
+                            mirrored_side = Some("right");
+                        } else if is_dead_channel(&captured[0]) {
+                            mirrored_side = Some("left");
+                        }
+                    } else {
+                        mirrored_side = Some("right");
+                    }
                     let rec_l = channel_or_mix(&captured, 0);
                     let rec_r = if captured.len() > 1 {
                         channel_or_mix(&captured, 1)
                     } else {
                         rec_l.clone()
                     };
-                    mags_l.push(curve(&rec_l));
-                    mags_r.push(curve(&rec_r));
+                    mags_l.push(curve(&rec_l)?);
+                    mags_r.push(curve(&rec_r)?);
                 }
                 AncCaptureSide::Left => {
-                    mags_l.push(curve(&channel_or_mix(&captured, 0)));
+                    mags_l.push(curve(&channel_or_mix(&captured, 0))?);
                 }
                 AncCaptureSide::Right => {
                     let rec_r = if captured.len() > 1 {
@@ -1360,9 +1483,14 @@ impl AudioEngine {
                     } else {
                         channel_or_mix(&captured, 0)
                     };
-                    mags_r.push(curve(&rec_r));
+                    mags_r.push(curve(&rec_r)?);
                 }
             }
+            let mirror_note = match mirrored_side {
+                Some(side) => format!(" — {side} channel silent, mirrored"),
+                None => String::new(),
+            };
+            let message = format!("Sweep {i}/{repeats} done{mirror_note}");
             app.emit(
                 "test-progress",
                 TestProgressEvent {
@@ -1370,7 +1498,7 @@ impl AudioEngine {
                     current: i,
                     total: repeats,
                     value: None,
-                    message: format!("Sweep {i}/{repeats} done"),
+                    message,
                 },
             )
             .ok();
@@ -1383,6 +1511,12 @@ impl AudioEngine {
             timestamp: timestamp_string(),
         })
     }
+}
+
+/// One channel's aligned excitation window plus how the alignment went.
+struct CapturedExcitation {
+    samples: Vec<f32>,
+    diagnostics: Option<AlignmentDiagnostics>,
 }
 
 impl AudioRuntime {
@@ -1399,6 +1533,7 @@ impl AudioRuntime {
             choose_input_config(&input_device, settings.input_sample_rate)?;
 
         Ok(Self {
+            bluetooth_mode: settings.bluetooth_mode,
             output_rate: output_config.sample_rate.0,
             input_rate: input_config.sample_rate.0,
             output_device,
@@ -1418,6 +1553,132 @@ impl AudioRuntime {
     ) -> Result<Vec<f32>, AudioError> {
         let channels = self.play_and_record_channels(signal, routing, record_duration_secs)?;
         Ok(mixdown_channels(&channels))
+    }
+
+    /// Timing padding for the current mode.
+    fn measurement_profile(&self) -> MeasurementProfile {
+        MeasurementProfile::for_mode(self.bluetooth_mode)
+    }
+
+    /// Extra settling the steady-state tone tests should allow before they
+    /// trust the recorded level. Zero on a wired path.
+    fn settle_secs(&self) -> f32 {
+        self.measurement_profile().settle_secs
+    }
+
+    /// Recording time to add past the end of playback.
+    fn record_margin_secs(&self) -> f32 {
+        self.measurement_profile().record_margin_secs
+    }
+
+    /// How long to record for a steady-state tone of `tone_secs`.
+    ///
+    /// A wired path answers within milliseconds, so a fixed 0.3 s tail is
+    /// plenty. A wireless path can take a third of a second just to deliver the
+    /// first sample, which would truncate the tone before it finished.
+    fn tone_record_secs(&self, tone_secs: f32) -> f32 {
+        if self.bluetooth_mode {
+            tone_secs + self.record_margin_secs()
+        } else {
+            tone_secs + 0.3
+        }
+    }
+
+    /// Narrow a capture down to the part that actually holds the tone.
+    ///
+    /// On a wireless link the recording opens with link latency and closes
+    /// with the codec tail, and averaging those in drags every level reading
+    /// down. Picking the strongest window of the expected length sidesteps the
+    /// problem without needing to know the delay. Wired captures are returned
+    /// untouched, so their numbers do not move.
+    fn steady_window(&self, recorded: Vec<f32>, tone_secs: f32) -> Vec<f32> {
+        if !self.bluetooth_mode {
+            return recorded;
+        }
+        strongest_window(&recorded, self.steady_window_len(tone_secs))
+    }
+
+    /// Same, for two channels that must share one window.
+    ///
+    /// Crosstalk divides one channel by the other, so both have to describe the
+    /// same slice of time. The window is chosen from the driven channel, since
+    /// the leak channel is meant to be near-silent and has no peak worth
+    /// finding.
+    fn steady_window_pair(
+        &self,
+        primary: Vec<f32>,
+        leak: Vec<f32>,
+        tone_secs: f32,
+    ) -> (Vec<f32>, Vec<f32>) {
+        if !self.bluetooth_mode {
+            return (primary, leak);
+        }
+        let want = self.steady_window_len(tone_secs);
+        let start = strongest_window_start(&primary, want);
+        (
+            window_at(&primary, start, want),
+            window_at(&leak, start, want),
+        )
+    }
+
+    fn steady_window_len(&self, tone_secs: f32) -> usize {
+        (tone_secs * 0.7 * self.input_rate as f32).round() as usize
+    }
+
+    /// Play an excitation wrapped in timing markers and record it.
+    ///
+    /// Two layouts are built from the same profile: one at the output rate to
+    /// play, and one at the input rate to search. They describe the same signal
+    /// in time, which is what lets the markers be found in a recording captured
+    /// at a different sample rate than it was played at.
+    fn play_and_record_marked(
+        &self,
+        excitation_out: Vec<f32>,
+        reference_in: &[f32],
+        routing: OutputRouting,
+    ) -> Result<(Vec<Vec<f32>>, alignment::MeasurementLayout), AudioError> {
+        let profile = self.measurement_profile();
+        let playback_layout = build_measurement_layout(self.output_rate, &excitation_out, profile);
+        let analysis_layout = build_measurement_layout(self.input_rate, reference_in, profile);
+
+        let record_secs = playback_layout.playback_duration_secs() + profile.record_margin_secs;
+        let captured =
+            self.play_and_record_channels(playback_layout.playback, routing, record_secs)?;
+        Ok((captured, analysis_layout))
+    }
+
+    /// Lock one recorded channel onto the markers and return the corrected
+    /// excitation window. An alignment that fails its confidence or drift
+    /// budget becomes a recording error rather than a quietly wrong curve.
+    fn align_channel(
+        &self,
+        layout: &alignment::MeasurementLayout,
+        channel: &[f32],
+    ) -> Result<CapturedExcitation, AudioError> {
+        let settings = AlignmentSettings::for_mode(self.bluetooth_mode);
+        match align_recording(channel, layout, settings, self.bluetooth_mode) {
+            Ok(AlignedMeasurement {
+                samples,
+                diagnostics,
+            }) => Ok(CapturedExcitation {
+                samples,
+                diagnostics: Some(diagnostics),
+            }),
+            Err(error) => {
+                // A transient failure is worth saying so about: the user can
+                // simply run the sweep again, whereas a short recording means
+                // something about the setup has to change first.
+                let advice = if error.failure.is_retryable() {
+                    " Run the sweep again."
+                } else {
+                    ""
+                };
+                Err(AudioError::RecordingError(format!(
+                    "{}{advice}",
+                    error.message()
+                )))
+            }
+        }
     }
 
     fn play_and_record_channels(
@@ -1792,23 +2053,96 @@ fn average_curves(curves: &[Vec<f32>]) -> Vec<f32> {
     acc
 }
 
+/// Peak below which a capture channel counts as digital silence rather than a
+/// quiet signal. ~-120 dBFS: under the noise floor of any real analog capture,
+/// so only a channel the device wired to nothing lands here.
+const DEAD_CHANNEL_PEAK: f32 = 1e-6;
+
+/// A capture channel the device wired to nothing: every sample is digital
+/// silence. Real mic input, even in a quiet room, sits far above this.
+/// Start of the highest-energy contiguous window of `want` samples.
+///
+/// Uses a running sum, so the search costs one pass regardless of how long the
+/// recording is.
+fn strongest_window_start(samples: &[f32], want: usize) -> usize {
+    if want == 0 || samples.len() <= want {
+        return 0;
+    }
+    let mut energy: f32 = samples.iter().take(want).map(|value| value * value).sum();
+    let mut best_energy = energy;
+    let mut best_start = 0usize;
+    for start in 1..=(samples.len() - want) {
+        let leaving = samples[start - 1];
+        let entering = samples[start + want - 1];
+        energy += entering * entering - leaving * leaving;
+        if energy > best_energy {
+            best_energy = energy;
+            best_start = start;
+        }
+    }
+    best_start
+}
+
+/// The highest-energy contiguous window of `want` samples. Returns the whole
+/// input when it is already short enough.
+fn strongest_window(samples: &[f32], want: usize) -> Vec<f32> {
+    if want == 0 || samples.len() <= want {
+        return samples.to_vec();
+    }
+    let start = strongest_window_start(samples, want);
+    samples[start..start + want].to_vec()
+}
+
+/// Slice `samples` to the window starting at `start`, padding nothing.
+fn window_at(samples: &[f32], start: usize, want: usize) -> Vec<f32> {
+    if want == 0 || samples.len() <= want {
+        return samples.to_vec();
+    }
+    let begin = start.min(samples.len().saturating_sub(want));
+    samples[begin..begin + want].to_vec()
+}
+
+fn is_dead_channel(channel: &[f32]) -> bool {
+    channel
+        .iter()
+        .all(|sample| sample.abs() < DEAD_CHANNEL_PEAK)
+}
+
+/// Verbatim channel access, with no dead-channel fallback.
+///
+/// Use this wherever a near-silent channel *is* the measurement — crosstalk
+/// leak, isolation — because substituting the live channel there does not
+/// recover a mono device, it fabricates a result: a perfectly isolated leak
+/// channel would come back holding the driven signal and report 0 dB
+/// crosstalk. Use [`channel_or_mix`] only where silence means "absent".
+fn channel_raw(channels: &[Vec<f32>], channel: usize) -> Vec<f32> {
+    channels.get(channel).cloned().unwrap_or_default()
+}
+
 fn mixdown_channels(channels: &[Vec<f32>]) -> Vec<f32> {
     if channels.is_empty() {
         return Vec::new();
     }
-    let frames = channels
+    // ponytail: many "stereo" USB mics feed channel 0 only and leave the rest
+    // at digital silence. Mixing a dead channel in costs 6 dB, so drop it.
+    let live: Vec<&Vec<f32>> = channels
         .iter()
-        .map(|channel| channel.len())
-        .max()
-        .unwrap_or(0);
+        .filter(|channel| !is_dead_channel(channel))
+        .collect();
+    let used: Vec<&Vec<f32>> = if live.is_empty() {
+        channels.iter().collect()
+    } else {
+        live
+    };
+    let frames = used.iter().map(|channel| channel.len()).max().unwrap_or(0);
     if frames == 0 {
         return Vec::new();
     }
 
     let mut mono = Vec::with_capacity(frames);
-    let n = channels.len() as f32;
+    let n = used.len() as f32;
     for idx in 0..frames {
-        let sum: f32 = channels
+        let sum: f32 = used
             .iter()
             .map(|channel| channel.get(idx).copied().unwrap_or(0.0))
             .sum();
@@ -1821,7 +2155,12 @@ fn channel_or_mix(channels: &[Vec<f32>], channel: usize) -> Vec<f32> {
     if channels.is_empty() {
         return Vec::new();
     }
-    if channel < channels.len() && !channels[channel].is_empty() {
+    // A dead channel counts as absent: a mono mic reported as stereo would
+    // otherwise render the right curve as pure silence.
+    if channel < channels.len()
+        && !channels[channel].is_empty()
+        && !is_dead_channel(&channels[channel])
+    {
         return channels[channel].clone();
     }
     mixdown_channels(channels)
@@ -1837,7 +2176,7 @@ fn resolve_output_dir(requested: &Option<String>) -> PathBuf {
     candidate.unwrap_or_else(default_output_dir)
 }
 
-fn sanitize_output_name(raw: &str) -> String {
+pub fn sanitize_output_name(raw: &str) -> String {
     const WINDOWS_RESERVED: &[&str] = &[
         "CON", "PRN", "AUX", "NUL", "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8",
         "COM9", "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
@@ -1869,7 +2208,7 @@ fn sanitize_output_name(raw: &str) -> String {
     cleaned
 }
 
-fn resolve_measurement_output_dir(
+pub fn resolve_measurement_output_dir(
     requested: &Option<String>,
     item_name: &str,
     run_tag: &str,
@@ -3389,9 +3728,13 @@ pub fn save_anc_plots(
 ) -> Result<Vec<(String, String)>, AudioError> {
     let mut result = Vec::new();
 
+    // Renderer-supplied mode keys and timestamps land in a filename, so they go
+    // through the same sanitizer the squiglink export uses.
+    let tag = sanitize_output_name(timestamp);
+
     // Per-mode single plots
     for (key, label, att_l, att_r) in modes {
-        let filename = format!("anc_{key}_{timestamp}.png");
+        let filename = format!("anc_{}_{tag}.png", sanitize_output_name(key));
         let path = output_dir.join(&filename);
         save_anc_single_plot(&path, freqs, att_l, att_r, label)?;
         result.push((format!("plot_{key}"), path.display().to_string()));
@@ -3399,7 +3742,7 @@ pub fn save_anc_plots(
 
     // Combined plot
     if modes.len() > 1 {
-        let combined_filename = format!("anc_combined_{timestamp}.png");
+        let combined_filename = format!("anc_combined_{tag}.png");
         let combined_path = output_dir.join(&combined_filename);
         let curve_refs: Vec<(&str, &[f32])> = modes
             .iter()
@@ -3722,6 +4065,108 @@ fn align_to_reference(
     aligned
 }
 
+/// Left and right excitation windows plus the round-trip delay each channel's
+/// markers implied. An empty window means that side was not captured in this
+/// pass, which is how guided mono mode reports the ear it skipped.
+type MarkedSweepCapture = (Vec<f32>, Vec<f32>, Option<f32>, Option<f32>);
+
+/// Run one marker-locked sweep capture and return the drift-corrected windows.
+fn capture_marked_sweep(
+    runtime: &AudioRuntime,
+    chirp: &[f32],
+    ref_signal: &[f32],
+    mono_mode: bool,
+    mono_side: SweepMonoSide,
+    last_diagnostics: &mut Option<AlignmentDiagnostics>,
+) -> Result<MarkedSweepCapture, AudioError> {
+    // The markers put the excitation at a known offset inside the playback
+    // buffer, so the distance between where it was expected and where it landed
+    // is the round-trip delay.
+    let delay_ms = |diagnostics: &AlignmentDiagnostics, excitation_at: usize| -> f32 {
+        let offset = diagnostics.excitation_start_sample as i64 - excitation_at as i64;
+        offset as f32 * 1000.0 / runtime.input_rate.max(1) as f32
+    };
+
+    if mono_mode {
+        let mut left = Vec::new();
+        let mut right = Vec::new();
+        let mut delay_left = None;
+        let mut delay_right = None;
+
+        if mono_side != SweepMonoSide::Right {
+            let (captured, layout) = runtime.play_and_record_marked(
+                chirp.to_vec(),
+                ref_signal,
+                OutputRouting::LeftOnly,
+            )?;
+            let raw = channel_or_mix(&captured, 0);
+            let aligned = runtime.align_channel(&layout, &raw)?;
+            if let Some(diagnostics) = aligned.diagnostics.as_ref() {
+                delay_left = Some(delay_ms(diagnostics, layout.excitation_at));
+                *last_diagnostics = Some(diagnostics.clone());
+            }
+            left = aligned.samples;
+        }
+
+        if mono_side != SweepMonoSide::Left {
+            let (captured, layout) = runtime.play_and_record_marked(
+                chirp.to_vec(),
+                ref_signal,
+                OutputRouting::RightOnly,
+            )?;
+            let raw = if captured.len() > 1 {
+                channel_or_mix(&captured, 1)
+            } else {
+                channel_or_mix(&captured, 0)
+            };
+            let aligned = runtime.align_channel(&layout, &raw)?;
+            if let Some(diagnostics) = aligned.diagnostics.as_ref() {
+                delay_right = Some(delay_ms(diagnostics, layout.excitation_at));
+                *last_diagnostics = Some(diagnostics.clone());
+            }
+            right = aligned.samples;
+        }
+
+        return Ok((left, right, delay_left, delay_right));
+    }
+
+    let (captured, layout) =
+        runtime.play_and_record_marked(chirp.to_vec(), ref_signal, OutputRouting::Both)?;
+
+    let raw_left = channel_or_mix(&captured, 0);
+    let aligned_left = runtime.align_channel(&layout, &raw_left)?;
+    let delay_left = aligned_left
+        .diagnostics
+        .as_ref()
+        .map(|diagnostics| delay_ms(diagnostics, layout.excitation_at));
+    if let Some(diagnostics) = aligned_left.diagnostics.as_ref() {
+        *last_diagnostics = Some(diagnostics.clone());
+    }
+
+    if captured.len() > 1 {
+        let raw_right = channel_or_mix(&captured, 1);
+        let aligned_right = runtime.align_channel(&layout, &raw_right)?;
+        let delay_right = aligned_right
+            .diagnostics
+            .as_ref()
+            .map(|diagnostics| delay_ms(diagnostics, layout.excitation_at));
+        Ok((
+            aligned_left.samples,
+            aligned_right.samples,
+            delay_left,
+            delay_right,
+        ))
+    } else {
+        // A mono interface: both curves come from the one captured channel.
+        Ok((
+            aligned_left.samples.clone(),
+            aligned_left.samples,
+            delay_left,
+            delay_left,
+        ))
+    }
+}
+
 fn frequency_response_curve(
     recorded: &[f32],
     reference: &[f32],
@@ -3924,6 +4369,13 @@ fn play_and_record(
     let signal = Arc::new(signal);
     let output_pos = Arc::new(AtomicUsize::new(0));
     let output_channels = output_config.channels as usize;
+    // A mono output stream (AirPods in hands-free mode, mono WASAPI endpoints)
+    // has no right channel, so a side-only routing would play pure silence.
+    let routing = if output_channels < 2 {
+        OutputRouting::Both
+    } else {
+        routing
+    };
     let input_channels = expected_input_channels.max(1);
 
     let target_frames =
@@ -4810,5 +5262,64 @@ mod tests {
         let thd = compute_thd(&signal, freq, sample_rate, 5);
         // A pure sine should have very low THD (< 5%)
         assert!(thd < 0.05, "pure sine THD {thd:.4} should be < 0.05");
+    }
+
+    #[test]
+    fn dead_channel_falls_back_to_live_capture() {
+        // "Stereo" mic that only feeds channel 0.
+        let captured = vec![vec![0.5, -0.5, 0.25], vec![0.0, 0.0, 0.0]];
+        let right = channel_or_mix(&captured, 1);
+        assert_eq!(right, vec![0.5, -0.5, 0.25]);
+        assert_eq!(channel_or_mix(&captured, 0), vec![0.5, -0.5, 0.25]);
+        // A real stereo capture is untouched.
+        let stereo = vec![vec![0.5, 0.5], vec![0.1, 0.2]];
+        assert_eq!(channel_or_mix(&stereo, 1), vec![0.1, 0.2]);
+    }
+
+    #[test]
+    fn channel_raw_never_substitutes_a_silent_channel() {
+        // The crosstalk case: driven channel loud, leak channel digital silence.
+        // channel_or_mix would hand back the driven signal, so the leak path
+        // must not use it.
+        let captured = vec![vec![0.8, -0.8, 0.8], vec![0.0, 0.0, 0.0]];
+        assert_eq!(channel_raw(&captured, 1), vec![0.0, 0.0, 0.0]);
+        assert_eq!(channel_raw(&captured, 0), vec![0.8, -0.8, 0.8]);
+        // Out-of-range asks yield nothing rather than another channel's data.
+        assert!(channel_raw(&captured, 5).is_empty());
+    }
+
+    #[test]
+    fn silent_leak_channel_reads_as_deep_isolation_not_zero_db() {
+        // Regression guard for the crosstalk metric itself: a perfectly
+        // isolated leak channel must report a large negative dB, never ~0.
+        let captured = vec![vec![0.8, -0.8, 0.8], vec![0.0, 0.0, 0.0]];
+        let primary_rms = rms(&channel_raw(&captured, 0));
+        let leak_rms = rms(&channel_raw(&captured, 1));
+        let crosstalk_db = 20.0 * (leak_rms.max(1e-12) / primary_rms.max(1e-12)).log10();
+        assert!(
+            crosstalk_db < -100.0,
+            "silent leak should read as deep isolation, got {crosstalk_db:.2} dB"
+        );
+
+        // And the old channel_or_mix path is exactly what that guards against.
+        let substituted = rms(&channel_or_mix(&captured, 1));
+        assert!((substituted - primary_rms).abs() < 1e-6);
+    }
+
+    #[test]
+    fn sanitize_output_name_strips_path_separators() {
+        // Separators are what make traversal work; with none left the name can
+        // only ever resolve inside the export dir.
+        let cleaned = sanitize_output_name("../../etc/passwd");
+        assert!(
+            !cleaned.contains('/') && !cleaned.contains('\\'),
+            "traversal survived sanitizing: {cleaned}"
+        );
+        assert_eq!(sanitize_output_name("anc"), "anc");
+        // A normal export timestamp survives unchanged, so plot and TXT tags match.
+        assert_eq!(
+            sanitize_output_name("2026-09-03T12-30-45"),
+            "2026-09-03T12-30-45"
+        );
     }
 }

@@ -89,8 +89,7 @@ export function smoothFractionalOctave(
 ): FrequencyCurve {
   if (!fraction || fraction <= 0 || curve.freqs.length < 3) return curve;
 
-  const sigmaOctaves =
-    1 / fraction / (2 * Math.sqrt(2 * Math.log(2)));
+  const sigmaOctaves = 1 / fraction / (2 * Math.sqrt(2 * Math.log(2)));
   const radiusOctaves = sigmaOctaves * 4;
   const logs = curve.freqs.map((frequency) => Math.log2(frequency));
   const values = logs.map((center, index) => {
@@ -174,8 +173,7 @@ export function computeVariationBand(
     const values = curves
       .map((curve) => interpolateLog(curve, frequency))
       .filter(
-        (value): value is number =>
-          value !== null && Number.isFinite(value),
+        (value): value is number => value !== null && Number.isFinite(value),
       )
       .sort((left, right) => left - right);
     if (values.length < 2) return null;

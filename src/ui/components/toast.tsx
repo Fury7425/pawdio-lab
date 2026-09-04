@@ -37,9 +37,11 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextId = useRef(1);
   const timers = useRef(new Map<number, ReturnType<typeof setTimeout>>());
+  const leaving = useRef(new Set<number>());
 
   const remove = useCallback((id: number) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
+    leaving.current.delete(id);
     const timer = timers.current.get(id);
     if (timer) {
       clearTimeout(timer);
@@ -50,15 +52,16 @@ export function ToastProvider({ children }: { children: ReactNode }) {
   // Two-phase dismiss: mark leaving so the exit transition plays, then unmount.
   const dismiss = useCallback(
     (id: number) => {
-      let already = false;
+      // Guard on a ref, not on a flag set inside the setToasts updater: that
+      // updater runs during a later render, so reading it back synchronously
+      // here always saw `false`. Without this, clicking the close button on an
+      // already-leaving toast cleared the pending unmount and scheduled a fresh
+      // one, so repeated clicks kept the toast on screen indefinitely.
+      if (leaving.current.has(id)) return;
+      leaving.current.add(id);
       setToasts((prev) =>
-        prev.map((t) => {
-          if (t.id !== id) return t;
-          if (t.leaving) already = true;
-          return { ...t, leaving: true };
-        }),
+        prev.map((t) => (t.id === id ? { ...t, leaving: true } : t)),
       );
-      if (already) return;
       const timer = timers.current.get(id);
       if (timer) clearTimeout(timer);
       timers.current.set(

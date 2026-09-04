@@ -28,10 +28,7 @@ function payload(
 describe("combineAcceptedSweepPayloads", () => {
   it("averages only the approved payloads and records the accepted count", () => {
     const result = combineAcceptedSweepPayloads(
-      [
-        payload("first", [0, 2], [2, 4]),
-        payload("second", [2, 4], [4, 6]),
-      ],
+      [payload("first", [0, 2], [2, 4]), payload("second", [2, 4], [4, 6])],
       { acceptedPerSide: 2, attempts: 3, captureOrder: "stereo" },
     );
 

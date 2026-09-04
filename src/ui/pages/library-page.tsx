@@ -20,6 +20,7 @@ import {
 } from "../lib/export-files";
 import { usePawdioLabContext } from "../pawdio-context";
 import { ComparisonPanel, type CompareEntry } from "./compare/comparison-panel";
+import { ancCurve, sweepCurve, type Channel } from "./compare/compare-curves";
 import { compareColor } from "./compare/compare-colors";
 
 type SaveDraft = {
@@ -262,8 +263,48 @@ export function LibraryPage() {
     );
   }
 
+  /**
+   * Frequency/dB rows for the record types that carry a curve, so the CSV holds
+   * the actual measurement instead of a JSON payload blob. sweep_fr exports
+   * magnitude, anc exports attenuation against its own baseline mode.
+   */
+  function curveRowsFor(
+    record: MeasurementRecord,
+    deviceName: string,
+  ): Record<string, unknown>[] {
+    const curve = (channel: Channel) =>
+      record.testType === "sweep_fr"
+        ? sweepCurve(record, channel)
+        : record.testType === "anc"
+          ? ancCurve(record, channel, null)
+          : null;
+    const left = curve("L");
+    const right = curve("R");
+    const freqs = left?.freqs ?? right?.freqs ?? [];
+    return freqs.map((hz, index) => ({
+      deviceName,
+      id: record.id,
+      testType: record.testType,
+      label: record.label ?? null,
+      capturedAt: record.capturedAt,
+      frequencyHz: hz,
+      leftDb: left?.values[index] ?? null,
+      rightDb: right?.values[index] ?? null,
+    }));
+  }
+
   function exportSelectedCsv() {
     if (!selectedRecordsReady) return;
+    const curveRows = selectedEntries.flatMap(({ record, deviceName }) =>
+      curveRowsFor(record, deviceName),
+    );
+    if (curveRows.length > 0) {
+      downloadCsv(
+        `library_${selectedType ?? "records"}_${exportTimestampTag()}.csv`,
+        objectsToCsv(curveRows),
+      );
+      return;
+    }
     const rows = selectedEntries.map(({ record, deviceName }) => ({
       deviceName,
       id: record.id,
@@ -659,13 +700,13 @@ export function LibraryPage() {
       {selectedEntries.length >= 2 &&
         selectedType &&
         COMPARABLE_TEST_TYPES.has(selectedType) && (
-        <section className="page-card">
-          <h2 className="section-heading">
-            Comparison · {LIBRARY_TEST_LABELS[selectedType]}
-          </h2>
-          <ComparisonPanel entries={selectedEntries} />
-        </section>
-      )}
+          <section className="page-card">
+            <h2 className="section-heading">
+              Comparison · {LIBRARY_TEST_LABELS[selectedType]}
+            </h2>
+            <ComparisonPanel entries={selectedEntries} />
+          </section>
+        )}
 
       {selectedEntries.length >= 2 &&
         selectedType &&

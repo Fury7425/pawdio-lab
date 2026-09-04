@@ -65,6 +65,7 @@ export function LatencyPage() {
   const onRunSelected = (keys: PresetKey[]) =>
     ctx.run(ctx.runLatencySelectedTests(keys));
   const onRunAll = () => ctx.run(ctx.runLatencyAllTests());
+  const onStop = () => ctx.run(ctx.stopTest());
   const onSaveReport = () => ctx.run(ctx.exportLatencyReport());
   const onExportCsv = () => ctx.run(ctx.exportLatencyCsv());
   const onBrowseOutputFolder = () => ctx.run(ctx.browseLatencyOutputFolder());
@@ -325,6 +326,15 @@ export function LatencyPage() {
               >
                 Run All
               </button>
+              {running && (
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  onClick={onStop}
+                >
+                  Stop
+                </button>
+              )}
             </div>
             <ExportMenu
               disabled={!report || running}

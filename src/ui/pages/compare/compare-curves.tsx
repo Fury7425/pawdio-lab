@@ -30,7 +30,7 @@ import {
 } from "../../lib/export-files";
 import type { CompareEntry } from "./comparison-panel";
 
-type Channel = "L" | "R" | "avg";
+export type Channel = "L" | "R" | "avg";
 
 const SMOOTHING_OPTIONS = [48, 24, 12, 6, 3] as const;
 
@@ -44,10 +44,7 @@ function avgArrays(left: number[], right: number[]): number[] {
   if (left.length === 0) return right;
   if (right.length === 0) return left;
   const length = Math.min(left.length, right.length);
-  return Array.from(
-    { length },
-    (_, index) => (left[index] + right[index]) / 2,
-  );
+  return Array.from({ length }, (_, index) => (left[index] + right[index]) / 2);
 }
 
 /** Auto-fit a padded dB range (rounded to 5) across all drawn curves. */
@@ -63,7 +60,7 @@ function autoRange(curves: number[][]): { yMin: number; yMax: number } {
   return { yMin: low, yMax: high };
 }
 
-function sweepCurve(
+export function sweepCurve(
   record: MeasurementRecord,
   channel: Channel,
 ): FrequencyCurve | null {
@@ -83,7 +80,7 @@ function ancBaselineKey(captures: AncCaptures): AncModeKey | undefined {
   return ANC_MODE_ORDERED.find((mode) => captures[mode] !== undefined);
 }
 
-function ancCurve(
+export function ancCurve(
   record: MeasurementRecord,
   channel: Channel,
   compareMode: AncModeKey | null,
@@ -103,10 +100,8 @@ function ancCurve(
   const snapshot = captures[modeKey];
   if (!snapshot) return null;
   const attenuation = (side: "L" | "R") => {
-    const before =
-      side === "L" ? baseline.magDbLeft : baseline.magDbRight;
-    const after =
-      side === "L" ? snapshot.magDbLeft : snapshot.magDbRight;
+    const before = side === "L" ? baseline.magDbLeft : baseline.magDbRight;
+    const after = side === "L" ? snapshot.magDbLeft : snapshot.magDbRight;
     return after.map((value, index) => value - (before[index] ?? NaN));
   };
   const values =

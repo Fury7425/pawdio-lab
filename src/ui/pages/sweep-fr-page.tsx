@@ -6,15 +6,26 @@ import { CheckboxField } from "../components/form-fields";
 import { Modal } from "../components/modal";
 import { PageHeader } from "../components/page-header";
 import { SweepResultView } from "../components/sweep-result-view";
+import { CurveViewControls } from "../components/curve-view-controls";
+import { useCurveView } from "../hooks/use-curve-view";
+import { useActiveInputCalibration } from "../hooks/use-spl-calibration";
+import { dbfsToDbSpl } from "../lib/spl-calibration";
 import { usePawdioLabContext } from "../pawdio-context";
 
 export function SweepFrPage() {
   const ctx = usePawdioLabContext();
+  // Display processing for both the review modal and the result view, so a
+  // sweep looks the same when it is judged as it does once it is kept.
+  const curveView = useCurveView();
+  // Real dB SPL once the input has been calibrated against a known source;
+  // before that the meter says so instead of implying a level it cannot know.
+  const calibration = useActiveInputCalibration();
   const request = ctx.sweepRequest;
   const onChangeRequest = ctx.setSweepRequest;
   const running = ctx.running;
   const busy = running || ctx.sweepSessionActive;
   const onRun = () => ctx.run(ctx.runSweepFrTest());
+  const onStop = () => ctx.run(ctx.stopTest());
   const onBrowseOutputFolder = () => ctx.run(ctx.browseSweepOutputFolder());
   const lastResult = ctx.sweepLastResult;
   const monitor = ctx.inputMonitor;
@@ -181,7 +192,12 @@ export function SweepFrPage() {
               valid count from {review.accepted} to {review.accepted + 1} of{" "}
               {review.target}; discarding it leaves the count unchanged.
             </p>
-            <SweepResultView result={review.payload} status="pending" compact />
+            <SweepResultView
+              result={review.payload}
+              status="pending"
+              compact
+              curveView={curveView}
+            />
           </>
         )}
       </Modal>
@@ -358,6 +374,15 @@ export function SweepFrPage() {
                   ? "Sweep in Progress"
                   : "Run Sweep"}
               </button>
+              {busy && (
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  onClick={onStop}
+                >
+                  Stop
+                </button>
+              )}
             </div>
           </div>
 
@@ -443,8 +468,21 @@ export function SweepFrPage() {
                   <strong>{monitor.peakDbfs.toFixed(1)} dBFS</strong>
                 </div>
                 <div className="field-row">
-                  <span className="field-label">SPL Estimate</span>
-                  <strong>{monitor.splEstimate.toFixed(1)} dB SPL</strong>
+                  <span className="field-label">
+                    {calibration.calibrated
+                      ? "Sound Level"
+                      : "Level (uncalibrated)"}
+                  </span>
+                  <strong>
+                    {calibration.sensitivity !== null
+                      ? `${(
+                          dbfsToDbSpl(
+                            monitor.currentDbfs,
+                            calibration.sensitivity,
+                          ) ?? 0
+                        ).toFixed(1)} dB SPL`
+                      : "Calibrate to read dB SPL"}
+                  </strong>
                 </div>
               </div>
               {monitor.clipCount > 0 && (
@@ -586,7 +624,6 @@ export function SweepFrPage() {
             </section>
           </div>
         </section>
-
       </section>
 
       <section className="page-card sweep-result-page">
@@ -627,9 +664,12 @@ export function SweepFrPage() {
           </div>
         </div>
 
+        <CurveViewControls controller={curveView} />
+
         <SweepResultView
           result={lastResult}
           status={ctx.sweepLastResultStatus}
+          curveView={curveView}
         />
 
         {lastResult && (

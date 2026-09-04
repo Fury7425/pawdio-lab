@@ -92,6 +92,9 @@ export function AncPage() {
   const onStart = ctx.startAncFlow;
   const onConfirmStep = () => ctx.run(ctx.confirmAncStep());
   const onCancelStep = ctx.cancelAncFlow;
+  // Aborts the capture in flight. The step stays put, so the user can retry it
+  // rather than losing the mode from the run.
+  const onStopStep = () => ctx.run(ctx.stopTest());
   const onReset = ctx.resetAncCaptures;
   const onBrowseOutputFolder = () => ctx.run(ctx.browseAncOutputFolder());
   const onExportPlots = (
@@ -115,6 +118,10 @@ export function AncPage() {
   const [stateConfirmed, setStateConfirmed] = useState(false);
   const [yAxisMode, setYAxisModeState] = useState<YAxisMode>(loadYAxisMode);
   const [manualBaseline, setManualBaseline] = useState<AncModeKey | null>(null);
+  // Both guard an irreversible wipe of captured measurements.
+  const [confirmReset, setConfirmReset] = useState(false);
+  const [pendingSession, setPendingSession] =
+    useState<Partial<SessionFile> | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const setYAxisMode = (v: YAxisMode) => {
@@ -284,6 +291,18 @@ export function AncPage() {
     fileInputRef.current?.click();
   }
 
+  function applySession(parsed: Partial<SessionFile>) {
+    if (parsed.captures && typeof parsed.captures === "object") {
+      ctx.setAncCaptures(parsed.captures as AncCaptures);
+    }
+    if (Array.isArray(parsed.selectedModes)) {
+      onChangeSelectedModes(parsed.selectedModes as AncModeKey[]);
+    }
+    if (parsed.baselineMode) {
+      setManualBaseline(parsed.baselineMode as AncModeKey);
+    }
+  }
+
   function handleLoadSessionFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     event.target.value = ""; // allow re-loading same file
@@ -296,15 +315,13 @@ export function AncPage() {
         if (parsed.app !== "pawdio-lab-anc" || parsed.version !== 1) {
           throw new Error("Not a pawdio-lab ANC session file");
         }
-        if (parsed.captures && typeof parsed.captures === "object") {
-          ctx.setAncCaptures(parsed.captures as AncCaptures);
+        // Loading replaces every capture on the page. Ask first when there is
+        // unsaved work to lose.
+        if (hasAnyCapture) {
+          setPendingSession(parsed);
+          return;
         }
-        if (Array.isArray(parsed.selectedModes)) {
-          onChangeSelectedModes(parsed.selectedModes as AncModeKey[]);
-        }
-        if (parsed.baselineMode) {
-          setManualBaseline(parsed.baselineMode as AncModeKey);
-        }
+        applySession(parsed);
       } catch (err) {
         ctx.setError(`Session load failed: ${String(err)}`);
       }
@@ -435,14 +452,23 @@ export function AncPage() {
           ariaLabel={`Capture step ${stepNum} of ${totalSteps}: ${modeMeta[currentStep.mode].captureTitle}`}
           footer={
             <>
-              <button
-                type="button"
-                className="skin-btn secondary"
-                disabled={running}
-                onClick={onCancelStep}
-              >
-                Cancel
-              </button>
+              {running ? (
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  onClick={onStopStep}
+                >
+                  Stop Recording
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="skin-btn secondary"
+                  onClick={onCancelStep}
+                >
+                  Cancel
+                </button>
+              )}
               <button
                 type="button"
                 className="skin-btn"
@@ -714,7 +740,7 @@ export function AncPage() {
             <button
               type="button"
               className="skin-btn secondary"
-              onClick={onReset}
+              onClick={() => setConfirmReset(true)}
               disabled={running}
             >
               Reset Captures
@@ -987,6 +1013,71 @@ export function AncPage() {
           </div>
         </section>
       )}
+
+      <Modal
+        open={confirmReset}
+        onClose={() => setConfirmReset(false)}
+        title="Discard all captures?"
+        footer={
+          <>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              onClick={() => setConfirmReset(false)}
+            >
+              Keep Captures
+            </button>
+            <button
+              type="button"
+              className="skin-btn"
+              onClick={() => {
+                setConfirmReset(false);
+                onReset();
+              }}
+            >
+              Discard
+            </button>
+          </>
+        }
+      >
+        <p className="muted">
+          Every captured mode on this page is removed. Measurements you have not
+          exported or saved as a session cannot be recovered.
+        </p>
+      </Modal>
+
+      <Modal
+        open={pendingSession !== null}
+        onClose={() => setPendingSession(null)}
+        title="Replace current captures?"
+        footer={
+          <>
+            <button
+              type="button"
+              className="skin-btn secondary"
+              onClick={() => setPendingSession(null)}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="skin-btn"
+              onClick={() => {
+                const session = pendingSession;
+                setPendingSession(null);
+                if (session) applySession(session);
+              }}
+            >
+              Load Session
+            </button>
+          </>
+        }
+      >
+        <p className="muted">
+          Loading this session replaces the captures already on this page. Save
+          the current session first if you still need it.
+        </p>
+      </Modal>
     </div>
   );
 }

@@ -40,6 +40,13 @@ export type AudioSettings = {
   durationSecs: number;
   chunkSize: number;
   itemName: string;
+  /**
+   * Wireless capture mode. Wraps every excitation in timing markers and
+   * measures clock drift so the recorded window can be corrected. The latency
+   * test ignores it, because the delay it removes is the thing that test
+   * reports.
+   */
+  bluetoothMode: boolean;
 };
 
 export type RuntimeStatus = { running: boolean };
@@ -345,6 +352,7 @@ export const defaultSettings: AudioSettings = {
   durationSecs: 0.5,
   chunkSize: 1024,
   itemName: "",
+  bluetoothMode: false,
 };
 
 export const defaultLatencyRequest: LatencyRequest = {

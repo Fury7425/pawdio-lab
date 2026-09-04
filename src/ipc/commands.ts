@@ -47,6 +47,13 @@ export const getRuntimeStatus = (): Promise<RuntimeStatus> =>
 
 export const stopTest = (): Promise<void> => invoke("stop_test");
 
+/**
+ * Open a URL in the system browser. Rust rejects anything outside the
+ * project's own GitHub host, so this is only usable for the update check.
+ */
+export const openExternalUrl = (url: string): Promise<void> =>
+  invoke("open_external_url", { url });
+
 // Devices / settings ---------------------------------------------------------
 
 export const listAudioDevices = (): Promise<DeviceInventory> =>
@@ -166,7 +173,7 @@ export const captureAncSnapshot = (
   invoke<AncSnapshot>("capture_anc_snapshot", { request });
 
 export const saveAncPlots = (params: {
-  outputDir: string;
+  outputDir: string | null;
   timestamp: string;
   freqs: number[];
   modes: AncPlotMode[];
@@ -174,11 +181,13 @@ export const saveAncPlots = (params: {
   invoke<Array<[string, string]>>("save_anc_plots", params);
 
 export const saveAncSquiglink = (params: {
-  outputPath: string;
+  outputDir: string | null;
+  timestamp: string;
+  modeKey: string;
   modeLabel: string;
   freqs: number[];
   attenuationDb: number[];
-}): Promise<void> => invoke("save_anc_squiglink", params);
+}): Promise<string> => invoke<string>("save_anc_squiglink", params);
 
 // Untyped escape hatch for the dynamic dispatch in runPayloadTest -------------
 

@@ -21,6 +21,10 @@ import {
   readDeviceUiPrefs,
 } from "../theme";
 import { usePawdioLabContext } from "../pawdio-context";
+import { SplCalibrationPanel } from "../components/spl-calibration-panel";
+import { ShortcutSettings } from "../components/shortcut-settings";
+import { UpdateCheckPanel } from "../components/update-check-panel";
+import { useShortcutBindings } from "../hooks/use-shortcuts";
 
 export function DevicesPage() {
   const ctx = usePawdioLabContext();
@@ -31,6 +35,7 @@ export function DevicesPage() {
   const onCommitSettings = (next: AudioSettings) =>
     ctx.run(ctx.commitSettings(next));
   const onRefreshDevices = () => ctx.run(ctx.loadState());
+  const shortcuts = useShortcutBindings();
   const storedUiPrefs = useMemo(() => readDeviceUiPrefs(), []);
   const [draft, setDraft] = useState(settings);
   const [appearanceMode, setAppearanceMode] = useState(
@@ -234,6 +239,32 @@ export function DevicesPage() {
 
         <hr className="section-divider" />
         <section className="page-section">
+          <h3 className="section-subheading">Wireless Capture</h3>
+          <p className="muted mb-12">
+            A Bluetooth link resamples and buffers, so its clock never quite
+            matches the capture clock. Wireless mode wraps each measurement
+            signal in timing markers, widens the silences around it, and
+            measures the drift so the recording can be corrected before it is
+            analysed. Leave it off for wired gear.
+          </p>
+          <CheckboxField
+            label="Bluetooth / wireless device"
+            checked={draft.bluetoothMode}
+            onChange={(checked) =>
+              commitDeviceSelection({ ...draft, bluetoothMode: checked })
+            }
+          />
+          <p className="muted compact-note mt-10">
+            The latency test ignores this setting. Removing the link delay is
+            exactly what that test is there to measure.
+          </p>
+        </section>
+
+        <hr className="section-divider" />
+        <SplCalibrationPanel />
+
+        <hr className="section-divider" />
+        <section className="page-section">
           <h3 className="section-subheading">Appearance</h3>
 
           <div className="field-grid-2">
@@ -262,6 +293,16 @@ export function DevicesPage() {
             />
           </div>
         </section>
+
+        <hr className="section-divider" />
+        <ShortcutSettings
+          bindings={shortcuts.bindings}
+          onRebind={shortcuts.rebind}
+          onReset={shortcuts.resetAll}
+        />
+
+        <hr className="section-divider" />
+        <UpdateCheckPanel />
       </section>
     </div>
   );

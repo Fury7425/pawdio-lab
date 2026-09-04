@@ -80,9 +80,7 @@ export function buildBandPath(
     .join(" ");
   const lowerPath = [...points]
     .reverse()
-    .map(
-      (point) => `L ${point.x.toFixed(2)} ${point.lowerY.toFixed(2)}`,
-    )
+    .map((point) => `L ${point.x.toFixed(2)} ${point.lowerY.toFixed(2)}`)
     .join(" ");
   return `${upperPath} ${lowerPath} Z`;
 }

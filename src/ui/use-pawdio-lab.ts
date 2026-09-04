@@ -1612,6 +1612,11 @@ export function usePawdioLabController() {
     // state shows immediately, rather than waiting on the 1s runtime-status poll.
     // The prompt advances to the next step once the capture resolves (below).
     setRunning(true);
+    // Only a capture that actually landed may advance the guided flow. A failed
+    // step (device unplugged mid-run, engine error) leaves the prompt on the
+    // same mode so the user can retry or cancel — advancing regardless would
+    // auto-export a run with a mode silently missing.
+    let captured = false;
     try {
       const result = await ipc.captureAncSnapshot({
         f0: ancRequest.f0,
@@ -1624,44 +1629,60 @@ export function usePawdioLabController() {
       const merged = mergeAncSideSnapshot(ancCaptures[mode], side, result);
       const newCaptures = { ...ancCaptures, [mode]: merged };
       setAncCaptures(newCaptures);
+      captured = true;
       appendLog(`[anc] captured ${mode} (${side}) @ ${result.timestamp}`);
 
-      // Auto-export when the last mode is captured and an output dir is set
-      if (isLastStep && ancRequest.outputDir && ancRequest.savePlots) {
-        const baselineKey = ANC_MODE_ORDERED.find(
-          (m) => newCaptures[m] !== undefined,
-        );
-        const baseline = baselineKey ? newCaptures[baselineKey] : undefined;
-        if (baseline && baselineKey) {
-          const exportable = ANC_MODE_ORDERED.filter(
-            (m) => m !== baselineKey && newCaptures[m] !== undefined,
+      // Auto-export once the last mode is captured. No output dir needed —
+      // the backend falls back to the default export folder. Export runs in its
+      // own try: the captures are already saved, so a failed write must not
+      // strand the flow on a step that succeeded.
+      if (isLastStep && ancRequest.savePlots) {
+        try {
+          const baselineKey = ANC_MODE_ORDERED.find(
+            (m) => newCaptures[m] !== undefined,
           );
-          if (exportable.length > 0) {
-            await exportAncPlots(
-              baseline,
-              exportable.map((key) => ({
-                key,
-                label: ANC_MODE_META[key].label,
-                snapshot: newCaptures[key]!,
-              })),
+          const baseline = baselineKey ? newCaptures[baselineKey] : undefined;
+          if (baseline && baselineKey) {
+            const exportable = ANC_MODE_ORDERED.filter(
+              (m) => m !== baselineKey && newCaptures[m] !== undefined,
             );
-            for (const key of exportable) {
-              await exportAncSquiglink(
+            if (exportable.length > 0) {
+              // One tag for the whole run so plots and TXT share one folder.
+              const runTag = exportTimestampTag();
+              await exportAncPlots(
                 baseline,
-                key,
-                ANC_MODE_META[key].label,
-                newCaptures[key]!,
+                exportable.map((key) => ({
+                  key,
+                  label: ANC_MODE_META[key].label,
+                  snapshot: newCaptures[key]!,
+                })),
+                runTag,
               );
+              for (const key of exportable) {
+                await exportAncSquiglink(
+                  baseline,
+                  key,
+                  ANC_MODE_META[key].label,
+                  newCaptures[key]!,
+                  runTag,
+                );
+              }
             }
           }
+        } catch (err) {
+          setError(`Captures kept, export failed: ${String(err)}`);
+          appendLog(`[anc] export error: ${String(err)}`);
         }
       }
     } catch (err) {
       setError(String(err));
-      appendLog(`[anc] error: ${String(err)}`);
+      appendLog(`[anc] capture failed on ${mode} (${side}): ${String(err)}`);
     } finally {
       setRunning(false);
     }
+
+    if (!captured) return;
+
     setAncRunQueue((q) => {
       const next = q[0] ?? null;
       setAncCurrentStep(next);
@@ -1707,16 +1728,11 @@ export function usePawdioLabController() {
       label: string;
       snapshot: AncSnapshot;
     }>,
+    // ponytail: manual exports from the ANC page pass no tag and get their own
+    // folder; the guided run passes one tag so plots and TXT land together.
+    timestamp: string = exportTimestampTag(),
   ) {
-    if (!ancRequest.outputDir) {
-      appendLog("[anc] no output dir set — skipping plot export");
-      return;
-    }
     try {
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, 19);
       // negative = cancelled (active quieter than baseline)
       const modes = modesToExport.map(({ key, label, snapshot }) => ({
         key,
@@ -1728,14 +1744,19 @@ export function usePawdioLabController() {
           (a, i) => a - baseline.magDbRight[i],
         ),
       }));
-      await ipc.saveAncPlots({
-        outputDir: ancRequest.outputDir,
+      const saved = await ipc.saveAncPlots({
+        outputDir: ancRequest.outputDir || null,
         timestamp,
         freqs: baseline.freqs,
         modes,
       });
-      appendLog(`[anc] plots saved to ${ancRequest.outputDir}`);
-      toast(`ANC plots saved to ${ancRequest.outputDir}`, { kind: "success" });
+      const savedPath = saved[0]?.[1] ?? "";
+      const folder = savedPath.slice(
+        0,
+        Math.max(savedPath.lastIndexOf("/"), savedPath.lastIndexOf("\\")),
+      );
+      appendLog(`[anc] plots saved to ${folder}`);
+      toast(`ANC plots saved to ${folder}`, { kind: "success" });
     } catch (err) {
       setError(String(err));
       appendLog(`[anc] export error: ${String(err)}`);
@@ -1747,16 +1768,9 @@ export function usePawdioLabController() {
     modeKey: AncModeKey,
     modeLabel: string,
     snapshot: AncSnapshot,
+    timestamp: string = exportTimestampTag(),
   ) {
-    if (!ancRequest.outputDir) {
-      appendLog("[anc] no output dir set");
-      return;
-    }
     try {
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/[:.]/g, "-")
-        .slice(0, 19);
       // Squiglink is single-channel: prefer the left curve, but fall back to the
       // right when a guided right-only capture left magDbLeft empty — otherwise
       // the exported file would have no data.
@@ -1765,14 +1779,15 @@ export function usePawdioLabController() {
       const aArr = useRight ? snapshot.magDbRight : snapshot.magDbLeft;
       const bArr = useRight ? baseline.magDbRight : baseline.magDbLeft;
       const attenuationDb = aArr.map((a, i) => a - (bArr[i] ?? NaN));
-      const outputPath = `${ancRequest.outputDir}/anc_${modeKey}_${timestamp}.txt`;
-      await ipc.saveAncSquiglink({
-        outputPath,
+      const outputPath = await ipc.saveAncSquiglink({
+        outputDir: ancRequest.outputDir || null,
+        timestamp,
+        modeKey,
         modeLabel,
         freqs: baseline.freqs,
         attenuationDb,
       });
-      appendLog(`[anc] squiglink saved: anc_${modeKey}_${timestamp}.txt`);
+      appendLog(`[anc] squiglink saved: ${outputPath}`);
       toast(`Saved anc_${modeKey}_${timestamp}.txt`, { kind: "success" });
     } catch (err) {
       setError(String(err));

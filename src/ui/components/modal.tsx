@@ -41,6 +41,10 @@ export function Modal({
 
     function handleKeydown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        // Stop the event at the document so the global shortcut listener on
+        // `window` never sees it. Escape is also bound to `stop_test`, and
+        // closing a dialog must not abort the run behind it.
+        event.stopPropagation();
         onCloseRef.current();
         return;
       }

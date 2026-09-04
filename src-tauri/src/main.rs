@@ -49,10 +49,40 @@ struct AppState {
     pink_noise_cancel: Arc<AtomicBool>,
 }
 
+impl AppState {
+    /// Claim the single measurement slot, or report who holds it.
+    ///
+    /// The monitor and pink-noise streams are only stopped once this call has
+    /// won the slot. Stopping them first, as every handler used to, meant a
+    /// duplicate start that was then rejected still killed both streams as a
+    /// side effect of a request that did nothing.
+    fn begin_run(&self, busy_message: &str) -> Result<(), String> {
+        if self.running.swap(true, Ordering::SeqCst) {
+            return Err(busy_message.to_string());
+        }
+        self.monitor_cancel.store(true, Ordering::SeqCst);
+        self.pink_noise_cancel.store(true, Ordering::SeqCst);
+        self.cancel.store(false, Ordering::SeqCst);
+        Ok(())
+    }
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct RuntimeStatus {
     running: bool,
+}
+
+/// Clears a "busy" flag when it goes out of scope, including while a panic
+/// unwinds. The fire-and-forget monitor and pink-noise tasks are not awaited,
+/// so a panic there would otherwise strand the flag at `true` and make every
+/// later start a silent no-op.
+struct FlagGuard(Arc<AtomicBool>);
+
+impl Drop for FlagGuard {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::SeqCst);
+    }
 }
 
 #[tauri::command]
@@ -83,14 +113,7 @@ async fn run_latency_test(
     state: State<'_, AppState>,
     request: LatencyTestRequest,
 ) -> Result<LatencyTestReport, String> {
-    state.monitor_cancel.store(true, Ordering::SeqCst);
-    state.pink_noise_cancel.store(true, Ordering::SeqCst);
-
-    if state.running.swap(true, Ordering::SeqCst) {
-        return Err("A latency test is already running.".to_string());
-    }
-
-    state.cancel.store(false, Ordering::SeqCst);
+    state.begin_run("A latency test is already running.")?;
 
     let settings = {
         let engine = state.audio.lock().await;
@@ -161,14 +184,7 @@ async fn run_sweep_fr_test(
     state: State<'_, AppState>,
     request: SweepFrRequest,
 ) -> Result<TestResultPayload, String> {
-    state.monitor_cancel.store(true, Ordering::SeqCst);
-    state.pink_noise_cancel.store(true, Ordering::SeqCst);
-
-    if state.running.swap(true, Ordering::SeqCst) {
-        return Err("A test is already running.".to_string());
-    }
-
-    state.cancel.store(false, Ordering::SeqCst);
+    state.begin_run("A test is already running.")?;
 
     let settings = {
         let engine = state.audio.lock().await;
@@ -196,14 +212,7 @@ async fn capture_anc_snapshot(
     state: State<'_, AppState>,
     request: AncSnapshotRequest,
 ) -> Result<AncSnapshot, String> {
-    state.monitor_cancel.store(true, Ordering::SeqCst);
-    state.pink_noise_cancel.store(true, Ordering::SeqCst);
-
-    if state.running.swap(true, Ordering::SeqCst) {
-        return Err("A test is already running.".to_string());
-    }
-
-    state.cancel.store(false, Ordering::SeqCst);
+    state.begin_run("A test is already running.")?;
 
     let settings = {
         let engine = state.audio.lock().await;
@@ -234,16 +243,33 @@ struct AncModeExport {
     attenuation_right: Vec<f32>,
 }
 
+/// ANC exports land in the same `((item)-(timestamp))` folder Sweep FR and
+/// Latency use, and fall back to the default export dir when none is set.
+async fn anc_output_dir(
+    state: &State<'_, AppState>,
+    output_dir: Option<String>,
+    timestamp: &str,
+) -> Result<std::path::PathBuf, String> {
+    let item_name = {
+        let engine = state.audio.lock().await;
+        engine.settings().item_name
+    };
+    let requested = output_dir.filter(|dir| !dir.trim().is_empty());
+    let dir = audio::resolve_measurement_output_dir(&requested, &item_name, timestamp);
+    validate_output_path(&dir)?;
+    std::fs::create_dir_all(&dir).map_err(|e| format!("failed to create output dir: {e}"))?;
+    Ok(dir)
+}
+
 #[tauri::command]
-fn save_anc_plots(
-    output_dir: String,
+async fn save_anc_plots(
+    state: State<'_, AppState>,
+    output_dir: Option<String>,
     timestamp: String,
     freqs: Vec<f32>,
     modes: Vec<AncModeExport>,
 ) -> Result<Vec<(String, String)>, String> {
-    let dir = std::path::Path::new(&output_dir);
-    validate_output_path(dir)?;
-    std::fs::create_dir_all(dir).map_err(|e| format!("failed to create output dir: {e}"))?;
+    let dir = anc_output_dir(&state, output_dir, &timestamp).await?;
     let mode_data: Vec<(&str, &str, Vec<f32>, Vec<f32>)> = modes
         .iter()
         .map(|m| {
@@ -255,19 +281,30 @@ fn save_anc_plots(
             )
         })
         .collect();
-    audio::save_anc_plots(dir, &timestamp, &freqs, &mode_data).map_err(|e| e.to_string())
+    audio::save_anc_plots(&dir, &timestamp, &freqs, &mode_data).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-fn save_anc_squiglink(
-    output_path: String,
+async fn save_anc_squiglink(
+    state: State<'_, AppState>,
+    output_dir: Option<String>,
+    timestamp: String,
+    mode_key: String,
     mode_label: String,
     freqs: Vec<f32>,
     attenuation_db: Vec<f32>,
-) -> Result<(), String> {
-    let path = std::path::Path::new(&output_path);
-    validate_output_path(path)?;
-    audio::save_anc_squiglink(path, &mode_label, &freqs, &attenuation_db).map_err(|e| e.to_string())
+) -> Result<String, String> {
+    let dir = anc_output_dir(&state, output_dir, &timestamp).await?;
+    // Same sanitizer on both halves as save_anc_plots, so the TXT and the PNGs
+    // of one run always carry an identical tag.
+    let path = dir.join(format!(
+        "anc_{}_{}.txt",
+        audio::sanitize_output_name(&mode_key),
+        audio::sanitize_output_name(&timestamp)
+    ));
+    audio::save_anc_squiglink(&path, &mode_label, &freqs, &attenuation_db)
+        .map_err(|e| e.to_string())?;
+    Ok(path.display().to_string())
 }
 
 #[tauri::command]
@@ -291,6 +328,7 @@ async fn start_input_monitor(
     let running_flag = state.monitor_running.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
+        let _flag = FlagGuard(running_flag);
         if let Err(error) =
             AudioEngine::run_input_monitor(settings, cancel, peak_reset, app_handle.clone())
         {
@@ -307,7 +345,6 @@ async fn start_input_monitor(
                 eprintln!("Failed to emit monitor error event: {emit_err}");
             }
         }
-        running_flag.store(false, Ordering::SeqCst);
     });
 
     Ok(())
@@ -343,6 +380,7 @@ async fn start_pink_noise(app: tauri::AppHandle, state: State<'_, AppState>) -> 
     let app_handle = app.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
+        let _flag = FlagGuard(running_flag);
         if let Err(error) = AudioEngine::run_pink_noise(settings, cancel) {
             if let Err(emit_err) = app_handle.emit(
                 "test-progress",
@@ -357,7 +395,6 @@ async fn start_pink_noise(app: tauri::AppHandle, state: State<'_, AppState>) -> 
                 eprintln!("Failed to emit pink noise error event: {emit_err}");
             }
         }
-        running_flag.store(false, Ordering::SeqCst);
     });
 
     Ok(())
@@ -374,14 +411,7 @@ async fn run_thd_test(
     state: State<'_, AppState>,
     request: ThdRequest,
 ) -> Result<TestResultPayload, String> {
-    state.monitor_cancel.store(true, Ordering::SeqCst);
-    state.pink_noise_cancel.store(true, Ordering::SeqCst);
-
-    if state.running.swap(true, Ordering::SeqCst) {
-        return Err("A test is already running.".to_string());
-    }
-
-    state.cancel.store(false, Ordering::SeqCst);
+    state.begin_run("A test is already running.")?;
 
     let settings = {
         let engine = state.audio.lock().await;
@@ -408,14 +438,7 @@ async fn run_balance_test(
     state: State<'_, AppState>,
     request: BalanceRequest,
 ) -> Result<TestResultPayload, String> {
-    state.monitor_cancel.store(true, Ordering::SeqCst);
-    state.pink_noise_cancel.store(true, Ordering::SeqCst);
-
-    if state.running.swap(true, Ordering::SeqCst) {
-        return Err("A test is already running.".to_string());
-    }
-
-    state.cancel.store(false, Ordering::SeqCst);
+    state.begin_run("A test is already running.")?;
 
     let settings = {
         let engine = state.audio.lock().await;
@@ -441,14 +464,7 @@ async fn run_crosstalk_test(
     state: State<'_, AppState>,
     request: CrosstalkRequest,
 ) -> Result<TestResultPayload, String> {
-    state.monitor_cancel.store(true, Ordering::SeqCst);
-    state.pink_noise_cancel.store(true, Ordering::SeqCst);
-
-    if state.running.swap(true, Ordering::SeqCst) {
-        return Err("A test is already running.".to_string());
-    }
-
-    state.cancel.store(false, Ordering::SeqCst);
+    state.begin_run("A test is already running.")?;
 
     let settings = {
         let engine = state.audio.lock().await;
@@ -474,14 +490,7 @@ async fn run_isolation_test(
     state: State<'_, AppState>,
     request: IsolationRequest,
 ) -> Result<TestResultPayload, String> {
-    state.monitor_cancel.store(true, Ordering::SeqCst);
-    state.pink_noise_cancel.store(true, Ordering::SeqCst);
-
-    if state.running.swap(true, Ordering::SeqCst) {
-        return Err("A test is already running.".to_string());
-    }
-
-    state.cancel.store(false, Ordering::SeqCst);
+    state.begin_run("A test is already running.")?;
 
     let settings = {
         let engine = state.audio.lock().await;
@@ -516,6 +525,38 @@ fn get_runtime_status(state: State<'_, AppState>) -> RuntimeStatus {
     }
 }
 
+/// Hand a URL to the operating system's default browser.
+///
+/// Only the project's own GitHub host is accepted. The update check is the one
+/// place the app links out, so there is no reason to let an arbitrary string
+/// through to a shell.
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    const ALLOWED_PREFIXES: [&str; 2] = [
+        "https://github.com/Fury7425/pawdio-lab",
+        "https://api.github.com/repos/Fury7425/pawdio-lab",
+    ];
+    if !ALLOWED_PREFIXES
+        .iter()
+        .any(|prefix| url.starts_with(prefix))
+    {
+        return Err(format!("Refusing to open unexpected URL: {url}"));
+    }
+
+    #[cfg(target_os = "windows")]
+    let result = std::process::Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", &url])
+        .spawn();
+    #[cfg(target_os = "macos")]
+    let result = std::process::Command::new("open").arg(&url).spawn();
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let result = std::process::Command::new("xdg-open").arg(&url).spawn();
+
+    result
+        .map(|_| ())
+        .map_err(|error| format!("failed to open browser: {error}"))
+}
+
 #[tauri::command]
 fn ensure_output_dir(path: String) -> Result<(), String> {
     let p = std::path::Path::new(&path);
@@ -539,10 +580,15 @@ fn write_text_export(
     {
         return Err(format!("Invalid export filename: '{filename}'"));
     }
+    // The check above only rejects separators and absolute paths. A bare name
+    // can still carry a colon (an NTFS alternate data stream, which writes an
+    // invisible file), a reserved device name, or a trailing dot, so run it
+    // through the same sanitiser every other export path uses.
+    let safe_name = audio::sanitize_output_name(&filename);
 
     std::fs::create_dir_all(dir)
         .map_err(|e| format!("failed to create output directory {}: {e}", dir.display()))?;
-    let path = dir.join(filename_path);
+    let path = dir.join(&safe_name);
     std::fs::write(&path, content)
         .map_err(|e| format!("failed to write export {}: {e}", path.display()))?;
     Ok(path.to_string_lossy().into_owned())
@@ -715,6 +761,7 @@ fn main() {
             save_anc_squiglink,
             stop_test,
             get_runtime_status,
+            open_external_url,
             ensure_output_dir,
             write_text_export,
             write_squiglink_combined,
@@ -733,4 +780,40 @@ fn main() {
             eprintln!("Pawdio Lab failed to start: {err}");
             std::process::exit(1);
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn validate_output_path_rejects_traversal_and_relative_paths() {
+        assert!(validate_output_path(Path::new("exports")).is_err());
+        assert!(validate_output_path(Path::new("../exports")).is_err());
+        #[cfg(windows)]
+        {
+            assert!(validate_output_path(Path::new(r"C:\exports\..\windows")).is_err());
+            assert!(validate_output_path(Path::new(r"C:\exports\pawdio")).is_ok());
+        }
+        #[cfg(not(windows))]
+        {
+            assert!(validate_output_path(Path::new("/exports/../etc")).is_err());
+            assert!(validate_output_path(Path::new("/exports/pawdio")).is_ok());
+        }
+    }
+
+    #[test]
+    fn export_filenames_lose_stream_and_device_names() {
+        // The separator check in `write_text_export` lets these through, so the
+        // sanitiser is what stops an invisible alternate-data-stream write and
+        // a reserved Windows device name.
+        assert_eq!(
+            audio::sanitize_output_name("notes.txt:hidden"),
+            "notes.txt_hidden"
+        );
+        assert_eq!(audio::sanitize_output_name("NUL.txt"), "_NUL.txt");
+        assert_eq!(audio::sanitize_output_name("report.txt."), "report.txt");
+        assert_eq!(audio::sanitize_output_name("sweep_1k.txt"), "sweep_1k.txt");
+    }
 }
