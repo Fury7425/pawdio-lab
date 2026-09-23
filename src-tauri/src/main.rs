@@ -8,8 +8,8 @@ use std::sync::{
 
 use audio::{
     AncSnapshot, AncSnapshotRequest, AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest,
-    DeviceInventory, IsolationRequest, LatencyExportEntry, LatencyTestReport, LatencyTestRequest,
-    SweepFrRequest, TestProgressEvent, TestResultPayload, ThdRequest,
+    DeviceInventory, LatencyExportEntry, LatencyTestReport, LatencyTestRequest, SweepFrRequest,
+    TestProgressEvent, TestResultPayload, ThdRequest,
 };
 use db::{DeviceRecord, MeasurementRecord, MeasurementSummary};
 use serde::Serialize;
@@ -486,32 +486,6 @@ async fn run_crosstalk_test(
 }
 
 #[tauri::command]
-async fn run_isolation_test(
-    state: State<'_, AppState>,
-    request: IsolationRequest,
-) -> Result<TestResultPayload, String> {
-    state.begin_run("A test is already running.")?;
-
-    let settings = {
-        let engine = state.audio.lock().await;
-        engine.settings()
-    };
-    let cancel = state.cancel.clone();
-
-    let task = tauri::async_runtime::spawn_blocking(move || {
-        AudioEngine::run_isolation_test(settings, request, cancel)
-    });
-
-    let join_result = task.await;
-    state.running.store(false, Ordering::SeqCst);
-
-    match join_result {
-        Ok(inner) => inner.map_err(|error| error.to_string()),
-        Err(error) => Err(format!("Audio test task join error: {error}")),
-    }
-}
-
-#[tauri::command]
 fn stop_test(state: State<'_, AppState>) {
     state.cancel.store(true, Ordering::SeqCst);
     state.monitor_cancel.store(true, Ordering::SeqCst);
@@ -755,7 +729,6 @@ fn main() {
             run_thd_test,
             run_balance_test,
             run_crosstalk_test,
-            run_isolation_test,
             capture_anc_snapshot,
             save_anc_plots,
             save_anc_squiglink,

@@ -23,7 +23,7 @@ Tests: Vitest + Testing Library + jsdom. `src/test-setup.ts` extends `expect` wi
 
 ## Architecture
 
-**Tauri 2** desktop app — audio diagnostics: latency, frequency response, THD, crosstalk, channel balance, isolation, ANC/Transparency per-frequency attenuation.
+**Tauri 2** desktop app — audio diagnostics: latency, frequency response, THD, crosstalk, channel balance, ANC/Transparency per-frequency attenuation.
 
 ### Frontend — `src/`
 
@@ -46,12 +46,12 @@ localStorage keys:
 
 ### Wireless (Bluetooth) mode
 
-`AudioSettings.bluetoothMode` changes how every measurement except latency is captured. Sweep FR and ANC play the excitation inside a marker layout and align against it (`audio/alignment.rs`); the tone tests (THD, balance, crosstalk, isolation) record longer and pick their analysis window by energy instead of assuming it starts at sample zero. **The latency test ignores the flag on purpose** — the link delay the other tests remove is the quantity latency exists to report.
+`AudioSettings.bluetoothMode` changes how every measurement except latency is captured. Sweep FR and ANC play the excitation inside a marker layout and align against it (`audio/alignment.rs`); the tone tests (THD, balance, crosstalk) record longer and pick their analysis window by energy instead of assuming it starts at sample zero. **The latency test ignores the flag on purpose** — the link delay the other tests remove is the quantity latency exists to report.
 
 ### Backend — `src-tauri/src/`
 
 - **`main.rs`** (~570 lines) — Tauri command handlers. Thin wrappers; spawn blocking tasks, emit `test-progress` events.
-- **`audio/mod.rs`** (~4900 lines) — `AudioEngine` with all DSP: FFT cross-correlation for latency, log-chirp sweep for FR, THD/balance/crosstalk/isolation, real-time input monitor, PNG chart generation (plotters), multi-format export. ANC snapshot capture (`AncSnapshot`, `capture_anc_snapshot`) for per-frequency attenuation across capture modes.
+- **`audio/mod.rs`** (~4900 lines) — `AudioEngine` with all DSP: FFT cross-correlation for latency, log-chirp sweep for FR, THD/balance/crosstalk, real-time input monitor, PNG chart generation (plotters), multi-format export. ANC snapshot capture (`AncSnapshot`, `capture_anc_snapshot`) for per-frequency attenuation across capture modes.
 - **`audio/alignment.rs`** — pure, hardware-free marker alignment used by wireless mode. Builds coded timing markers around an excitation, locks onto them with FFT normalised cross-correlation, measures clock drift between the two end markers, and resamples the captured window back to nominal length. Rejects a capture with a typed `AlignmentFailure` rather than returning a wrong curve. Has its own `#[cfg(test)]` suite driven by synthetic recordings.
 
 Key Rust crates: `cpal` (audio I/O), `rustfft`, `plotters`, `tokio`, `tauri-plugin-dialog`.

@@ -20,7 +20,6 @@ import {
   AudioSettings,
   CrosstalkRequest,
   DeviceInventory,
-  IsolationRequest,
   LatencyCalibration,
   LatencyProgress,
   LatencyReport,
@@ -33,7 +32,6 @@ import {
   defaultAncRequest,
   defaultBalanceRequest,
   defaultCrosstalkRequest,
-  defaultIsolationRequest,
   defaultLatencyCalibration,
   defaultLatencyRequest,
   defaultSettings,
@@ -46,7 +44,7 @@ import {
 
 // Type for database entries from Rust backend
 type LatencyPresetConfig = {
-  uiKey: "beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse";
+  uiKey: "chirp200" | "chirp5k" | "chirp10k";
   storageKey: string;
   label: string;
   signal: LatencyRequest["signal"];
@@ -84,41 +82,30 @@ const logCaughtError =
     return undefined;
   };
 
+// Each preset is a one-octave log chirp centred on its frequency. A swept
+// excitation has one unambiguous correlation peak, which the old steady beeps
+// did not.
 const LATENCY_PRESETS: LatencyPresetConfig[] = [
   {
-    uiKey: "beep1k",
-    storageKey: "beep_1k",
-    label: "1kHz Beep",
-    signal: "sine",
-    frequencyHz: 1000,
-  },
-  {
-    uiKey: "beep2k",
-    storageKey: "beep_2k",
-    label: "Mixed (2kHz Sine)",
-    signal: "sine",
-    frequencyHz: 2000,
-  },
-  {
-    uiKey: "beep5k",
-    storageKey: "beep_5k",
-    label: "5kHz Beep",
-    signal: "sine",
-    frequencyHz: 5000,
-  },
-  {
-    uiKey: "beep200",
-    storageKey: "beep_200",
-    label: "200Hz Low Beep",
-    signal: "sine",
+    uiKey: "chirp200",
+    storageKey: "chirp_200",
+    label: "200 Hz Chirp",
+    signal: "chirp",
     frequencyHz: 200,
   },
   {
-    uiKey: "impulse",
-    storageKey: "impulse",
-    label: "Click (Impulse)",
-    signal: "impulse",
-    frequencyHz: 1000,
+    uiKey: "chirp5k",
+    storageKey: "chirp_5k",
+    label: "5 kHz Chirp",
+    signal: "chirp",
+    frequencyHz: 5000,
+  },
+  {
+    uiKey: "chirp10k",
+    storageKey: "chirp_10k",
+    label: "10 kHz Chirp",
+    signal: "chirp",
+    frequencyHz: 10000,
   },
 ];
 
@@ -133,7 +120,6 @@ type PersistedUiState = {
   crosstalkRequest?: Partial<CrosstalkRequest>;
   thdRequest?: Partial<ThdRequest>;
   thdToneText?: string;
-  isolationRequest?: Partial<IsolationRequest>;
 };
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -348,27 +334,19 @@ function stdDev(values: number[], avg: number): number {
   return Math.sqrt(variance);
 }
 
+/** Must match `latency_preset_identity` in src-tauri/src/audio/mod.rs. */
 function calibrationKeyForRequest(request: LatencyRequest): string {
-  if (request.signal === "impulse") {
-    return "impulse";
+  const frequency = request.frequencyHz;
+  if (Math.abs(frequency - 200) <= 5) {
+    return "chirp_200";
   }
-  if (request.signal === "sine") {
-    const frequency = request.frequencyHz;
-    if (Math.abs(frequency - 1000) <= 20) {
-      return "beep_1k";
-    }
-    if (Math.abs(frequency - 2000) <= 20) {
-      return "beep_2k";
-    }
-    if (Math.abs(frequency - 5000) <= 50) {
-      return "beep_5k";
-    }
-    if (Math.abs(frequency - 200) <= 5) {
-      return "beep_200";
-    }
-    return `sine_${Math.round(frequency)}`;
+  if (Math.abs(frequency - 5000) <= 50) {
+    return "chirp_5k";
   }
-  return "pink_noise";
+  if (Math.abs(frequency - 10000) <= 100) {
+    return "chirp_10k";
+  }
+  return `chirp_${Math.round(frequency)}`;
 }
 
 function calibrationOffsetForRequest(
@@ -479,9 +457,15 @@ export function usePawdioLabController() {
     notify: (m) => toast(m, { kind: "success" }),
   });
 
-  const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(
-    mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
-  );
+  const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(() => ({
+    ...mergeWithDefaults(
+      defaultLatencyRequest,
+      persistedUiState?.latencyRequest,
+    ),
+    // State saved before the chirp presets can still carry "sine"/"impulse",
+    // which the backend no longer accepts.
+    signal: "chirp",
+  }));
   const [latencyProgress, setLatencyProgress] = useState<LatencyProgress[]>([]);
   const [lastTestProgress, setLastTestProgress] = useState<TestProgress | null>(
     null,
@@ -555,12 +539,6 @@ export function usePawdioLabController() {
       ? persistedUiState.thdToneText
       : defaultThdRequest.tones.join(", "),
   );
-  const [isolationRequest, setIsolationRequest] = useState<IsolationRequest>(
-    mergeWithDefaults(
-      defaultIsolationRequest,
-      persistedUiState?.isolationRequest,
-    ),
-  );
 
   const [ancSelectedModes, setAncSelectedModes] = useState<AncModeKey[]>([
     "reference",
@@ -613,8 +591,7 @@ export function usePawdioLabController() {
       | "run_sweep_fr_test"
       | "run_thd_test"
       | "run_balance_test"
-      | "run_crosstalk_test"
-      | "run_isolation_test",
+      | "run_crosstalk_test",
     request: unknown,
     startLog: string,
   ) {
@@ -1299,14 +1276,6 @@ export function usePawdioLabController() {
     await runPayloadTest("run_thd_test", next, "[THD] running");
   }
 
-  async function runIsolationTest() {
-    await runPayloadTest(
-      "run_isolation_test",
-      isolationRequest,
-      "[ISOLATION] running",
-    );
-  }
-
   async function exportLatencyReport() {
     if (!latencyReport || latencyExportSuite.length === 0) {
       setError("No latency report to export yet.");
@@ -1860,7 +1829,6 @@ export function usePawdioLabController() {
       crosstalkRequest,
       thdRequest,
       thdToneText,
-      isolationRequest,
     }),
     [
       activePage,
@@ -1873,7 +1841,6 @@ export function usePawdioLabController() {
       crosstalkRequest,
       thdRequest,
       thdToneText,
-      isolationRequest,
     ],
   );
   useDebouncedPersist(UI_STATE_STORAGE_KEY, persistedUiSnapshot);
@@ -2035,8 +2002,6 @@ export function usePawdioLabController() {
     setThdRequest,
     thdToneText,
     setThdToneText,
-    isolationRequest,
-    setIsolationRequest,
     ancRequest,
     setAncRequest,
     ancSelectedModes,
@@ -2063,7 +2028,6 @@ export function usePawdioLabController() {
     runBalanceTest,
     runCrosstalkTest,
     runThdTest,
-    runIsolationTest,
     startAncFlow,
     confirmAncStep,
     cancelAncFlow,

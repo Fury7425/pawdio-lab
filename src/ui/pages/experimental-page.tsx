@@ -33,14 +33,11 @@ export function ExperimentalPage() {
   const thdToneText = ctx.thdToneText;
   const onChangeThdRequest = ctx.setThdRequest;
   const onChangeThdToneText = ctx.setThdToneText;
-  const isolationRequest = ctx.isolationRequest;
-  const onChangeIsolation = ctx.setIsolationRequest;
   const onRunBalance = () => ctx.run(ctx.runBalanceTest());
   const onRunCrosstalk = () => ctx.run(ctx.runCrosstalkTest());
   const onRunThd = () => ctx.run(ctx.runThdTest());
-  const onRunIsolation = () => ctx.run(ctx.runIsolationTest());
   const experimentalResults = ctx.results.filter((entry) =>
-    ["balance", "crosstalk", "thd", "isolation"].includes(entry.payload.test),
+    ["balance", "crosstalk", "thd"].includes(entry.payload.test),
   );
 
   function exportExperimentalJson() {
@@ -68,7 +65,7 @@ export function ExperimentalPage() {
       <section className="page-card">
         <PageHeader
           title="Experimental Tests"
-          description="Channel balance, crosstalk, THD, and isolation measurements."
+          description="Channel balance, crosstalk, and THD measurements."
           actions={
             <ExportMenu
               label={`Export Results (${experimentalResults.length})`}
@@ -181,49 +178,6 @@ export function ExperimentalPage() {
             </div>
             <div className="row-end mt-12">
               <RunButton disabled={running} onClick={onRunThd} />
-            </div>
-          </section>
-
-          <section className="page-card">
-            <h3 className="section-subheading">Isolation</h3>
-            <p className="muted">Measures inside to outside isolation.</p>
-            <div className="field-grid-2 mt-10">
-              <label className="field-row">
-                <span className="field-label">Noise Duration (s)</span>
-                <input
-                  className="skin-input"
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={isolationRequest.noiseDurationSecs}
-                  onChange={(event) =>
-                    onChangeIsolation({
-                      ...isolationRequest,
-                      noiseDurationSecs: toNumber(event.target.value, 2),
-                    })
-                  }
-                />
-              </label>
-              <label className="field-row">
-                <span className="field-label">Amplitude</span>
-                <input
-                  className="skin-input"
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={isolationRequest.amplitude}
-                  onChange={(event) =>
-                    onChangeIsolation({
-                      ...isolationRequest,
-                      amplitude: toNumber(event.target.value, 0.4),
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <div className="row-end mt-12">
-              <RunButton disabled={running} onClick={onRunIsolation} />
             </div>
           </section>
         </div>

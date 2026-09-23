@@ -52,7 +52,8 @@ export type AudioSettings = {
 export type RuntimeStatus = { running: boolean };
 
 export type LatencyRequest = {
-  signal: "sine" | "impulse" | "pinkNoise";
+  /** One-octave log chirp centred on `frequencyHz`. */
+  signal: "chirp";
   frequencyHz: number;
   durationSecs: number;
   amplitude: number;
@@ -117,11 +118,6 @@ export type CrosstalkRequest = {
 export type ThdRequest = {
   tones: number[];
   toneDurationSecs: number;
-  amplitude: number;
-};
-
-export type IsolationRequest = {
-  noiseDurationSecs: number;
   amplitude: number;
 };
 
@@ -261,7 +257,6 @@ export type LibraryTestType =
   | "thd"
   | "balance"
   | "crosstalk"
-  | "isolation"
   | "anc";
 
 export type DeviceRecord = {
@@ -297,7 +292,6 @@ export const LIBRARY_TEST_LABELS: Record<LibraryTestType, string> = {
   thd: "THD",
   balance: "Channel Balance",
   crosstalk: "Crosstalk",
-  isolation: "Isolation",
   anc: "ANC / Transparency",
 };
 
@@ -356,8 +350,8 @@ export const defaultSettings: AudioSettings = {
 };
 
 export const defaultLatencyRequest: LatencyRequest = {
-  signal: "impulse",
-  frequencyHz: 1000,
+  signal: "chirp",
+  frequencyHz: 5000,
   durationSecs: 0.5,
   amplitude: 0.85,
   repeats: 5,
@@ -402,11 +396,6 @@ export const defaultThdRequest: ThdRequest = {
   tones: [100, 1000, 6000],
   toneDurationSecs: 1,
   amplitude: 0.6,
-};
-
-export const defaultIsolationRequest: IsolationRequest = {
-  noiseDurationSecs: 2,
-  amplitude: 0.4,
 };
 
 export function toSelectValue(index: number | null): string {

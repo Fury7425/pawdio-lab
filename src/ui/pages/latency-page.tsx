@@ -19,13 +19,42 @@ function metricTier(ms: number | null | undefined): MetricTier | null {
 
 const LATENCY_UI_STORAGE_KEY = "pawdio-lab-latency-ui-v1";
 
-type PresetSelection = {
-  beep200: boolean;
-  beep1k: boolean;
-  beep2k: boolean;
-  beep5k: boolean;
-  impulse: boolean;
+type PresetKey = "chirp200" | "chirp5k" | "chirp10k";
+
+type PresetSelection = Record<PresetKey, boolean>;
+
+/** Display and run order of the latency presets. */
+const PRESET_OPTIONS: Array<{ key: PresetKey; label: string }> = [
+  { key: "chirp200", label: "200 Hz Chirp" },
+  { key: "chirp5k", label: "5 kHz Chirp" },
+  { key: "chirp10k", label: "10 kHz Chirp" },
+];
+
+const ALL_PRESETS_SELECTED: PresetSelection = {
+  chirp200: true,
+  chirp5k: true,
+  chirp10k: true,
 };
+
+/**
+ * Keep only the current preset keys from a stored selection. Prefs saved by
+ * the old beep/click presets carry none of them and fall back to all-on.
+ */
+function normalizeSelection(value: unknown): PresetSelection {
+  if (!value || typeof value !== "object") return ALL_PRESETS_SELECTED;
+  const stored = value as Record<string, unknown>;
+  const known = PRESET_OPTIONS.filter(
+    ({ key }) => typeof stored[key] === "boolean",
+  );
+  if (known.length === 0) return ALL_PRESETS_SELECTED;
+  const next = { ...ALL_PRESETS_SELECTED };
+  for (const { key } of known) next[key] = stored[key] as boolean;
+  return next;
+}
+
+function selectedKeys(selection: PresetSelection): PresetKey[] {
+  return PRESET_OPTIONS.map(({ key }) => key).filter((key) => selection[key]);
+}
 
 type LatencyUiPrefs = {
   runSelection: PresetSelection;
@@ -61,7 +90,6 @@ export function LatencyPage() {
   const calibrationText = ctx.calibrationText;
   const running = ctx.running;
   const progressPercent = ctx.latencyProgressPercent;
-  type PresetKey = "beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse";
   const onRunSelected = (keys: PresetKey[]) =>
     ctx.run(ctx.runLatencySelectedTests(keys));
   const onRunAll = () => ctx.run(ctx.runLatencyAllTests());
@@ -74,26 +102,14 @@ export function LatencyPage() {
   const onCalibrateAll = (repeats: number) =>
     ctx.run(ctx.calibrateLatencyAllPresets(repeats));
   const storedUiPrefs = useMemo(() => readLatencyUiPrefs(), []);
-  const [runSelection, setRunSelection] = useState<PresetSelection>(
-    storedUiPrefs?.runSelection ?? {
-      beep200: true,
-      beep1k: true,
-      beep2k: true,
-      beep5k: true,
-      impulse: false,
-    },
+  const [runSelection, setRunSelection] = useState<PresetSelection>(() =>
+    normalizeSelection(storedUiPrefs?.runSelection),
   );
   const [calibrationRepeats, setCalibrationRepeats] = useState(
     storedUiPrefs?.calibrationRepeats ?? 5,
   );
-  const [calibrationMode, setCalibrationMode] = useState<PresetSelection>(
-    storedUiPrefs?.calibrationMode ?? {
-      beep200: true,
-      beep1k: true,
-      beep2k: true,
-      beep5k: true,
-      impulse: true,
-    },
+  const [calibrationMode, setCalibrationMode] = useState<PresetSelection>(() =>
+    normalizeSelection(storedUiPrefs?.calibrationMode),
   );
 
   useEffect(() => {
@@ -126,55 +142,19 @@ export function LatencyPage() {
       ? progressRows[progressRows.length - 1].delayMs
       : null;
 
-  const presetOptions = [
-    {
-      key: "beep200",
-      label: "200Hz Low Beep",
-      signal: "sine" as const,
-      frequencyHz: 200,
-    },
-    {
-      key: "beep1k",
-      label: "1kHz Beep",
-      signal: "sine" as const,
-      frequencyHz: 1000,
-    },
-    {
-      key: "beep2k",
-      label: "Mixed (2kHz Sine)",
-      signal: "sine" as const,
-      frequencyHz: 2000,
-    },
-    {
-      key: "beep5k",
-      label: "5kHz Beep",
-      signal: "sine" as const,
-      frequencyHz: 5000,
-    },
-    {
-      key: "impulse",
-      label: "Click (Impulse)",
-      signal: "impulse" as const,
-      frequencyHz: request.frequencyHz,
-    },
-  ];
-
   return (
     <div className="page-stack">
       <section className="page-card">
         <PageHeader
           title="Latency"
-          description="Measure output-to-input delay with tone bursts and impulse clicks."
+          description="Measure output-to-input delay with one-octave chirps at 200 Hz, 5 kHz and 10 kHz."
         />
 
         <section className="page-section">
           <h3 className="section-subheading">Run Delay Tests</h3>
 
           <ChipGroup
-            options={presetOptions.map(({ key, label }) => ({
-              key: key as PresetKey,
-              label,
-            }))}
+            options={PRESET_OPTIONS}
             selected={runSelection}
             onToggle={(key) =>
               setRunSelection((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -292,29 +272,7 @@ export function LatencyPage() {
                 type="button"
                 className={`skin-btn${running ? " is-loading" : ""}`}
                 disabled={running}
-                onClick={() => {
-                  const keys = (
-                    Object.entries(runSelection) as Array<
-                      [
-                        "beep200" | "beep1k" | "beep2k" | "beep5k" | "impulse",
-                        boolean,
-                      ]
-                    >
-                  )
-                    .filter(([, enabled]) => enabled)
-                    .map(([key]) => key)
-                    .sort((a, b) => {
-                      const order = [
-                        "beep1k",
-                        "beep2k",
-                        "beep5k",
-                        "beep200",
-                        "impulse",
-                      ];
-                      return order.indexOf(a) - order.indexOf(b);
-                    });
-                  onRunSelected(keys);
-                }}
+                onClick={() => onRunSelected(selectedKeys(runSelection))}
               >
                 Run Selected
               </button>
@@ -408,13 +366,7 @@ export function LatencyPage() {
           <h3 className="section-subheading">Calibration</h3>
 
           <ChipGroup
-            options={[
-              { key: "beep1k", label: "1kHz Beep" },
-              { key: "beep200", label: "200Hz Low Beep" },
-              { key: "beep2k", label: "Mixed (2kHz Sine)" },
-              { key: "beep5k", label: "5kHz Beep" },
-              { key: "impulse", label: "Click (Impulse)" },
-            ]}
+            options={PRESET_OPTIONS}
             selected={calibrationMode}
             onToggle={(key) =>
               setCalibrationMode((prev) => ({ ...prev, [key]: !prev[key] }))
@@ -437,19 +389,12 @@ export function LatencyPage() {
               type="button"
               className="skin-btn secondary"
               disabled={running}
-              onClick={() => {
-                const selected = (
-                  Object.entries(calibrationMode) as Array<
-                    [
-                      "beep200" | "beep1k" | "beep2k" | "beep5k" | "impulse",
-                      boolean,
-                    ]
-                  >
+              onClick={() =>
+                onCalibrateSelected(
+                  selectedKeys(calibrationMode),
+                  calibrationRepeats,
                 )
-                  .filter(([, enabled]) => enabled)
-                  .map(([key]) => key);
-                onCalibrateSelected(selected, calibrationRepeats);
-              }}
+              }
             >
               Calibrate Selected Presets
             </button>

@@ -15,7 +15,6 @@ use cpal::{
     Device, Host, SampleFormat, SampleRate, Stream, StreamConfig,
 };
 use plotters::prelude::*;
-use rand::Rng;
 use rustfft::{num_complex::Complex, FftPlanner};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -88,12 +87,14 @@ pub struct DeviceInventory {
     pub default_output_index: Option<usize>,
 }
 
+/// Latency excitation. A one-octave log chirp centred on the request's
+/// frequency: band-limited enough to probe one region of the spectrum, and
+/// swept so its correlation has a single unambiguous peak, which a steady tone
+/// does not.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum TestSignalKind {
-    Sine,
-    Impulse,
-    PinkNoise,
+    Chirp,
 }
 
 fn default_true() -> bool {
@@ -130,8 +131,8 @@ pub struct LatencyTestRequest {
 impl Default for LatencyTestRequest {
     fn default() -> Self {
         Self {
-            signal: TestSignalKind::Impulse,
-            frequency_hz: 1000.0,
+            signal: TestSignalKind::Chirp,
+            frequency_hz: 5000.0,
             duration_secs: 0.5,
             amplitude: 0.85,
             repeats: 5,
@@ -248,22 +249,6 @@ impl Default for CrosstalkRequest {
             tone_duration_secs: 1.0,
             settle_secs: 0.2,
             direction: "LtoR".to_string(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct IsolationRequest {
-    pub noise_duration_secs: f32,
-    pub amplitude: f32,
-}
-
-impl Default for IsolationRequest {
-    fn default() -> Self {
-        Self {
-            noise_duration_secs: 2.0,
-            amplitude: 0.4,
         }
     }
 }
@@ -495,8 +480,7 @@ impl AudioEngine {
             if cancel.load(Ordering::SeqCst) {
                 break;
             }
-            let signal = generate_signal(
-                request.signal,
+            let signal = generate_latency_chirp(
                 request.frequency_hz.max(20.0),
                 duration,
                 amplitude,
@@ -1340,55 +1324,6 @@ impl AudioEngine {
         })
     }
 
-    pub fn run_isolation_test(
-        settings: AudioSettings,
-        request: IsolationRequest,
-        cancel: Arc<AtomicBool>,
-    ) -> Result<TestResultPayload, AudioError> {
-        let runtime = AudioRuntime::new(settings)?;
-        let duration = request.noise_duration_secs.clamp(0.2, 8.0);
-        let amp = request.amplitude.clamp(0.05, 1.0);
-
-        if cancel.load(Ordering::SeqCst) {
-            return Err(AudioError::Cancelled);
-        }
-        let noise = generate_pink_noise(duration, amp, runtime.output_rate);
-        let rec_in = runtime.play_and_record_mono(
-            noise.clone(),
-            OutputRouting::Both,
-            runtime.tone_record_secs(duration),
-        )?;
-        let rec_in = runtime.steady_window(rec_in, duration);
-        if cancel.load(Ordering::SeqCst) {
-            return Err(AudioError::Cancelled);
-        }
-        let rec_out = runtime.play_and_record_mono(
-            noise,
-            OutputRouting::Both,
-            runtime.tone_record_secs(duration),
-        )?;
-        let rec_out = runtime.steady_window(rec_out, duration);
-
-        let inside_db = dbfs(&rec_in);
-        let outside_db = dbfs(&rec_out);
-        let delta = inside_db - outside_db;
-
-        Ok(TestResultPayload {
-            test: "isolation_inside_out".to_string(),
-            timestamp: timestamp_string(),
-            params: json!({
-                "noise_dur": duration
-            }),
-            metrics: json!({
-                "inside_dBFS": inside_db,
-                "outside_dBFS": outside_db,
-                "delta_dB": delta
-            }),
-            data: json!({}),
-            files: json!({}),
-        })
-    }
-
     pub fn capture_anc_snapshot(
         settings: AudioSettings,
         request: AncSnapshotRequest,
@@ -1874,18 +1809,21 @@ fn choose_input_config(
     Ok((default.config(), default.sample_format()))
 }
 
-fn generate_signal(
-    kind: TestSignalKind,
-    frequency_hz: f32,
+/// One-octave log chirp centred on `center_hz`, used by the latency test.
+fn generate_latency_chirp(
+    center_hz: f32,
     duration_secs: f32,
     amplitude: f32,
     sample_rate: u32,
 ) -> Vec<f32> {
-    match kind {
-        TestSignalKind::Sine => generate_sine(frequency_hz, duration_secs, amplitude, sample_rate),
-        TestSignalKind::Impulse => generate_impulse(duration_secs, amplitude, sample_rate),
-        TestSignalKind::PinkNoise => generate_pink_noise(duration_secs, amplitude, sample_rate),
-    }
+    let half_octave = std::f32::consts::SQRT_2;
+    generate_log_chirp(
+        center_hz / half_octave,
+        center_hz * half_octave,
+        duration_secs,
+        amplitude,
+        sample_rate,
+    )
 }
 
 fn generate_sine(freq_hz: f32, duration_secs: f32, amplitude: f32, sample_rate: u32) -> Vec<f32> {
@@ -1906,53 +1844,6 @@ fn generate_sine(freq_hz: f32, duration_secs: f32, amplitude: f32, sample_rate: 
         signal.push(value);
     }
     signal
-}
-
-fn generate_impulse(duration_secs: f32, amplitude: f32, sample_rate: u32) -> Vec<f32> {
-    let total_samples = ((duration_secs * sample_rate as f32).round() as usize).max(256);
-    let mut signal = vec![0.0; total_samples];
-    let impulse_len = 1usize;
-    let start = ((sample_rate as f32 * 0.01).round() as usize)
-        .min(total_samples.saturating_sub(impulse_len));
-    for sample in signal.iter_mut().skip(start).take(impulse_len) {
-        *sample = amplitude;
-    }
-    signal
-}
-
-fn generate_pink_noise(duration_secs: f32, amplitude: f32, sample_rate: u32) -> Vec<f32> {
-    let total_samples = ((duration_secs * sample_rate as f32).round() as usize).max(1);
-    let mut rng = rand::thread_rng();
-    let mut b0 = 0.0f32;
-    let mut b1 = 0.0f32;
-    let mut b2 = 0.0f32;
-    let mut b3 = 0.0f32;
-    let mut b4 = 0.0f32;
-    let mut b5 = 0.0f32;
-    let mut b6 = 0.0f32;
-    let mut pink = Vec::with_capacity(total_samples);
-
-    for _ in 0..total_samples {
-        let x = rng.gen_range(-1.0f32..1.0f32);
-        b0 = 0.99886 * b0 + x * 0.055_517_9;
-        b1 = 0.99332 * b1 + x * 0.075_075_9;
-        b2 = 0.96900 * b2 + x * 0.153_852;
-        b3 = 0.86650 * b3 + x * 0.310_485_6;
-        b4 = 0.55000 * b4 + x * 0.532_952_2;
-        b5 = -0.7616 * b5 - x * 0.016_898_0;
-        let y = b0 + b1 + b2 + b3 + b4 + b5 + b6 + x * 0.5362;
-        b6 = x * 0.115_926;
-        pink.push(y);
-    }
-
-    let peak = pink
-        .iter()
-        .copied()
-        .fold(0.0f32, |acc, val| acc.max(val.abs()))
-        .max(1e-9);
-    pink.into_iter()
-        .map(|sample| (sample / peak) * amplitude)
-        .collect()
 }
 
 fn generate_log_chirp(
@@ -2111,7 +2002,7 @@ fn is_dead_channel(channel: &[f32]) -> bool {
 /// Verbatim channel access, with no dead-channel fallback.
 ///
 /// Use this wherever a near-silent channel *is* the measurement — crosstalk
-/// leak, isolation — because substituting the live channel there does not
+/// leak — because substituting the live channel there does not
 /// recover a mono device, it fabricates a result: a perfectly isolated leak
 /// channel would come back holding the driven signal and report 0 dB
 /// crosstalk. Use [`channel_or_mix`] only where silence means "absent".
@@ -2256,20 +2147,16 @@ fn timestamp_filename() -> String {
 
 fn latency_preset_identity(signal: TestSignalKind, frequency_hz: f32) -> (String, String) {
     match signal {
-        TestSignalKind::Impulse => ("impulse".to_string(), "Click (Impulse)".to_string()),
-        TestSignalKind::PinkNoise => ("pink_noise".to_string(), "Pink Noise".to_string()),
-        TestSignalKind::Sine => {
+        TestSignalKind::Chirp => {
             let f = frequency_hz;
-            if (f - 1000.0).abs() <= 20.0 {
-                ("beep_1k".to_string(), "1kHz Beep".to_string())
-            } else if (f - 2000.0).abs() <= 20.0 {
-                ("beep_2k".to_string(), "Mixed (2kHz Sine)".to_string())
+            if (f - 200.0).abs() <= 5.0 {
+                ("chirp_200".to_string(), "200 Hz Chirp".to_string())
             } else if (f - 5000.0).abs() <= 50.0 {
-                ("beep_5k".to_string(), "5kHz Beep".to_string())
-            } else if (f - 200.0).abs() <= 5.0 {
-                ("beep_200".to_string(), "200Hz Low Beep".to_string())
+                ("chirp_5k".to_string(), "5 kHz Chirp".to_string())
+            } else if (f - 10_000.0).abs() <= 100.0 {
+                ("chirp_10k".to_string(), "10 kHz Chirp".to_string())
             } else {
-                ("sine_custom".to_string(), format!("Sine {f:.0} Hz"))
+                ("chirp_custom".to_string(), format!("{f:.0} Hz Chirp"))
             }
         }
     }
@@ -2916,14 +2803,6 @@ fn save_latency_plot(
         .map_err(|err| AudioError::FileExport(format!("plot write {}: {err}", path.display())))
 }
 
-fn hann_window(len: usize) -> Vec<f32> {
-    // Periodic Hann window: w[i] = 0.5 * (1 - cos(2π·i/N))
-    let len_f = len as f32;
-    (0..len)
-        .map(|i| 0.5 * (1.0 - (2.0 * PI * i as f32 / len_f).cos()))
-        .collect()
-}
-
 fn cross_correlation_points(
     recorded: &[f32],
     reference: &[f32],
@@ -2933,10 +2812,8 @@ fn cross_correlation_points(
         return Vec::new();
     }
 
-    // Apply Hann window to reduce spectral leakage before FFT
-    let rec_win = hann_window(recorded.len());
-    let ref_win = hann_window(reference.len());
-
+    // No window: tapering the recording weights its middle over its start,
+    // which drags the peak towards the centre (see `find_delay_ms`).
     let n = (recorded.len() + reference.len()).next_power_of_two();
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(n);
@@ -2957,25 +2834,17 @@ fn cross_correlation_points(
         n
     ];
     for (idx, value) in recorded.iter().enumerate() {
-        a[idx].re = *value * rec_win[idx];
+        a[idx].re = *value;
     }
     for (idx, value) in reference.iter().enumerate() {
-        b[idx].re = *value * ref_win[idx];
+        b[idx].re = *value;
     }
     fft.process(&mut a);
     fft.process(&mut b);
 
     // Normalized cross-correlation: A * conj(B) / sqrt(E_a * E_b)
-    let energy_a: f32 = recorded
-        .iter()
-        .zip(&rec_win)
-        .map(|(s, w)| (s * w) * (s * w))
-        .sum();
-    let energy_b: f32 = reference
-        .iter()
-        .zip(&ref_win)
-        .map(|(s, w)| (s * w) * (s * w))
-        .sum();
+    let energy_a: f32 = recorded.iter().map(|s| s * s).sum();
+    let energy_b: f32 = reference.iter().map(|s| s * s).sum();
     let norm = (energy_a * energy_b).sqrt().max(1e-12);
 
     for (left, right) in a.iter_mut().zip(b.iter()) {
@@ -4268,81 +4137,87 @@ fn compute_thd(samples: &[f32], fundamental_hz: f32, sample_rate: u32, harmonics
 
 /// Returns the delay in milliseconds by which `recorded` lags `reference`.
 /// Positive return = recorded arrives after reference (the normal case for output→input latency).
+///
+/// The peak is taken from the envelope of the cross-correlation (the magnitude
+/// of its analytic signal), not from the raw correlation. For a band-limited
+/// excitation the raw correlation oscillates at the carrier, and neighbouring
+/// cycles are nearly as tall as the true one, so a little noise or a phase
+/// shift in the device picks a peak a whole cycle away. The envelope has one
+/// hump centred on the group delay, which is what latency means.
+///
+/// Neither signal is windowed. A taper over the recording weights its middle
+/// over its start, and a short real delay sits near the start, so any window
+/// here drags the answer towards the centre of the capture.
 fn find_delay_ms(recorded: &[f32], reference: &[f32], sample_rate: u32) -> Option<f32> {
     if recorded.is_empty() || reference.is_empty() || sample_rate == 0 {
         return None;
     }
-
-    // Hann-window both signals to reduce spectral leakage before cross-correlation FFT
-    let rec_win = hann_window(recorded.len());
-    let ref_win = hann_window(reference.len());
 
     let n = (recorded.len() + reference.len()).next_power_of_two();
     let mut planner = FftPlanner::<f32>::new();
     let fft = planner.plan_fft_forward(n);
     let ifft = planner.plan_fft_inverse(n);
 
-    let mut a = vec![
-        Complex {
-            re: 0.0f32,
-            im: 0.0f32
-        };
-        n
-    ];
-    let mut b = vec![
-        Complex {
-            re: 0.0f32,
-            im: 0.0f32
-        };
-        n
-    ];
-
-    // Normalize by peak amplitude so the correlation is signal-shape-based, not level-based
-    let rec_peak = recorded
-        .iter()
-        .copied()
-        .fold(0.0f32, |acc, v| acc.max(v.abs()))
-        .max(1e-12);
-    let ref_peak = reference
-        .iter()
-        .copied()
-        .fold(0.0f32, |acc, v| acc.max(v.abs()))
-        .max(1e-12);
-
+    let zero = Complex {
+        re: 0.0f32,
+        im: 0.0f32,
+    };
+    let mut a = vec![zero; n];
+    let mut b = vec![zero; n];
     for (idx, value) in recorded.iter().enumerate() {
-        a[idx].re = (*value / rec_peak) * rec_win[idx];
+        a[idx].re = *value;
     }
     for (idx, value) in reference.iter().enumerate() {
-        b[idx].re = (*value / ref_peak) * ref_win[idx];
+        b[idx].re = *value;
     }
 
     fft.process(&mut a);
     fft.process(&mut b);
 
-    for (x, y) in a.iter_mut().zip(b.iter()) {
+    // Cross-spectrum, then keep only the positive frequencies (doubled) so the
+    // inverse transform is the analytic correlation. Its magnitude is the
+    // envelope.
+    let half = n / 2;
+    for (idx, (x, y)) in a.iter_mut().zip(b.iter()).enumerate() {
         *x *= y.conj();
+        if idx > half {
+            *x = zero;
+        } else if idx > 0 && idx < half {
+            *x *= 2.0;
+        }
     }
 
     ifft.process(&mut a);
 
-    let mut best_idx = 0usize;
-    let mut best_val = f32::MIN;
-    let max_lag = recorded.len().saturating_sub(1);
+    // Only non-negative lags: the recording cannot lead the playback.
+    let search_len = recorded.len().min(n);
+    let envelope: Vec<f32> = a
+        .iter()
+        .take(search_len)
+        .map(|c| (c.re * c.re + c.im * c.im).sqrt())
+        .collect();
 
-    let search_len = max_lag.min(a.len().saturating_sub(1)) + 1;
-    for (idx, sample) in a.iter().enumerate().take(search_len) {
-        let mag = sample.re.abs();
-        if mag > best_val {
-            best_val = mag;
-            best_idx = idx;
-        }
+    let (best_idx, best_val) =
+        envelope
+            .iter()
+            .copied()
+            .enumerate()
+            .fold((0usize, f32::MIN), |best, (idx, value)| {
+                if value > best.1 {
+                    (idx, value)
+                } else {
+                    best
+                }
+            });
+    if best_val <= 1e-12 {
+        return None;
     }
 
     let mut best_idx_f = best_idx as f32;
-    if best_idx > 0 && best_idx + 1 < a.len() {
-        let y1 = a[best_idx - 1].re.abs();
-        let y2 = a[best_idx].re.abs();
-        let y3 = a[best_idx + 1].re.abs();
+    if best_idx > 0 && best_idx + 1 < envelope.len() {
+        let y1 = envelope[best_idx - 1];
+        let y2 = envelope[best_idx];
+        let y3 = envelope[best_idx + 1];
         let denom = y1 - 2.0 * y2 + y3;
         if denom.abs() > 1e-12 {
             let frac = (y1 - y3) / (2.0 * denom);
@@ -4971,7 +4846,11 @@ fn compute_monitor_rough_fr_db(samples: &[f32], sample_rate: u32, freq_grid: &[f
         let frac = (bin_f - bin_lo as f32).clamp(0.0, 1.0);
         let db_lo = 20.0 * spectrum[bin_lo].max(1e-12).log10();
         let db_hi = 20.0 * spectrum[bin_hi].max(1e-12).log10();
-        rough.push(db_lo * (1.0 - frac) + db_hi * frac);
+        // Pink noise carries equal power per octave, so on a linear FFT grid
+        // each bin's level falls 3 dB per octave. Undo that tilt, or a
+        // perfectly flat device reads as a steady downward slope.
+        let pink_tilt = 10.0 * freq.max(1.0).log10();
+        rough.push(db_lo * (1.0 - frac) + db_hi * frac + pink_tilt);
     }
 
     let baseline = trimmed_mean(&rough, 4);
@@ -5172,23 +5051,8 @@ fn read_input_u8(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rand::Rng;
     use std::f32::consts::PI;
-
-    #[test]
-    fn hann_window_periodic_first_sample_zero() {
-        // Periodic Hann w[0] = 0.5*(1 - cos(0)) = 0. That's correct and expected.
-        let win = hann_window(8);
-        assert_eq!(win.len(), 8);
-        assert!((win[0] - 0.0).abs() < 1e-6, "w[0] should be 0");
-        // Last sample w[7] = 0.5*(1 - cos(2π*7/8)) ≠ 0 (not 1.0 either but not zero)
-        assert!(
-            win[7] > 0.0,
-            "periodic Hann last sample should be non-zero: {}",
-            win[7]
-        );
-        // All values in [0,1]
-        assert!(win.iter().all(|&w| (0.0..=1.0).contains(&w)));
-    }
 
     #[test]
     fn magnitude_spectrum_returns_half_plus_one_bins() {
@@ -5239,6 +5103,126 @@ mod tests {
         assert!(
             (result - expected_ms).abs() < 0.5,
             "delay {result:.3}ms expected ~{expected_ms:.3}ms"
+        );
+    }
+
+    /// Place `reference` at `delay_samples` inside a recording laid out the way
+    /// the latency test records it (signal plus margin), with optional noise.
+    fn delayed_capture(
+        reference: &[f32],
+        delay_samples: usize,
+        record_secs: f32,
+        sample_rate: u32,
+        noise: f32,
+    ) -> Vec<f32> {
+        let mut rng = rand::thread_rng();
+        let mut recorded = vec![0.0f32; (record_secs * sample_rate as f32) as usize];
+        for (idx, value) in reference.iter().enumerate() {
+            if delay_samples + idx < recorded.len() {
+                recorded[delay_samples + idx] = value * 0.3;
+            }
+        }
+        if noise > 0.0 {
+            for sample in recorded.iter_mut() {
+                *sample += rng.gen_range(-noise..noise);
+            }
+        }
+        recorded
+    }
+
+    #[test]
+    fn latency_chirps_measure_known_delays_in_the_real_layout() {
+        // The latency test records duration + margin (0.5 s + 1.0 s by
+        // default). A windowed estimator used to report ~130 ms too much for
+        // tone signals in exactly this layout.
+        for sample_rate in [44_100u32, 48_000] {
+            for center in [200.0f32, 5000.0, 10_000.0] {
+                let reference = generate_latency_chirp(center, 0.5, 0.85, sample_rate);
+                for delay_ms in [5.0f32, 20.0, 60.0, 200.0] {
+                    let delay = (delay_ms / 1000.0 * sample_rate as f32).round() as usize;
+                    let expected = delay as f32 * 1000.0 / sample_rate as f32;
+                    let recorded = delayed_capture(&reference, delay, 1.5, sample_rate, 0.003);
+                    let measured = find_delay_ms(&recorded, &reference, sample_rate)
+                        .expect("delay should be found");
+                    assert!(
+                        (measured - expected).abs() < 0.1,
+                        "{center} Hz chirp @ {sample_rate}: expected {expected:.3} ms, got {measured:.3} ms"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn short_delay_click_is_not_lost_to_noise() {
+        // A single-sample click whose response arrives near the start of the
+        // capture used to lose to noise in the middle of it, because a window
+        // over the recording weighted the middle ~250x more than the start.
+        let sample_rate = 48_000u32;
+        let mut reference = vec![0.0f32; sample_rate as usize / 2];
+        reference[480] = 0.85;
+        let delay = (0.020 * sample_rate as f32) as usize;
+        let mut recorded = delayed_capture(&[], 0, 1.5, sample_rate, 0.01);
+        for k in 0..200 {
+            let sign = if k % 2 == 0 { 1.0 } else { -0.5 };
+            recorded[480 + delay + k] += 0.2 * (-(k as f32) / 20.0).exp() * sign;
+        }
+        let measured = find_delay_ms(&recorded, &reference, sample_rate).unwrap();
+        assert!(
+            (measured - 20.0).abs() < 0.5,
+            "expected ~20 ms, got {measured:.3} ms"
+        );
+    }
+
+    #[test]
+    fn latency_preset_identity_names_the_three_chirps() {
+        let key = |f| latency_preset_identity(TestSignalKind::Chirp, f).0;
+        assert_eq!(key(200.0), "chirp_200");
+        assert_eq!(key(5000.0), "chirp_5k");
+        assert_eq!(key(10_000.0), "chirp_10k");
+        assert_eq!(key(1234.0), "chirp_custom");
+    }
+
+    #[test]
+    fn latency_chirp_spans_one_octave_around_its_centre() {
+        let sample_rate = 48_000u32;
+        let chirp = generate_latency_chirp(5000.0, 0.5, 0.8, sample_rate);
+        assert_eq!(chirp.len(), 24_000);
+        let n = chirp.len().next_power_of_two();
+        let spectrum = magnitude_spectrum(&chirp, n);
+        let level = |hz: f32| spectrum[(hz / sample_rate as f32 * n as f32).round() as usize];
+        assert!(level(5000.0) > 20.0 * level(1000.0));
+        assert!(level(5000.0) > 20.0 * level(12_000.0));
+    }
+
+    #[test]
+    fn rough_fr_of_pink_noise_reads_flat() {
+        // Pink noise through a flat path should draw a flat line; before the
+        // tilt correction it sloped ~30 dB across the band.
+        let sample_rate = 48_000u32;
+        let grid = logspace(20.0, 20_000.0, 48);
+        let mut state = PinkNoiseState::new(1.0);
+        let blocks = 60;
+        let mut averaged = vec![0.0f32; grid.len()];
+        for _ in 0..blocks {
+            let samples: Vec<f32> = (0..8192).map(|_| state.next_sample()).collect();
+            let rough = compute_monitor_rough_fr_db(&samples, sample_rate, &grid);
+            for (acc, value) in averaged.iter_mut().zip(rough) {
+                *acc += value / blocks as f32;
+            }
+        }
+        // Skip the lowest bins, where an 8192-point FFT has too few bins per
+        // grid point to average out.
+        let at = |hz: f32| {
+            let idx = grid.iter().position(|f| *f >= hz).unwrap();
+            averaged[idx]
+        };
+        let low = at(200.0);
+        let mid = at(1000.0);
+        let high = at(10_000.0);
+        assert!(
+            (low - mid).abs() < 3.0 && (high - mid).abs() < 3.0,
+            "expected a flat line, got 200 Hz {low:.1}, 1 kHz {mid:.1}, 10 kHz {high:.1}"
         );
     }
 

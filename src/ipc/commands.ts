@@ -14,7 +14,6 @@ import type {
   CrosstalkRequest,
   DeviceInventory,
   DeviceRecord,
-  IsolationRequest,
   LatencyReport,
   LatencyRequest,
   LibraryTestType,
@@ -87,11 +86,6 @@ export const runCrosstalkTest = (
   request: CrosstalkRequest,
 ): Promise<TestPayload> =>
   invoke<TestPayload>("run_crosstalk_test", { request });
-
-export const runIsolationTest = (
-  request: IsolationRequest,
-): Promise<TestPayload> =>
-  invoke<TestPayload>("run_isolation_test", { request });
 
 // Monitor / pink noise -------------------------------------------------------
 
@@ -200,8 +194,7 @@ export const runPayloadTestRaw = (
     | "run_sweep_fr_test"
     | "run_thd_test"
     | "run_balance_test"
-    | "run_crosstalk_test"
-    | "run_isolation_test",
+    | "run_crosstalk_test",
   request: unknown,
 ): Promise<TestPayload> => invoke<TestPayload>(command, { request });
 

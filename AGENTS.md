@@ -23,7 +23,7 @@ Tests: Vitest + Testing Library + jsdom. `src/test-setup.ts` extends `expect` wi
 
 ## Architecture
 
-**Tauri 2** desktop app — audio diagnostics: latency, frequency response, THD, crosstalk, channel balance, isolation, ANC/Transparency per-frequency attenuation.
+**Tauri 2** desktop app — audio diagnostics: latency, frequency response, THD, crosstalk, channel balance, ANC/Transparency per-frequency attenuation.
 
 ### Frontend — `src/`
 
@@ -43,7 +43,7 @@ localStorage keys:
 ### Backend — `src-tauri/src/`
 
 - **`main.rs`** (~570 lines) — Tauri command handlers. Thin wrappers; spawn blocking tasks, emit `test-progress` events.
-- **`audio/mod.rs`** (~4340 lines) — `AudioEngine` with all DSP: FFT cross-correlation for latency, log-chirp sweep for FR, THD/balance/crosstalk/isolation, real-time input monitor, PNG chart generation (plotters), multi-format export. ANC snapshot capture (`AncSnapshot`, `capture_anc_snapshot`) for per-frequency attenuation across capture modes.
+- **`audio/mod.rs`** (~4340 lines) — `AudioEngine` with all DSP: FFT cross-correlation for latency, log-chirp sweep for FR, THD/balance/crosstalk, real-time input monitor, PNG chart generation (plotters), multi-format export. ANC snapshot capture (`AncSnapshot`, `capture_anc_snapshot`) for per-frequency attenuation across capture modes.
 
 Key Rust crates: `cpal` (audio I/O), `rustfft`, `plotters`, `tokio`, `tauri-plugin-dialog`.
 
