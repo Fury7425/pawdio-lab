@@ -4,12 +4,8 @@ import { toNumber, CrosstalkRequest } from "../model";
 import { SelectField } from "../components/form-fields";
 import { ExportMenu } from "../components/export-menu";
 import { PageHeader } from "../components/page-header";
-import {
-  downloadCsv,
-  downloadJson,
-  exportTimestampTag,
-  objectsToCsv,
-} from "../lib/export-files";
+import { exportTimestampTag, objectsToCsv } from "../lib/export-files";
+import { saveCsvFile, saveJsonFile } from "../lib/save-text";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type RunButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
@@ -41,7 +37,7 @@ export function ExperimentalPage() {
   );
 
   function exportExperimentalJson() {
-    downloadJson(`experimental_${exportTimestampTag()}.json`, {
+    return saveJsonFile(`experimental_${exportTimestampTag()}.json`, {
       format: "pawdio-lab-experimental-export",
       version: 1,
       generatedAt: new Date().toISOString(),
@@ -57,7 +53,10 @@ export function ExperimentalPage() {
       savedAt: entry.savedAt ?? null,
       ...entry.payload,
     }));
-    downloadCsv(`experimental_${exportTimestampTag()}.csv`, objectsToCsv(rows));
+    return saveCsvFile(
+      `experimental_${exportTimestampTag()}.csv`,
+      objectsToCsv(rows),
+    );
   }
 
   return (
@@ -73,11 +72,11 @@ export function ExperimentalPage() {
               items={[
                 {
                   label: "Export JSON",
-                  onSelect: exportExperimentalJson,
+                  onSelect: () => ctx.run(exportExperimentalJson()),
                 },
                 {
                   label: "Export CSV",
-                  onSelect: exportExperimentalCsv,
+                  onSelect: () => ctx.run(exportExperimentalCsv()),
                 },
               ]}
             />
@@ -145,9 +144,7 @@ export function ExperimentalPage() {
 
           <section className="page-card">
             <h3 className="section-subheading">THD</h3>
-            <p className="muted">
-              Runs 100 / 1k / 6k Hz distortion measurements.
-            </p>
+            <p className="muted">Measures distortion at each listed tone.</p>
             <div className="field-grid-2 mt-10">
               <label className="field-row">
                 <span className="field-label">Tones (Hz)</span>

@@ -9,6 +9,8 @@ import {
 } from "lucide-react";
 import { pageItems, PageKey } from "../model";
 import { usePawdioLabContext } from "../pawdio-context";
+import { useShortcutBindings } from "../hooks/use-shortcuts";
+import type { ShortcutAction } from "../lib/shortcuts";
 
 const PAGE_ICONS: Record<
   PageKey,
@@ -25,6 +27,7 @@ const PAGE_ICONS: Record<
 
 export function Sidebar() {
   const ctx = usePawdioLabContext();
+  const { bindings } = useShortcutBindings();
   const visiblePages = ctx.experimentalEnabled
     ? pageItems
     : pageItems.filter((item) => item.key !== "experimental");
@@ -35,8 +38,9 @@ export function Sidebar() {
       <p className="sidebar-subtitle">Audio Diagnostics</p>
 
       <nav className="sidebar-nav" aria-label="Primary">
-        {visiblePages.map((item, index) => {
+        {visiblePages.map((item) => {
           const Icon = PAGE_ICONS[item.key];
+          const binding = bindings[`page_${item.key}` as ShortcutAction];
           return (
             <button
               key={item.key}
@@ -44,7 +48,7 @@ export function Sidebar() {
               className={`nav-btn${ctx.activePage === item.key ? " is-active" : ""}`}
               aria-current={ctx.activePage === item.key ? "page" : undefined}
               aria-label={item.label}
-              title={`${item.label} (Ctrl+${index + 1})`}
+              title={binding ? `${item.label} (${binding})` : item.label}
               onClick={() => ctx.setActivePage(item.key)}
             >
               <Icon size={16} aria-hidden="true" />

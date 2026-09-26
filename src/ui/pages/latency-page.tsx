@@ -10,10 +10,20 @@ import { MetricCard, type MetricTier } from "../components/metric-card";
 import { PageHeader } from "../components/page-header";
 import { usePawdioLabContext } from "../pawdio-context";
 
-function metricTier(ms: number | null | undefined): MetricTier | null {
+// Same bands as the exported text report (latency_performance_label and
+// latency_consistency_label in src-tauri/src/audio/mod.rs), so the colour
+// on screen and the verdict in the file agree.
+function delayTier(ms: number | null | undefined): MetricTier | null {
   if (ms == null) return null;
-  if (ms < 15) return "good";
-  if (ms < 40) return "warn";
+  if (ms <= 40) return "good";
+  if (ms <= 80) return "warn";
+  return "bad";
+}
+
+function consistencyTier(ms: number | null | undefined): MetricTier | null {
+  if (ms == null) return null;
+  if (ms <= 10) return "good";
+  if (ms <= 30) return "warn";
   return "bad";
 }
 
@@ -54,6 +64,14 @@ function normalizeSelection(value: unknown): PresetSelection {
 
 function selectedKeys(selection: PresetSelection): PresetKey[] {
   return PRESET_OPTIONS.map(({ key }) => key).filter((key) => selection[key]);
+}
+
+/**
+ * The presets ticked under "Run Delay Tests", as last saved. Lets the start
+ * shortcut run exactly what the Run Selected button would.
+ */
+export function readLatencyRunSelection(): PresetKey[] {
+  return selectedKeys(normalizeSelection(readLatencyUiPrefs()?.runSelection));
 }
 
 type LatencyUiPrefs = {
@@ -177,17 +195,7 @@ export function LatencyPage() {
             }
           />
 
-          <div className="field-grid-4 mt-12">
-            <LabeledNumberInput
-              label="Frequency (Hz)"
-              value={request.frequencyHz}
-              onChange={(event) =>
-                onChangeRequest({
-                  ...request,
-                  frequencyHz: toNumber(event.target.value, 1000),
-                })
-              }
-            />
+          <div className="field-grid-3 mt-12">
             <LabeledNumberInput
               label="Duration (s)"
               value={request.durationSecs}
@@ -320,23 +328,23 @@ export function LatencyPage() {
             <MetricCard
               label="Average (ms)"
               value={fmtMs(report?.averageDelayMs ?? null)}
-              tier={metricTier(report?.averageDelayMs)}
+              tier={delayTier(report?.averageDelayMs)}
             />
             <MetricCard
               label="Std Dev (ms)"
               value={fmtMs(report?.stdDevMs ?? null)}
-              tier={metricTier(report?.stdDevMs)}
+              tier={consistencyTier(report?.stdDevMs)}
             />
             <MetricCard
               label="Last (ms)"
               value={fmtMs(lastDelay)}
-              tier={metricTier(lastDelay)}
+              tier={delayTier(lastDelay)}
             />
           </div>
 
           <div className="mt-10">
             <p className="field-label" style={{ marginBottom: 6 }}>
-              Progress {progressPercent}% | Signal {request.signal}
+              Progress {progressPercent}%
             </p>
             <div className="progress-track">
               <div

@@ -184,6 +184,13 @@ export function SweepResultView({
 
       <ChartLegend items={series} />
       <p className="muted compact-note">{viewSummary(options)}</p>
+      {typeof metrics.mirrored_channel === "string" && (
+        <p className="field-error compact-note">
+          The {metrics.mirrored_channel} channel recorded silence, so both
+          curves come from one microphone. Check the mic if this was meant to be
+          a stereo capture.
+        </p>
+      )}
       <div className="sweep-result-chart">
         <OverlayChart
           series={series}

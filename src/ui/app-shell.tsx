@@ -18,6 +18,7 @@ import {
 import type { ShortcutAction } from "./lib/shortcuts";
 import { ToastProvider } from "./components/toast";
 import { PawdioLabProvider, usePawdioLabContext } from "./pawdio-context";
+import { readLatencyRunSelection } from "./pages/latency-page";
 
 export function PawdioLabApp() {
   useEffect(() => startAppearanceThemeSync(), []);
@@ -66,7 +67,8 @@ function PawdioLabShell() {
           // never starts something the user was not looking at.
           if (ctx.running) return;
           if (ctx.activePage === PageKeyEnum.Latency) {
-            ctx.run(ctx.runLatencyTest());
+            // Same as the page's Run Selected button.
+            ctx.run(ctx.runLatencySelectedTests(readLatencyRunSelection()));
           } else if (ctx.activePage === PageKeyEnum.SweepFr) {
             ctx.run(ctx.runSweepFrTest());
           }

@@ -35,6 +35,13 @@ export type DeviceInventory = {
 export type AudioSettings = {
   outputDeviceIndex: number | null;
   inputDeviceIndex: number | null;
+  /**
+   * Names of the selected devices. Enumeration order shifts when devices are
+   * plugged in or removed, so the name is what identifies a saved selection;
+   * the index only breaks ties between identically named devices.
+   */
+  outputDeviceName?: string | null;
+  inputDeviceName?: string | null;
   outputSampleRate: number;
   inputSampleRate: number;
   durationSecs: number;
@@ -307,7 +314,7 @@ export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "sweep_fr", label: "Sweep FR" },
   { key: "anc", label: "ANC / Transparency" },
   { key: "devices", label: "Devices / Settings" },
-  { key: "results", label: "Results / Export" },
+  { key: "results", label: "Logs" },
   { key: "library", label: "Library / Compare" },
   { key: "experimental", label: "Experimental Tests" },
 ];

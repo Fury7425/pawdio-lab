@@ -79,7 +79,7 @@ The Rust audio engine handles low-level device I/O and DSP, while the React fron
 
 - **Latency Measurement** — Output-to-input delay with 3 chirp presets (one-octave log sweeps centred on 200 Hz, 5 kHz and 10 kHz). Per-preset calibration removes system baseline for meaningful A/B comparisons.
 - **Frequency Response** — Logarithmic sweep (20 Hz – 20 kHz configurable) with stereo or mono-guided mode. Exports PNG plots and Squiglink-compatible curves.
-- **Input Level Monitor** — Real-time dBFS meter with peak hold, clip detection, and SPL estimate.
+- **Input Level Monitor** — Real-time dBFS meter with peak hold, per-channel clip detection, and one-point SPL calibration.
 - **Pink Noise Generator** — Continuous playback for level checks and placement verification. Live rough FR preview.
 - **THD** — Total Harmonic Distortion at configurable tones (2nd–10th harmonic).
 - **Channel Balance** — Left vs. right level difference in dB.
@@ -255,9 +255,11 @@ Default export path: `~/Documents/Pawdio Lab Exports` (falls back to system temp
 ```
 src/                  React UI (pages, components, state, theme)
 src-tauri/            Tauri config + Rust audio engine
-  src/main.rs         Command handlers, AudioEngine, stream management
+  src/main.rs         Tauri command handlers
+  src/db.rs           SQLite measurement library
+  src/audio/mod.rs    AudioEngine: capture, DSP, plots, exports
+  src/audio/alignment.rs  Wireless marker alignment
 scripts/              Release metadata tooling
-app/                  Legacy Python prototype (not active)
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -273,8 +275,8 @@ app/                  Legacy Python prototype (not active)
 - [x] Per-preset calibration system
 - [x] Multi-format export (text, CSV, JSON, PNG, Squiglink)
 - [x] Dark/light theme with accent color variants
-- [ ] Enable experimental test exports
-- [ ] Add target curve overlay for FR measurements
+- [x] Enable experimental test exports
+- [x] Add target curve overlay for FR measurements
 - [ ] Waterfall / spectrogram view
 
 See the [open issues](https://github.com/Fury7425/pawdio-lab/issues) for a full list of proposed features and known issues.

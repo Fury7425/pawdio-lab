@@ -47,6 +47,9 @@ export function deriveDeviceName(
  * call `appendLog` and `appendResult`; tests/UI read `logs`, `results`,
  * `logText`.
  */
+/** Log lines kept in memory; older lines drop off the top. */
+export const MAX_LOG_LINES = 5000;
+
 export function useResultsLog({ getSettings, getInventory }: Deps = {}) {
   const [logs, setLogs] = useState<string[]>([]);
   const [results, setResults] = useState<ResultEntry[]>([]);
@@ -55,7 +58,10 @@ export function useResultsLog({ getSettings, getInventory }: Deps = {}) {
 
   function appendLog(message: string) {
     const stamp = new Date().toLocaleTimeString("en-US", { hour12: false });
-    setLogs((prev) => [...prev, `[${stamp}] ${message}`]);
+    setLogs((prev) => [
+      ...prev.slice(-(MAX_LOG_LINES - 1)),
+      `[${stamp}] ${message}`,
+    ]);
   }
 
   function appendResult(payload: TestPayload) {

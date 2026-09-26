@@ -65,11 +65,19 @@ export function useSplCalibration(deviceName: string | null) {
 export function useActiveInputCalibration() {
   const ctx = usePawdioLabContext();
   const deviceName = useMemo(() => {
-    const index = ctx.settings.inputDeviceIndex;
+    // "System Default" resolves to whichever mic the OS currently uses, so file
+    // the calibration under that device's own name. A fixed "System Default"
+    // key would quietly reuse one mic's sensitivity after the default changed.
+    const index =
+      ctx.settings.inputDeviceIndex ?? ctx.inventory?.defaultInputIndex ?? null;
     if (index === null) return "System Default Input";
     const device = ctx.inventory?.inputs.find((entry) => entry.index === index);
-    return device?.name ?? `Input ${index}`;
-  }, [ctx.settings.inputDeviceIndex, ctx.inventory]);
+    return device?.name ?? ctx.settings.inputDeviceName ?? `Input ${index}`;
+  }, [
+    ctx.settings.inputDeviceIndex,
+    ctx.settings.inputDeviceName,
+    ctx.inventory,
+  ]);
 
   return { deviceName, ...useSplCalibration(deviceName) };
 }

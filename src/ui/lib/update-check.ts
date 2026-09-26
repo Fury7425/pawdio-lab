@@ -32,7 +32,10 @@ export type UpdateCheckState =
  * as `-beta.2` are ignored, so `v1.6.0-beta.1` and `1.6.0` compare equal.
  */
 export function normalizeVersion(value: string): number[] {
-  const matches = value.match(/\d+/g);
+  // Drop the pre-release / build suffix before reading numbers, so the "2" in
+  // "-beta.2" is not taken as a fourth version component.
+  const core = value.trim().replace(/^v/i, "").split(/[-+]/)[0];
+  const matches = core.match(/\d+/g);
   if (!matches) return [0];
   return matches.map((part) => Number(part));
 }

@@ -13,7 +13,9 @@ import {
 describe("version comparison", () => {
   it("splits a tag into numbers and ignores decoration", () => {
     expect(normalizeVersion("v1.6.0")).toEqual([1, 6, 0]);
-    expect(normalizeVersion("1.6.0-beta.2")).toEqual([1, 6, 0, 2]);
+    expect(normalizeVersion("1.6.0-beta.2")).toEqual([1, 6, 0]);
+    expect(compareVersions("v1.6.0-beta.1", "1.6.0")).toBe(0);
+    expect(isRemoteNewer("1.6.0", "1.6.0-beta.2")).toBe(false);
     expect(normalizeVersion("nothing")).toEqual([0]);
   });
 

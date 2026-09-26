@@ -5,14 +5,12 @@ import {
   toNumber,
   toSelectValue,
 } from "../model";
-import { LabeledNumberInput } from "../components/labeled-input";
 import { CheckboxField, SelectField } from "../components/form-fields";
 import { PageHeader } from "../components/page-header";
 import {
   ACCENT_COLORS,
   APPEARANCE_MODES,
   DEFAULT_APPEARANCE_MODE,
-  DEFAULT_INPUT_BIT_DEPTH,
   DEFAULT_ACCENT_COLOR,
   DeviceUiPrefs,
   normalizeAccentColor,
@@ -44,9 +42,6 @@ export function DevicesPage() {
   const [accentColor, setAccentColor] = useState(
     storedUiPrefs?.accentColor ?? DEFAULT_ACCENT_COLOR,
   );
-  const [inputBitDepth, setInputBitDepth] = useState(
-    storedUiPrefs?.inputBitDepth ?? DEFAULT_INPUT_BIT_DEPTH,
-  );
 
   useEffect(() => {
     setDraft(settings);
@@ -56,10 +51,9 @@ export function DevicesPage() {
     const snapshot: DeviceUiPrefs = {
       appearanceMode,
       accentColor,
-      inputBitDepth,
     };
     persistDeviceUiPrefs(snapshot);
-  }, [appearanceMode, accentColor, inputBitDepth]);
+  }, [appearanceMode, accentColor]);
 
   function commitDeviceSelection(next: AudioSettings) {
     setDraft(next);
@@ -106,29 +100,6 @@ export function DevicesPage() {
                 }
               />
             </label>
-          </div>
-
-          <div className="field-grid-2 mt-10">
-            <LabeledNumberInput
-              label="Signal Duration (s)"
-              value={draft.durationSecs}
-              step={0.05}
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  durationSecs: toNumber(event.target.value, 0.5),
-                }))
-              }
-            />
-            <SelectField
-              label="Input Bit Depth"
-              value={inputBitDepth}
-              onChange={setInputBitDepth}
-              options={["Auto", "16", "24", "32"].map((depth) => ({
-                value: depth,
-                label: depth,
-              }))}
-            />
           </div>
 
           <label className="field-row mt-10">
@@ -219,22 +190,6 @@ export function DevicesPage() {
               ))}
             </SelectField>
           </div>
-
-          <LabeledNumberInput
-            label="Chunk Size"
-            value={draft.chunkSize}
-            min={64}
-            step={1}
-            onChange={(event) =>
-              setDraft((prev) => ({
-                ...prev,
-                chunkSize: Math.max(
-                  64,
-                  Math.round(toNumber(event.target.value, 1024)),
-                ),
-              }))
-            }
-          />
         </section>
 
         <hr className="section-divider" />

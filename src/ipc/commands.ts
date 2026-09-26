@@ -7,6 +7,8 @@
  * outside this file.
  */
 import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { open, save } from "@tauri-apps/plugin-dialog";
 import type {
   AncSnapshot,
   AudioSettings,
@@ -14,6 +16,7 @@ import type {
   CrosstalkRequest,
   DeviceInventory,
   DeviceRecord,
+  LatencyProgress,
   LatencyReport,
   LatencyRequest,
   LibraryTestType,
@@ -22,6 +25,7 @@ import type {
   RuntimeStatus,
   SweepRequest,
   TestPayload,
+  TestProgress,
   ThdRequest,
 } from "../ui/model";
 
@@ -117,31 +121,20 @@ export const saveLatencyOverallBarChart = (
 ): Promise<string> =>
   invoke<string>("save_latency_overall_bar_chart", { request, suite });
 
-export const writeSquiglinkCombined = (params: {
-  outputPath: string;
-  freqs: number[];
-  leftDb: number[];
-  rightDb: number[];
-}): Promise<void> => invoke("write_squiglink_combined", params);
-
 /**
- * Regenerate the aggregate sweep plots (All Sweeps / Average of All /
- * Left+Right Average) from both sides' curves. Used after a guided mono run
- * combines two single-side sweeps so the aggregate plots include both buds.
+ * Write the Sweep FR plots and Squiglink files for a set of accepted sweeps.
+ * Returns the written files keyed like a sweep payload's `files`.
  */
-export const saveSweepCombinedPlots = (params: {
-  allPlotPath?: string;
-  avgAllPlotPath?: string;
-  lrAvgPlotPath?: string;
+export const saveSweepOutputs = (params: {
+  outputDir: string | null;
+  runTag: string;
+  savePlots: boolean;
+  saveSquiglink: boolean;
   freqs: number[];
-  allCurves: number[][];
-  avgAll: number[];
-  leftAvg: number[];
-  rightAvg: number[];
-}): Promise<void> => invoke("save_sweep_combined_plots", params);
-
-export const ensureOutputDir = (path: string): Promise<void> =>
-  invoke("ensure_output_dir", { path });
+  leftCurves: number[][];
+  rightCurves: number[][];
+}): Promise<Record<string, string>> =>
+  invoke<Record<string, string>>("save_sweep_outputs", params);
 
 export const writeTextExport = (params: {
   outputDir: string;
@@ -182,21 +175,6 @@ export const saveAncSquiglink = (params: {
   freqs: number[];
   attenuationDb: number[];
 }): Promise<string> => invoke<string>("save_anc_squiglink", params);
-
-// Untyped escape hatch for the dynamic dispatch in runPayloadTest -------------
-
-/**
- * Used by `runPayloadTest()` which dispatches by command string. Prefer the
- * concrete `run*Test` wrappers above when you know the command at the call site.
- */
-export const runPayloadTestRaw = (
-  command:
-    | "run_sweep_fr_test"
-    | "run_thd_test"
-    | "run_balance_test"
-    | "run_crosstalk_test",
-  request: unknown,
-): Promise<TestPayload> => invoke<TestPayload>(command, { request });
 
 // Measurement library / DB ---------------------------------------------------
 // SQLite-backed persistence (src-tauri/src/db.rs). Tauri maps these camelCase
@@ -239,3 +217,56 @@ export const dbSaveMeasurement = (params: {
 
 export const dbDeleteMeasurement = (id: number): Promise<void> =>
   invoke("db_delete_measurement", { id });
+
+// Events ---------------------------------------------------------------------
+
+export type InputLevelEvent = {
+  currentDbfs: number;
+  peakDbfs: number;
+  clipCount: number;
+  roughFrHz?: number[];
+  roughFrDb?: number[];
+};
+
+export const onLatencyProgress = (
+  handler: (progress: LatencyProgress) => void,
+): Promise<UnlistenFn> =>
+  listen<LatencyProgress>("latency-progress", (event) =>
+    handler(event.payload),
+  );
+
+export const onTestProgress = (
+  handler: (progress: TestProgress) => void,
+): Promise<UnlistenFn> =>
+  listen<TestProgress>("test-progress", (event) => handler(event.payload));
+
+export const onInputLevel = (
+  handler: (level: InputLevelEvent) => void,
+): Promise<UnlistenFn> =>
+  listen<InputLevelEvent>("input-level", (event) => handler(event.payload));
+
+// Dialogs --------------------------------------------------------------------
+
+/** Ask for a folder. Resolves to null when the user cancels. */
+export async function pickDirectory(
+  defaultPath?: string,
+): Promise<string | null> {
+  const selected = await open({
+    directory: true,
+    multiple: false,
+    defaultPath: defaultPath || undefined,
+  });
+  return typeof selected === "string" && selected.length > 0 ? selected : null;
+}
+
+/** Ask where to save a file. Resolves to null when the user cancels. */
+export async function pickSavePath(
+  defaultName: string,
+  extension: string,
+): Promise<string | null> {
+  const selected = await save({
+    defaultPath: defaultName,
+    filters: [{ name: extension.toUpperCase(), extensions: [extension] }],
+  });
+  return typeof selected === "string" && selected.length > 0 ? selected : null;
+}

@@ -3495,7 +3495,7 @@ fn save_anc_single_plot(
     attenuation_r: &[f32],
     mode_label: &str,
 ) -> Result<(), AudioError> {
-    if freqs.len() < 2 || attenuation_l.is_empty() {
+    if freqs.len() < 2 || (attenuation_l.is_empty() && attenuation_r.is_empty()) {
         return Ok(());
     }
     let x_min = freqs
@@ -3552,23 +3552,25 @@ fn save_anc_single_plot(
         )))
         .map_err(|err| AudioError::FileExport(format!("anc zeroline {}: {err}", path.display())))?;
 
-    // L channel
-    chart
-        .draw_series(LineSeries::new(
-            freqs
-                .iter()
-                .zip(attenuation_l.iter())
-                .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
-            RGBColor(13, 73, 176).stroke_width(3),
-        ))
-        .map_err(|err| AudioError::FileExport(format!("anc left {}: {err}", path.display())))?
-        .label("Left")
-        .legend(|(x, y)| {
-            PathElement::new(
-                vec![(x, y), (x + 36, y)],
+    // L channel (absent after a right-ear-only guided capture)
+    if !attenuation_l.is_empty() {
+        chart
+            .draw_series(LineSeries::new(
+                freqs
+                    .iter()
+                    .zip(attenuation_l.iter())
+                    .map(|(x, y)| (*x, y.clamp(ANC_PLOT_Y_MIN, ANC_PLOT_Y_MAX))),
                 RGBColor(13, 73, 176).stroke_width(3),
-            )
-        });
+            ))
+            .map_err(|err| AudioError::FileExport(format!("anc left {}: {err}", path.display())))?
+            .label("Left")
+            .legend(|(x, y)| {
+                PathElement::new(
+                    vec![(x, y), (x + 36, y)],
+                    RGBColor(13, 73, 176).stroke_width(3),
+                )
+            });
+    }
 
     if !attenuation_r.is_empty() {
         chart
@@ -3730,6 +3732,10 @@ pub fn save_anc_plots(
 
     // Per-mode single plots
     for (key, label, att_l, att_r) in modes {
+        if att_l.is_empty() && att_r.is_empty() {
+            // Nothing to draw, so no file: never report a path that was not written.
+            continue;
+        }
         let filename = format!("anc_{}_{tag}.png", sanitize_output_name(key));
         let path = output_dir.join(&filename);
         save_anc_single_plot(&path, freqs, att_l, att_r, label)?;
@@ -3740,9 +3746,14 @@ pub fn save_anc_plots(
     if modes.len() > 1 {
         let combined_filename = format!("anc_combined_{tag}.png");
         let combined_path = output_dir.join(&combined_filename);
+        // One curve per mode: the left ear, or the right when only the right
+        // was captured, rather than an empty line.
         let curve_refs: Vec<(&str, &[f32])> = modes
             .iter()
-            .map(|(_, label, att_l, _)| (*label, att_l.as_slice()))
+            .map(|(_, label, att_l, att_r)| {
+                let curve = if att_l.is_empty() { att_r } else { att_l };
+                (*label, curve.as_slice())
+            })
             .collect();
         save_anc_combined_plot(&combined_path, freqs, &curve_refs)?;
         result.push((

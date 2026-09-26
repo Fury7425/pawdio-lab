@@ -8,13 +8,11 @@ export type AccentColor = (typeof ACCENT_COLORS)[number];
 
 export const DEFAULT_APPEARANCE_MODE: AppearanceMode = "Dark";
 export const DEFAULT_ACCENT_COLOR: AccentColor = "Blue";
-export const DEFAULT_INPUT_BIT_DEPTH = "Auto";
 const APPEARANCE_SYNC_EVENT = "pawdio-lab-appearance-sync";
 
 export type DeviceUiPrefs = {
   appearanceMode: AppearanceMode;
   accentColor: AccentColor;
-  inputBitDepth: string;
 };
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -70,13 +68,6 @@ export function normalizeAccentColor(value: unknown): AccentColor {
   return DEFAULT_ACCENT_COLOR;
 }
 
-function normalizeInputBitDepth(value: unknown): string {
-  if (value === "Auto" || value === "16" || value === "24" || value === "32") {
-    return value;
-  }
-  return DEFAULT_INPUT_BIT_DEPTH;
-}
-
 export function readDeviceUiPrefs(): DeviceUiPrefs | null {
   if (typeof window === "undefined") {
     return null;
@@ -96,7 +87,6 @@ export function readDeviceUiPrefs(): DeviceUiPrefs | null {
     return {
       appearanceMode: normalizeAppearanceMode(record.appearanceMode),
       accentColor: normalizeAccentColor(record.accentColor),
-      inputBitDepth: normalizeInputBitDepth(record.inputBitDepth),
     };
   } catch {
     return null;

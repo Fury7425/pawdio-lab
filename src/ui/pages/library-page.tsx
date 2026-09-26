@@ -12,12 +12,8 @@ import { deriveDeviceName } from "../hooks/use-results-log";
 import { Modal } from "../components/modal";
 import { ExportMenu } from "../components/export-menu";
 import { PageHeader } from "../components/page-header";
-import {
-  downloadCsv,
-  downloadJson,
-  exportTimestampTag,
-  objectsToCsv,
-} from "../lib/export-files";
+import { exportTimestampTag, objectsToCsv } from "../lib/export-files";
+import { saveCsvFile, saveJsonFile } from "../lib/save-text";
 import { usePawdioLabContext } from "../pawdio-context";
 import { ComparisonPanel, type CompareEntry } from "./compare/comparison-panel";
 import { ancCurve, sweepCurve, type Channel } from "./compare/compare-curves";
@@ -32,6 +28,11 @@ type SaveDraft = {
 type PendingDelete =
   | { kind: "measurement"; id: number; name: string }
   | { kind: "device"; id: number; name: string; count: number };
+
+/** Label for a stored test type, including ones this version no longer runs. */
+function testLabel(testType: string): string {
+  return LIBRARY_TEST_LABELS[testType as LibraryTestType] ?? testType;
+}
 
 function fmtDate(ms: number): string {
   const d = new Date(ms);
@@ -54,6 +55,8 @@ export function LibraryPage() {
   );
   const [saveDeviceId, setSaveDeviceId] = useState<number | null>(null);
   const [saveDeviceName, setSaveDeviceName] = useState("");
+  // Blocks a second click from saving the same measurement twice.
+  const [saving, setSaving] = useState(false);
 
   const [renameDraft, setRenameDraft] = useState<{
     id: number;
@@ -131,7 +134,7 @@ export function LibraryPage() {
     }> = [];
     for (const entry of ctx.results) {
       const testType = entry.payload.test as LibraryTestType;
-      const typeLabel = LIBRARY_TEST_LABELS[testType] ?? entry.payload.test;
+      const typeLabel = testLabel(testType);
       items.push({
         key: `res-${entry.id}`,
         label: `${typeLabel}${entry.deviceName ? ` · ${entry.deviceName}` : ""}`,
@@ -196,7 +199,16 @@ export function LibraryPage() {
   }
 
   async function confirmSave() {
-    if (!saveDraft) return;
+    if (!saveDraft || saving) return;
+    setSaving(true);
+    try {
+      await saveDraftToLibrary(saveDraft);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function saveDraftToLibrary(draft: SaveDraft) {
     let deviceId = saveDeviceId;
     if (saveDeviceMode === "new") {
       const name = saveDeviceName.trim();
@@ -214,9 +226,9 @@ export function LibraryPage() {
     }
     const record = await ctx.library.saveMeasurement({
       deviceId,
-      testType: saveDraft.testType,
-      label: saveDraft.label.trim() || undefined,
-      payload: saveDraft.payload,
+      testType: draft.testType,
+      label: draft.label.trim() || undefined,
+      payload: draft.payload,
     });
     if (record) setSaveDraft(null);
   }
@@ -247,7 +259,7 @@ export function LibraryPage() {
 
   function exportSelectedJson() {
     if (!selectedRecordsReady) return;
-    downloadJson(
+    return saveJsonFile(
       `library_${selectedType ?? "records"}_${exportTimestampTag()}.json`,
       {
         format: "pawdio-lab-library-export",
@@ -299,11 +311,10 @@ export function LibraryPage() {
       curveRowsFor(record, deviceName),
     );
     if (curveRows.length > 0) {
-      downloadCsv(
+      return saveCsvFile(
         `library_${selectedType ?? "records"}_${exportTimestampTag()}.csv`,
         objectsToCsv(curveRows),
       );
-      return;
     }
     const rows = selectedEntries.map(({ record, deviceName }) => ({
       deviceName,
@@ -316,7 +327,7 @@ export function LibraryPage() {
       schemaVer: record.schemaVer,
       payload: record.payload,
     }));
-    downloadCsv(
+    return saveCsvFile(
       `library_${selectedType ?? "records"}_${exportTimestampTag()}.csv`,
       objectsToCsv(rows),
     );
@@ -331,7 +342,7 @@ export function LibraryPage() {
     }
     return Array.from(groups.entries()).map(([testType, items]) => (
       <div key={testType} style={{ marginTop: 8 }}>
-        <h3 className="section-subheading">{LIBRARY_TEST_LABELS[testType]}</h3>
+        <h3 className="section-subheading">{testLabel(testType)}</h3>
         {items.map((summary) => {
           const checked = selectedIds.includes(summary.id);
           const selectable = canSelect(summary);
@@ -370,15 +381,14 @@ export function LibraryPage() {
                 type="button"
                 className="icon-btn danger"
                 aria-label={`Delete measurement ${
-                  summary.label || LIBRARY_TEST_LABELS[summary.testType]
+                  summary.label || testLabel(summary.testType)
                 }`}
                 title="Delete measurement"
                 onClick={() =>
                   setPendingDelete({
                     kind: "measurement",
                     id: summary.id,
-                    name:
-                      summary.label || LIBRARY_TEST_LABELS[summary.testType],
+                    name: summary.label || testLabel(summary.testType),
                   })
                 }
               >
@@ -411,17 +421,18 @@ export function LibraryPage() {
               <button
                 type="button"
                 className="skin-btn"
+                disabled={saving}
                 onClick={() => {
                   confirmSave();
                 }}
               >
-                Save
+                {saving ? "Saving…" : "Save"}
               </button>
             </>
           }
         >
           <p className="muted" style={{ marginBottom: 12 }}>
-            Saving a {LIBRARY_TEST_LABELS[saveDraft.testType]} measurement.
+            Saving a {testLabel(saveDraft.testType)} measurement.
           </p>
 
           <label className="field-row" style={{ marginBottom: 10 }}>
@@ -616,8 +627,16 @@ export function LibraryPage() {
                   label={`Export Selected (${selectedIds.length})`}
                   disabled={!selectedRecordsReady}
                   items={[
-                    { label: "Export JSON", onSelect: exportSelectedJson },
-                    { label: "Export CSV", onSelect: exportSelectedCsv },
+                    {
+                      label: "Export JSON",
+                      onSelect: () =>
+                        ctx.run(exportSelectedJson() ?? Promise.resolve()),
+                    },
+                    {
+                      label: "Export CSV",
+                      onSelect: () =>
+                        ctx.run(exportSelectedCsv() ?? Promise.resolve()),
+                    },
                   ]}
                 />
                 <button
@@ -702,7 +721,7 @@ export function LibraryPage() {
         COMPARABLE_TEST_TYPES.has(selectedType) && (
           <section className="page-card">
             <h2 className="section-heading">
-              Comparison · {LIBRARY_TEST_LABELS[selectedType]}
+              Comparison · {testLabel(selectedType)}
             </h2>
             <ComparisonPanel entries={selectedEntries} />
           </section>
@@ -714,8 +733,8 @@ export function LibraryPage() {
           <section className="page-card">
             <div className="empty-state">
               <span>
-                {LIBRARY_TEST_LABELS[selectedType]} records are ready to export;
-                visual comparison is not available for this test type yet.
+                {testLabel(selectedType)} records are ready to export; visual
+                comparison is not available for this test type yet.
               </span>
             </div>
           </section>

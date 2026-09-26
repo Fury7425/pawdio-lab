@@ -1,10 +1,4 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useMemo,
-  type ReactNode,
-} from "react";
+import { createContext, useContext, type ReactNode } from "react";
 import {
   usePawdioLabController,
   type PawdioLabController,
@@ -31,19 +25,14 @@ const PawdioLabContext = createContext<PawdioLabContextValue | null>(null);
 export function PawdioLabProvider({ children }: { children: ReactNode }) {
   const controller = usePawdioLabController();
 
-  const run = useCallback(
-    (promise: Promise<unknown>) => {
+  // The controller is a fresh object every render, so the context value is
+  // too; memoising it here would never hit.
+  const value: PawdioLabContextValue = {
+    ...controller,
+    run: (promise: Promise<unknown>) => {
       promise.catch((err) => controller.setError(String(err)));
     },
-    [controller],
-  );
-
-  // Memoise so consumers' useMemo/useCallback that depend on the value stay stable
-  // when the controller object identity is otherwise unchanged.
-  const value = useMemo<PawdioLabContextValue>(
-    () => ({ ...controller, run }),
-    [controller, run],
-  );
+  };
 
   return (
     <PawdioLabContext.Provider value={value}>

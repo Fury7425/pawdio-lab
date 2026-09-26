@@ -86,7 +86,10 @@ export function parseCompensationText(
   name: string,
 ): CompensationCurve {
   const rows: number[][] = [];
-  let width = 0;
+  // Narrowest row: a file only counts as a six-column population export when
+  // every row has all six columns. Mixing widths used to read missing
+  // percentiles as 0 dB.
+  let width = Number.POSITIVE_INFINITY;
 
   for (const rawLine of text.split(/\r?\n/)) {
     const line = rawLine.trim();
@@ -97,7 +100,7 @@ export function parseCompensationText(
     if (numbers.some((value) => !Number.isFinite(value))) continue;
     if (!(numbers[0] > 0)) continue;
     rows.push(numbers);
-    width = Math.max(width, numbers.length);
+    width = Math.min(width, numbers.length);
   }
 
   if (rows.length < 2) {
