@@ -173,6 +173,46 @@ function readPersistedUiState(): PersistedUiState | null {
   }
 }
 
+const INPUT_BIT_DEPTHS: ReadonlySet<string> = new Set([
+  "auto",
+  "16",
+  "24",
+  "32",
+]);
+
+/**
+ * Initial audio settings. The bit depth used to live, unused, in the device
+ * UI prefs as "Auto"/"16"/"24"/"32"; carry that choice over once.
+ */
+export function initialAudioSettings(stored: unknown): AudioSettings {
+  const merged = mergeWithDefaults(defaultSettings, stored);
+  // Look at what was saved, not the merge: the default fills the gap first.
+  const saved = toRecord(stored)?.inputBitDepth;
+  if (saved !== undefined) {
+    return {
+      ...merged,
+      inputBitDepth: INPUT_BIT_DEPTHS.has(String(saved))
+        ? (saved as AudioSettings["inputBitDepth"])
+        : "auto",
+    };
+  }
+  let legacy: unknown;
+  try {
+    legacy = JSON.parse(
+      window.localStorage.getItem("pawdio-lab-device-ui-v1") ?? "{}",
+    )?.inputBitDepth;
+  } catch {
+    legacy = undefined;
+  }
+  const normalized = String(legacy ?? "auto").toLowerCase();
+  return {
+    ...merged,
+    inputBitDepth: INPUT_BIT_DEPTHS.has(normalized)
+      ? (normalized as AudioSettings["inputBitDepth"])
+      : "auto",
+  };
+}
+
 function mergeWithDefaults<T extends Record<string, unknown>>(
   defaults: T,
   stored: unknown,
@@ -430,10 +470,7 @@ export function usePawdioLabController() {
   // Devices + audio settings (extracted to hooks/use-devices-controller.ts)
   const { inventory, settings, loadState, commitSettings } =
     useDevicesController({
-      initialSettings: mergeWithDefaults(
-        defaultSettings,
-        persistedUiState?.settings,
-      ),
+      initialSettings: initialAudioSettings(persistedUiState?.settings),
       setError: (m) => setError(m),
     });
 

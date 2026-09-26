@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AudioSettings,
+  INPUT_BIT_DEPTH_LABELS,
+  type InputBitDepth,
   fromSelectValue,
   toNumber,
   toSelectValue,
@@ -54,6 +56,29 @@ export function DevicesPage() {
     };
     persistDeviceUiPrefs(snapshot);
   }, [appearanceMode, accentColor]);
+
+  // Depths the selected input offers ("System Default" resolves to the OS
+  // default device). An empty list means the backend could not tell, so every
+  // option stays available.
+  const selectedInput = inventory?.inputs.find(
+    (device) =>
+      device.index ===
+      (draft.inputDeviceIndex ?? inventory?.defaultInputIndex ?? null),
+  );
+  const offeredDepths = selectedInput?.bitDepths ?? [];
+  const depthOptions: InputBitDepth[] = [
+    "auto",
+    ...(offeredDepths.length > 0
+      ? offeredDepths
+      : (["16", "24", "32"] as InputBitDepth[])),
+  ];
+  if (!depthOptions.includes(draft.inputBitDepth)) {
+    depthOptions.push(draft.inputBitDepth);
+  }
+  const depthUnavailable =
+    draft.inputBitDepth !== "auto" &&
+    offeredDepths.length > 0 &&
+    !offeredDepths.includes(draft.inputBitDepth);
 
   function commitDeviceSelection(next: AudioSettings) {
     setDraft(next);
@@ -189,6 +214,30 @@ export function DevicesPage() {
                 </option>
               ))}
             </SelectField>
+          </div>
+
+          <div className="mt-10">
+            <SelectField
+              label="Input Bit Depth"
+              value={draft.inputBitDepth}
+              onChange={(value) =>
+                commitDeviceSelection({
+                  ...draft,
+                  inputBitDepth: value as InputBitDepth,
+                })
+              }
+              options={depthOptions.map((depth) => ({
+                value: depth,
+                label: INPUT_BIT_DEPTH_LABELS[depth],
+              }))}
+            />
+            {depthUnavailable && (
+              <p className="field-error compact-note mt-8">
+                This input does not offer{" "}
+                {INPUT_BIT_DEPTH_LABELS[draft.inputBitDepth]}, so captures use
+                the device default.
+              </p>
+            )}
           </div>
         </section>
 

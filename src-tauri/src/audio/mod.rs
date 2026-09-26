@@ -58,6 +58,50 @@ pub struct AudioSettings {
     /// the very quantity it exists to measure.
     #[serde(default)]
     pub bluetooth_mode: bool,
+    /// Capture sample format. `Auto` keeps the device's own choice.
+    #[serde(default)]
+    pub input_bit_depth: InputBitDepth,
+}
+
+/// Requested capture resolution.
+///
+/// cpal has no packed 24-bit type, so 24-bit converters deliver their samples
+/// in 32-bit integer containers; that is what `Bits24` asks for. `Bits32` is
+/// 32-bit float, the format shared-mode endpoints (WASAPI, CoreAudio) use.
+/// A depth the device does not offer falls back to `Auto` rather than failing
+/// the measurement; the Devices page lists what each input actually offers.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub enum InputBitDepth {
+    #[default]
+    #[serde(rename = "auto")]
+    Auto,
+    #[serde(rename = "16")]
+    Bits16,
+    #[serde(rename = "24")]
+    Bits24,
+    #[serde(rename = "32")]
+    Bits32,
+}
+
+impl InputBitDepth {
+    fn sample_format(self) -> Option<SampleFormat> {
+        match self {
+            InputBitDepth::Auto => None,
+            InputBitDepth::Bits16 => Some(SampleFormat::I16),
+            InputBitDepth::Bits24 => Some(SampleFormat::I32),
+            InputBitDepth::Bits32 => Some(SampleFormat::F32),
+        }
+    }
+
+    /// The depth a capture format provides, for listing what a device offers.
+    fn from_sample_format(format: SampleFormat) -> Option<Self> {
+        match format {
+            SampleFormat::I16 => Some(InputBitDepth::Bits16),
+            SampleFormat::I32 => Some(InputBitDepth::Bits24),
+            SampleFormat::F32 => Some(InputBitDepth::Bits32),
+            _ => None,
+        }
+    }
 }
 
 impl Default for AudioSettings {
@@ -73,6 +117,7 @@ impl Default for AudioSettings {
             chunk_size: 1024,
             item_name: String::new(),
             bluetooth_mode: false,
+            input_bit_depth: InputBitDepth::Auto,
         }
     }
 }
@@ -85,6 +130,9 @@ pub struct AudioDeviceInfo {
     pub is_input: bool,
     pub channels: u16,
     pub default_sample_rate: u32,
+    /// Capture depths this input offers (inputs only; empty for outputs).
+    #[serde(default)]
+    pub bit_depths: Vec<InputBitDepth>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -691,8 +739,11 @@ impl AudioEngine {
             settings.input_device_name.as_deref(),
             true,
         )?;
-        let (input_config, input_format) =
-            choose_input_config(&input_device, settings.input_sample_rate)?;
+        let (input_config, input_format) = choose_input_config(
+            &input_device,
+            settings.input_sample_rate,
+            settings.input_bit_depth,
+        )?;
         let channels = input_config.channels as usize;
 
         let stats = Arc::new(Mutex::new(MonitorStats {
@@ -1047,7 +1098,8 @@ impl AudioEngine {
                 "save_plots": request.save_plots,
                 "save_squiglink": request.save_squiglink,
                 "output_dir": request.output_dir.clone(),
-                "bluetooth_mode": runtime.bluetooth_mode
+                "bluetooth_mode": runtime.bluetooth_mode,
+                "input_format": format!("{:?}", runtime.input_format)
             }),
             metrics: json!({
                 "delay_ms_left": avg_delay_l,
@@ -1422,8 +1474,11 @@ impl AudioRuntime {
         )?;
         let (output_config, output_format) =
             choose_output_config(&output_device, settings.output_sample_rate)?;
-        let (input_config, input_format) =
-            choose_input_config(&input_device, settings.input_sample_rate)?;
+        let (input_config, input_format) = choose_input_config(
+            &input_device,
+            settings.input_sample_rate,
+            settings.input_bit_depth,
+        )?;
 
         Ok(Self {
             bluetooth_mode: settings.bluetooth_mode,
@@ -1643,6 +1698,7 @@ fn enumerate_output_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)
                 is_input: false,
                 channels,
                 default_sample_rate,
+                bit_depths: Vec::new(),
             },
         ));
     }
@@ -1665,6 +1721,16 @@ fn enumerate_input_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)>
             Ok(cfg) => (cfg.channels(), cfg.sample_rate().0),
             Err(_) => (first.channels(), first.max_sample_rate().0),
         };
+        let mut bit_depths: Vec<InputBitDepth> = device
+            .supported_input_configs()
+            .map(|ranges| {
+                ranges
+                    .filter_map(|range| InputBitDepth::from_sample_format(range.sample_format()))
+                    .collect()
+            })
+            .unwrap_or_default();
+        bit_depths.sort_by_key(|depth| *depth as u8);
+        bit_depths.dedup();
         input_devices.push((
             device.clone(),
             AudioDeviceInfo {
@@ -1673,6 +1739,7 @@ fn enumerate_input_devices(host: &Host) -> Result<Vec<(Device, AudioDeviceInfo)>
                 is_input: true,
                 channels,
                 default_sample_rate,
+                bit_depths,
             },
         ));
     }
@@ -1799,7 +1866,36 @@ fn choose_output_config(
 fn choose_input_config(
     device: &Device,
     preferred_rate: u32,
+    bit_depth: InputBitDepth,
 ) -> Result<(StreamConfig, SampleFormat), AudioError> {
+    // A requested depth wins among the ranges that carry the preferred rate.
+    // When the device has none, the selection below runs as `Auto`.
+    if let Some(wanted) = bit_depth.sample_format() {
+        let default_channels = device
+            .default_input_config()
+            .ok()
+            .map(|config| config.channels());
+        let mut matching = None;
+        for range in device.supported_input_configs()? {
+            if range.sample_format() != wanted
+                || preferred_rate < range.min_sample_rate().0
+                || preferred_rate > range.max_sample_rate().0
+            {
+                continue;
+            }
+            let channels = range.channels();
+            let config = range.with_sample_rate(SampleRate(preferred_rate)).config();
+            if Some(channels) == default_channels {
+                return Ok((config, wanted));
+            }
+            if matching.is_none() {
+                matching = Some((config, wanted));
+            }
+        }
+        if let Some(found) = matching {
+            return Ok(found);
+        }
+    }
     // Some hosts list a mono range ahead of the stereo one. Taking the first
     // range that fits the rate could open a stereo rig as mono, so prefer the
     // device's own default channel count when a range offers it.
@@ -4916,6 +5012,17 @@ fn build_monitor_stream(
                 None,
             )?)
         }
+        SampleFormat::I32 => {
+            let stats_c = stats.clone();
+            Ok(device.build_input_stream(
+                config,
+                move |data: &[i32], _| {
+                    read_monitor_i32(data, channels, &stats_c);
+                },
+                err_fn,
+                None,
+            )?)
+        }
         SampleFormat::U16 => {
             let stats_c = stats.clone();
             Ok(device.build_input_stream(
@@ -5075,6 +5182,11 @@ fn read_monitor_i16(data: &[i16], channels: usize, stats: &Arc<Mutex<MonitorStat
     update_monitor_stats(&converted, channels, stats);
 }
 
+fn read_monitor_i32(data: &[i32], channels: usize, stats: &Arc<Mutex<MonitorStats>>) {
+    let converted: Vec<f32> = data.iter().map(|sample| i32_to_f32(*sample)).collect();
+    update_monitor_stats(&converted, channels, stats);
+}
+
 fn read_monitor_u16(data: &[u16], channels: usize, stats: &Arc<Mutex<MonitorStats>>) {
     let converted: Vec<f32> = data
         .iter()
@@ -5119,6 +5231,17 @@ fn build_input_stream(
                 config,
                 move |data: &[i16], _| {
                     read_input_i16(data, channels, &rec, target_frames);
+                },
+                err_fn,
+                None,
+            )?)
+        }
+        SampleFormat::I32 => {
+            let rec = recorded.clone();
+            Ok(device.build_input_stream(
+                config,
+                move |data: &[i32], _| {
+                    read_input_i32(data, channels, &rec, target_frames);
                 },
                 err_fn,
                 None,
@@ -5189,6 +5312,34 @@ fn read_input_i16(
             for ch in 0..out.len() {
                 let sample = frame.get(ch).copied().unwrap_or_else(|| frame[0]);
                 out[ch].push(sample as f32 / i16::MAX as f32);
+            }
+        }
+    }
+}
+
+/// Full-scale 32-bit integer to [-1, 1]. 24-bit converters fill the top three
+/// bytes of the container, so they scale correctly through the same divisor.
+fn i32_to_f32(sample: i32) -> f32 {
+    (sample as f64 / i32::MAX as f64) as f32
+}
+
+fn read_input_i32(
+    data: &[i32],
+    channels: usize,
+    recorded: &Arc<Mutex<Vec<Vec<f32>>>>,
+    target: usize,
+) {
+    if let Ok(mut out) = recorded.lock() {
+        if out.is_empty() || out[0].len() >= target {
+            return;
+        }
+        for frame in data.chunks(channels.max(1)) {
+            if out[0].len() >= target {
+                break;
+            }
+            for ch in 0..out.len() {
+                let sample = frame.get(ch).copied().unwrap_or_else(|| frame[0]);
+                out[ch].push(i32_to_f32(sample));
             }
         }
     }
@@ -5424,6 +5575,7 @@ mod tests {
             is_input: true,
             channels: 2,
             default_sample_rate: 48_000,
+            bit_depths: Vec::new(),
         };
         // "Mic" used to be index 1; a new device now sits there.
         let devices = vec![
@@ -5463,6 +5615,42 @@ mod tests {
         assert!(start < end && end <= 20_000.0);
         let (start, end) = clamp_sweep_band(f32::NAN, f32::NAN, 20_000.0);
         assert!(start < end);
+    }
+
+    #[test]
+    fn bit_depth_setting_round_trips_and_maps_to_formats() {
+        assert_eq!(
+            serde_json::to_string(&InputBitDepth::Bits24).unwrap(),
+            "\"24\""
+        );
+        let parsed: InputBitDepth = serde_json::from_str("\"auto\"").unwrap();
+        assert_eq!(parsed, InputBitDepth::Auto);
+        // Settings saved before the field existed default to Auto.
+        let legacy: AudioSettings = serde_json::from_value(json!({
+            "outputDeviceIndex": null,
+            "inputDeviceIndex": null,
+            "outputSampleRate": 48000,
+            "inputSampleRate": 48000,
+            "durationSecs": 0.5,
+            "chunkSize": 1024
+        }))
+        .unwrap();
+        assert_eq!(legacy.input_bit_depth, InputBitDepth::Auto);
+        assert_eq!(
+            InputBitDepth::Bits16.sample_format(),
+            Some(SampleFormat::I16)
+        );
+        assert_eq!(
+            InputBitDepth::Bits24.sample_format(),
+            Some(SampleFormat::I32)
+        );
+        assert_eq!(
+            InputBitDepth::Bits32.sample_format(),
+            Some(SampleFormat::F32)
+        );
+        assert_eq!(InputBitDepth::Auto.sample_format(), None);
+        assert!((i32_to_f32(i32::MAX) - 1.0).abs() < 1e-6);
+        assert!((i32_to_f32(1 << 30) - 0.5).abs() < 1e-6);
     }
 
     #[test]

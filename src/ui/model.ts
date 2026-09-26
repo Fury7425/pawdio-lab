@@ -17,12 +17,27 @@ export enum PageKeyEnum {
   Library = "library",
 }
 
+/**
+ * Capture resolution. "24" is 24-bit audio in a 32-bit integer container
+ * (the backend has no packed 24-bit type); "32" is 32-bit float.
+ */
+export type InputBitDepth = "auto" | "16" | "24" | "32";
+
+export const INPUT_BIT_DEPTH_LABELS: Record<InputBitDepth, string> = {
+  auto: "Auto (device default)",
+  "16": "16-bit integer",
+  "24": "24-bit integer",
+  "32": "32-bit float",
+};
+
 export type AudioDeviceInfo = {
   index: number;
   name: string;
   isInput: boolean;
   channels: number;
   defaultSampleRate: number;
+  /** Capture depths this input offers; empty for outputs. */
+  bitDepths?: InputBitDepth[];
 };
 
 export type DeviceInventory = {
@@ -54,6 +69,8 @@ export type AudioSettings = {
    * reports.
    */
   bluetoothMode: boolean;
+  /** Capture sample format. Falls back to "auto" when the input lacks it. */
+  inputBitDepth: InputBitDepth;
 };
 
 export type RuntimeStatus = { running: boolean };
@@ -354,6 +371,7 @@ export const defaultSettings: AudioSettings = {
   chunkSize: 1024,
   itemName: "",
   bluetoothMode: false,
+  inputBitDepth: "auto",
 };
 
 export const defaultLatencyRequest: LatencyRequest = {
