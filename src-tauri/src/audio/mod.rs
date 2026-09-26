@@ -33,6 +33,13 @@ use alignment::{
 pub struct AudioSettings {
     pub output_device_index: Option<usize>,
     pub input_device_index: Option<usize>,
+    /// Name of the selected output. Enumeration order moves when a device is
+    /// plugged in or removed, so the index alone can come to name a different
+    /// device; the name is what identifies it.
+    #[serde(default)]
+    pub output_device_name: Option<String>,
+    #[serde(default)]
+    pub input_device_name: Option<String>,
     pub output_sample_rate: u32,
     pub input_sample_rate: u32,
     pub duration_secs: f32,
@@ -58,6 +65,8 @@ impl Default for AudioSettings {
         Self {
             output_device_index: None,
             input_device_index: None,
+            output_device_name: None,
+            input_device_name: None,
             output_sample_rate: 44_100,
             input_sample_rate: 44_100,
             duration_secs: 0.5,
@@ -378,7 +387,7 @@ pub enum AudioError {
     UnsupportedSampleFormat(String),
     #[error("file export failed: {0}")]
     FileExport(String),
-    #[error("latency test cancelled")]
+    #[error("measurement cancelled")]
     Cancelled,
     #[error("recording failed: {0}")]
     RecordingError(String),
@@ -407,6 +416,9 @@ struct AudioRuntime {
     /// Copied from settings so every capture helper can reach it without
     /// threading the whole settings struct through.
     bluetooth_mode: bool,
+    /// Stop request. Checked while a capture is recording, so Stop ends the
+    /// capture in flight instead of waiting for it to finish.
+    cancel: Arc<AtomicBool>,
 }
 
 impl AudioEngine {
@@ -465,7 +477,7 @@ impl AudioEngine {
         app: AppHandle,
     ) -> Result<LatencyTestReport, AudioError> {
         let item_name = settings.item_name.clone();
-        let runtime = AudioRuntime::new(settings)?;
+        let runtime = AudioRuntime::new(settings, cancel.clone())?;
         let repeats = request.repeats.clamp(1, 128);
         let duration = request.duration_secs.clamp(0.03, 12.0);
         let amplitude = request.amplitude.clamp(0.01, 1.0);
@@ -485,12 +497,18 @@ impl AudioEngine {
                 duration,
                 amplitude,
                 runtime.output_rate,
+                runtime.max_excitation_hz(),
             );
-            let recorded = runtime.play_and_record_mono(
+            // A Stop mid-capture keeps the iterations already measured.
+            let recorded = match runtime.play_and_record_mono(
                 signal.clone(),
                 OutputRouting::Both,
                 duration + margin,
-            )?;
+            ) {
+                Ok(recorded) => recorded,
+                Err(AudioError::Cancelled) => break,
+                Err(error) => return Err(error),
+            };
             let reference = if runtime.input_rate != runtime.output_rate {
                 resample_cubic(&signal, runtime.output_rate, runtime.input_rate)
             } else {
@@ -552,19 +570,7 @@ impl AudioEngine {
             timestamp_utc: timestamp_string(),
         };
 
-        // Prefer shared_run_tag (same folder for all presets in a suite), then
-        // shared_output_dir (legacy full-path approach), then generate a new tag.
-        let run_tag = request
-            .shared_run_tag
-            .clone()
-            .unwrap_or_else(timestamp_filename);
-        let output_dir = if let Some(ref shared) = request.shared_output_dir {
-            let shared_path = PathBuf::from(shared);
-            ensure_output_dir(&shared_path)?;
-            shared_path
-        } else {
-            resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag)
-        };
+        let output_dir = latency_output_dir(&request, &item_name);
         if request.save_per_sound_plot {
             if let (Some(rec), Some(reference), Some(avg_delay)) = (
                 first_recorded.as_ref(),
@@ -577,6 +583,7 @@ impl AudioEngine {
                         rec,
                         reference,
                         avg_delay,
+                        request.calibrated_offset_ms,
                         runtime.input_rate,
                         &preset_name,
                         valid.len(),
@@ -600,7 +607,13 @@ impl AudioEngine {
 
         if request.save_overall_bar_chart && !valid.is_empty() {
             if let Ok(path) = overall_bar_path(&output_dir) {
-                let bars = vec![(preset_name.clone(), valid.clone())];
+                // The report returned here is raw; the UI subtracts the offset.
+                // Chart the same calibrated numbers the report text will show.
+                let calibrated: Vec<f32> = valid
+                    .iter()
+                    .map(|delay| delay - request.calibrated_offset_ms)
+                    .collect();
+                let bars = vec![(preset_name.clone(), calibrated)];
                 if save_overall_bar_chart(&path, &bars).is_ok() {
                     let _ = app.emit(
                         "test-progress",
@@ -624,10 +637,9 @@ impl AudioEngine {
         report: &LatencyTestReport,
         item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let run_tag = timestamp_filename();
-        let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
+        let output_dir = latency_output_dir(request, item_name);
         ensure_output_dir(&output_dir)?;
-        let path = output_dir.join(format!("latency_report_{run_tag}.txt"));
+        let path = output_dir.join(format!("latency_report_{}.txt", timestamp_filename()));
         let text = build_latency_text_report(request, report);
         write_text_file(&path, &text)?;
         Ok(path)
@@ -638,10 +650,9 @@ impl AudioEngine {
         suite: &[LatencyExportEntry],
         item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let run_tag = timestamp_filename();
-        let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
+        let output_dir = latency_output_dir(request, item_name);
         ensure_output_dir(&output_dir)?;
-        let path = output_dir.join(format!("latency_report_{run_tag}.txt"));
+        let path = output_dir.join(format!("latency_report_{}.txt", timestamp_filename()));
         let text = build_latency_suite_text_report(suite);
         write_text_file(&path, &text)?;
         Ok(path)
@@ -652,10 +663,9 @@ impl AudioEngine {
         suite: &[LatencyExportEntry],
         item_name: &str,
     ) -> Result<PathBuf, AudioError> {
-        let run_tag = timestamp_filename();
-        let output_dir = resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag);
+        let output_dir = latency_output_dir(request, item_name);
         ensure_output_dir(&output_dir)?;
-        let path = output_dir.join(format!("overall_bar_{run_tag}.png"));
+        let path = output_dir.join(format!("overall_bar_{}.png", timestamp_filename()));
         let bars = latency_bars_from_suite(suite);
         if bars.is_empty() {
             return Err(AudioError::FileExport(
@@ -674,7 +684,13 @@ impl AudioEngine {
     ) -> Result<(), AudioError> {
         let host = preferred_host()?;
         let input_entries = enumerate_input_devices(&host)?;
-        let input_device = select_device(&host, &input_entries, settings.input_device_index, true)?;
+        let input_device = select_device(
+            &host,
+            &input_entries,
+            settings.input_device_index,
+            settings.input_device_name.as_deref(),
+            true,
+        )?;
         let (input_config, input_format) =
             choose_input_config(&input_device, settings.input_sample_rate)?;
         let channels = input_config.channels as usize;
@@ -715,12 +731,20 @@ impl AudioEngine {
                 }
             }
 
-            if let Ok(mut state) = stats.lock() {
-                let next_rough = compute_monitor_rough_fr_db(
-                    &state.recent_mono,
+            // Copy what the FFT needs and release the lock before computing:
+            // the input callback takes the same lock, and holding it through
+            // an 8k-point FFT can stall the audio thread.
+            let snapshot = stats.lock().ok().map(|state| {
+                (
+                    state.recent_mono.clone(),
                     state.sample_rate,
-                    &state.rough_fr_hz,
-                );
+                    state.rough_fr_hz.clone(),
+                )
+            });
+            let next_rough = snapshot
+                .map(|(samples, rate, grid)| compute_monitor_rough_fr_db(&samples, rate, &grid))
+                .unwrap_or_default();
+            if let Ok(mut state) = stats.lock() {
                 if !next_rough.is_empty() && state.rough_fr_db.len() == next_rough.len() {
                     for (prev, next) in state.rough_fr_db.iter_mut().zip(next_rough.iter()) {
                         *prev = *prev * 0.55 + *next * 0.45;
@@ -752,8 +776,13 @@ impl AudioEngine {
     ) -> Result<(), AudioError> {
         let host = preferred_host()?;
         let output_entries = enumerate_output_devices(&host)?;
-        let output_device =
-            select_device(&host, &output_entries, settings.output_device_index, false)?;
+        let output_device = select_device(
+            &host,
+            &output_entries,
+            settings.output_device_index,
+            settings.output_device_name.as_deref(),
+            false,
+        )?;
         let (output_config, output_format) =
             choose_output_config(&output_device, settings.output_sample_rate)?;
         let channels = output_config.channels as usize;
@@ -790,9 +819,10 @@ impl AudioEngine {
         app: AppHandle,
     ) -> Result<TestResultPayload, AudioError> {
         let item_name = settings.item_name.clone();
-        let runtime = AudioRuntime::new(settings)?;
-        request.f0 = request.f0.max(20.0);
-        request.f1 = request.f1.clamp(request.f0 + 1.0, 20_000.0);
+        let runtime = AudioRuntime::new(settings, cancel.clone())?;
+        let (f0, f1) = clamp_sweep_band(request.f0, request.f1, runtime.max_excitation_hz());
+        request.f0 = f0;
+        request.f1 = f1;
         request.duration_secs = request.duration_secs.clamp(0.5, 20.0);
         request.amplitude = request.amplitude.clamp(0.05, 1.0);
         request.repeats = request.repeats.clamp(1, 16);
@@ -804,10 +834,13 @@ impl AudioEngine {
         let mut delays_l: Vec<Option<f32>> = Vec::new();
         let mut delays_r: Vec<Option<f32>> = Vec::new();
         let mut last_diagnostics: Option<AlignmentDiagnostics> = None;
+        // Set when a stereo capture had to reuse one channel for both sides.
+        let mut mirrored_side: Option<&'static str> = None;
 
         for i in 1..=request.repeats {
             if cancel.load(Ordering::SeqCst) {
-                break;
+                // A partial set of repeats is not the measurement asked for.
+                return Err(AudioError::Cancelled);
             }
 
             let chirp = generate_log_chirp(
@@ -834,6 +867,7 @@ impl AudioEngine {
                     request.mono_mode,
                     mono_side,
                     &mut last_diagnostics,
+                    &mut mirrored_side,
                 )?
             } else {
                 let (rec_l, rec_r) = if request.mono_mode {
@@ -869,6 +903,7 @@ impl AudioEngine {
                         OutputRouting::Both,
                         request.duration_secs + 0.5,
                     )?;
+                    mirrored_side = mirrored_side.or(mirrored_channel(&captured));
                     let left = channel_or_mix(&captured, 0);
                     let right = if captured.len() > 1 {
                         channel_or_mix(&captured, 1)
@@ -943,7 +978,13 @@ impl AudioEngine {
                         };
                         format!("mono ({side_label}) sweep {i}/{}", request.repeats)
                     } else {
-                        format!("sweep {i}/{}", request.repeats)
+                        match mirrored_side {
+                            Some(side) => format!(
+                                "sweep {i}/{} — {side} channel silent, mirrored from the other side",
+                                request.repeats
+                            ),
+                            None => format!("sweep {i}/{}", request.repeats),
+                        }
                     },
                 },
             );
@@ -979,6 +1020,20 @@ impl AudioEngine {
             }
         }
 
+        let run_tag = request
+            .shared_run_tag
+            .clone()
+            .unwrap_or_else(timestamp_filename);
+        let files = write_sweep_outputs(
+            &resolve_measurement_output_dir(&request.output_dir, &item_name, &run_tag),
+            &run_tag,
+            request.save_plots,
+            request.save_squiglink,
+            &grid,
+            &mags_l,
+            &mags_r,
+        )?;
+
         Ok(TestResultPayload {
             test: "sweep_fr".to_string(),
             timestamp: timestamp_string(),
@@ -997,7 +1052,8 @@ impl AudioEngine {
             metrics: json!({
                 "delay_ms_left": avg_delay_l,
                 "delay_ms_right": avg_delay_r,
-                "alignment": last_diagnostics
+                "alignment": last_diagnostics,
+                "mirrored_channel": mirrored_side
             }),
             data: json!({
                 "freqs": grid,
@@ -1008,127 +1064,7 @@ impl AudioEngine {
                 "mag_db_all": all_curves,
                 "mag_db_avg_all": avg_all
             }),
-            files: {
-                let mut files = serde_json::Map::<String, Value>::new();
-                let ts = request
-                    .shared_run_tag
-                    .clone()
-                    .unwrap_or_else(timestamp_filename);
-                let output_dir =
-                    resolve_measurement_output_dir(&request.output_dir, &item_name, &ts);
-
-                if request.save_plots {
-                    ensure_output_dir(&output_dir)?;
-
-                    if has_left_data {
-                        let left_avg_path = output_dir.join(format!("sweep_fr_left_avg_{ts}.png"));
-                        save_sweep_single_plot(
-                            &left_avg_path,
-                            "Left Average Frequency Response",
-                            &grid,
-                            &left_avg,
-                        )?;
-                        files.insert(
-                            "plot_left_avg".to_string(),
-                            Value::String(left_avg_path.display().to_string()),
-                        );
-
-                        let left_all_path = output_dir.join(format!("sweep_fr_left_all_{ts}.png"));
-                        save_sweep_multi_plot(
-                            &left_all_path,
-                            "Left All Sweeps Frequency Response",
-                            &grid,
-                            &mags_l,
-                        )?;
-                        files.insert(
-                            "plot_left_all".to_string(),
-                            Value::String(left_all_path.display().to_string()),
-                        );
-                    }
-
-                    if has_right_data {
-                        let right_avg_path =
-                            output_dir.join(format!("sweep_fr_right_avg_{ts}.png"));
-                        save_sweep_single_plot(
-                            &right_avg_path,
-                            "Right Average Frequency Response",
-                            &grid,
-                            &right_avg,
-                        )?;
-                        files.insert(
-                            "plot_right_avg".to_string(),
-                            Value::String(right_avg_path.display().to_string()),
-                        );
-
-                        let right_all_path =
-                            output_dir.join(format!("sweep_fr_right_all_{ts}.png"));
-                        save_sweep_multi_plot(
-                            &right_all_path,
-                            "Right All Sweeps Frequency Response",
-                            &grid,
-                            &mags_r,
-                        )?;
-                        files.insert(
-                            "plot_right_all".to_string(),
-                            Value::String(right_all_path.display().to_string()),
-                        );
-                    }
-
-                    if !all_curves.is_empty() {
-                        let all_path = output_dir.join(format!("sweep_fr_all_{ts}.png"));
-                        save_sweep_multi_plot(
-                            &all_path,
-                            "All Sweeps Frequency Response",
-                            &grid,
-                            &all_curves,
-                        )?;
-                        files.insert(
-                            "plot_all".to_string(),
-                            Value::String(all_path.display().to_string()),
-                        );
-                    }
-
-                    if has_left_data && has_right_data {
-                        let lr_avg_path = output_dir.join(format!("sweep_fr_lr_avg_{ts}.png"));
-                        save_sweep_lr_avg_plot(&lr_avg_path, &grid, &left_avg, &right_avg)?;
-                        files.insert(
-                            "plot_lr_avg".to_string(),
-                            Value::String(lr_avg_path.display().to_string()),
-                        );
-                    }
-
-                    if !avg_all.is_empty() {
-                        let avg_all_path = output_dir.join(format!("sweep_fr_avg_all_{ts}.png"));
-                        save_sweep_single_plot(
-                            &avg_all_path,
-                            "Average of All Frequency Response",
-                            &grid,
-                            &avg_all,
-                        )?;
-                        files.insert(
-                            "plot_avg_all".to_string(),
-                            Value::String(avg_all_path.display().to_string()),
-                        );
-                    }
-                }
-
-                if request.save_squiglink {
-                    ensure_output_dir(&output_dir)?;
-                    let squig_files = save_squiglink_files(
-                        &output_dir,
-                        &ts,
-                        &grid,
-                        &left_avg,
-                        &right_avg,
-                        &avg_all,
-                    )?;
-                    for (key, value) in squig_files {
-                        files.insert(key, Value::String(value));
-                    }
-                }
-
-                Value::Object(files)
-            },
+            files: Value::Object(files),
         })
     }
 
@@ -1138,7 +1074,7 @@ impl AudioEngine {
         cancel: Arc<AtomicBool>,
         app: AppHandle,
     ) -> Result<TestResultPayload, AudioError> {
-        let runtime = AudioRuntime::new(settings)?;
+        let runtime = AudioRuntime::new(settings, cancel.clone())?;
         let tones = if request.tones.is_empty() {
             vec![100.0, 1000.0, 6000.0]
         } else {
@@ -1146,6 +1082,15 @@ impl AudioEngine {
         };
         let tone_duration = request.tone_duration_secs.clamp(0.1, 6.0);
         let amp = request.amplitude.clamp(0.05, 1.0);
+        let max_hz = runtime.max_excitation_hz();
+        if let Some(bad) = tones
+            .iter()
+            .find(|freq| !freq.is_finite() || **freq < 20.0 || **freq > max_hz)
+        {
+            return Err(AudioError::RecordingError(format!(
+                "THD tone {bad} Hz is outside what this device pair can carry (20 to {max_hz:.0} Hz)."
+            )));
+        }
 
         let mut items = Vec::new();
         for (idx, freq) in tones.iter().enumerate() {
@@ -1153,11 +1098,16 @@ impl AudioEngine {
                 break;
             }
             let signal = generate_sine(*freq, tone_duration, amp, runtime.output_rate);
-            let recorded = runtime.play_and_record_mono(
+            // A Stop mid-tone keeps the tones already measured.
+            let recorded = match runtime.play_and_record_mono(
                 signal,
                 OutputRouting::Both,
                 runtime.tone_record_secs(tone_duration),
-            )?;
+            ) {
+                Ok(recorded) => recorded,
+                Err(AudioError::Cancelled) => break,
+                Err(error) => return Err(error),
+            };
             let recorded = runtime.steady_window(recorded, tone_duration);
             let thd = compute_thd(&recorded, *freq, runtime.input_rate, 10);
             items.push(json!({"freq": *freq, "thd_percent": thd}));
@@ -1197,8 +1147,10 @@ impl AudioEngine {
         request: BalanceRequest,
         cancel: Arc<AtomicBool>,
     ) -> Result<TestResultPayload, AudioError> {
-        let runtime = AudioRuntime::new(settings)?;
-        let freq = request.frequency_hz.max(20.0);
+        let runtime = AudioRuntime::new(settings, cancel.clone())?;
+        let freq = request
+            .frequency_hz
+            .clamp(20.0, runtime.max_excitation_hz().max(20.0));
         let duration = request.tone_duration_secs.clamp(0.1, 6.0);
         let settle = request.settle_secs.clamp(0.0, 2.0);
 
@@ -1249,8 +1201,10 @@ impl AudioEngine {
         request: CrosstalkRequest,
         cancel: Arc<AtomicBool>,
     ) -> Result<TestResultPayload, AudioError> {
-        let runtime = AudioRuntime::new(settings)?;
-        let freq = request.frequency_hz.max(20.0);
+        let runtime = AudioRuntime::new(settings, cancel.clone())?;
+        let freq = request
+            .frequency_hz
+            .clamp(20.0, runtime.max_excitation_hz().max(20.0));
         let duration = request.tone_duration_secs.clamp(0.1, 6.0);
         let settle = request.settle_secs.clamp(0.0, 2.0);
         let direction = if request.direction.eq_ignore_ascii_case("rtol") {
@@ -1330,9 +1284,8 @@ impl AudioEngine {
         cancel: Arc<AtomicBool>,
         app: AppHandle,
     ) -> Result<AncSnapshot, AudioError> {
-        let runtime = AudioRuntime::new(settings)?;
-        let f0 = request.f0.max(20.0);
-        let f1 = request.f1.clamp(f0 + 1.0, 20_000.0);
+        let runtime = AudioRuntime::new(settings, cancel.clone())?;
+        let (f0, f1) = clamp_sweep_band(request.f0, request.f1, runtime.max_excitation_hz());
         let duration = request.duration_secs.clamp(0.5, 20.0);
         let amplitude = request.amplitude.clamp(0.05, 1.0);
         let repeats = request.repeats.clamp(1, 8);
@@ -1342,7 +1295,9 @@ impl AudioEngine {
 
         for i in 1..=repeats {
             if cancel.load(Ordering::SeqCst) {
-                break;
+                // Averaging fewer repeats than asked would pass off a partial
+                // capture as a finished one, and the guided flow would advance.
+                return Err(AudioError::Cancelled);
             }
             let chirp = generate_log_chirp(f0, f1, duration, amplitude, runtime.output_rate);
             let ref_signal = if runtime.input_rate != runtime.output_rate {
@@ -1391,15 +1346,7 @@ impl AudioEngine {
             let mut mirrored_side: Option<&str> = None;
             match request.capture_side {
                 AncCaptureSide::Both => {
-                    if captured.len() > 1 {
-                        if is_dead_channel(&captured[1]) {
-                            mirrored_side = Some("right");
-                        } else if is_dead_channel(&captured[0]) {
-                            mirrored_side = Some("left");
-                        }
-                    } else {
-                        mirrored_side = Some("right");
-                    }
+                    mirrored_side = mirrored_channel(&captured);
                     let rec_l = channel_or_mix(&captured, 0);
                     let rec_r = if captured.len() > 1 {
                         channel_or_mix(&captured, 1)
@@ -1455,13 +1402,24 @@ struct CapturedExcitation {
 }
 
 impl AudioRuntime {
-    fn new(settings: AudioSettings) -> Result<Self, AudioError> {
+    fn new(settings: AudioSettings, cancel: Arc<AtomicBool>) -> Result<Self, AudioError> {
         let host = preferred_host()?;
         let output_entries = enumerate_output_devices(&host)?;
         let input_entries = enumerate_input_devices(&host)?;
-        let output_device =
-            select_device(&host, &output_entries, settings.output_device_index, false)?;
-        let input_device = select_device(&host, &input_entries, settings.input_device_index, true)?;
+        let output_device = select_device(
+            &host,
+            &output_entries,
+            settings.output_device_index,
+            settings.output_device_name.as_deref(),
+            false,
+        )?;
+        let input_device = select_device(
+            &host,
+            &input_entries,
+            settings.input_device_index,
+            settings.input_device_name.as_deref(),
+            true,
+        )?;
         let (output_config, output_format) =
             choose_output_config(&output_device, settings.output_sample_rate)?;
         let (input_config, input_format) =
@@ -1469,6 +1427,7 @@ impl AudioRuntime {
 
         Ok(Self {
             bluetooth_mode: settings.bluetooth_mode,
+            cancel,
             output_rate: output_config.sample_rate.0,
             input_rate: input_config.sample_rate.0,
             output_device,
@@ -1488,6 +1447,14 @@ impl AudioRuntime {
     ) -> Result<Vec<f32>, AudioError> {
         let channels = self.play_and_record_channels(signal, routing, record_duration_secs)?;
         Ok(mixdown_channels(&channels))
+    }
+
+    /// Highest excitation frequency both ends of the chain can carry. A
+    /// 16 kHz hands-free Bluetooth link cannot play or capture a 20 kHz sweep;
+    /// asking it to aliases the top of the sweep back into the band. At
+    /// 44.1 kHz and above this stays at the usual 20 kHz ceiling.
+    fn max_excitation_hz(&self) -> f32 {
+        max_excitation_hz(self.output_rate, self.input_rate)
     }
 
     /// Timing padding for the current mode.
@@ -1633,6 +1600,7 @@ impl AudioRuntime {
             self.input_format,
             record_duration_secs,
             self.input_config.channels as usize,
+            &self.cancel,
         )
     }
 }
@@ -1731,14 +1699,18 @@ fn select_device(
     host: &Host,
     entries: &[(Device, AudioDeviceInfo)],
     selected_index: Option<usize>,
+    selected_name: Option<&str>,
     is_input: bool,
 ) -> Result<Device, AudioError> {
-    if let Some(index) = selected_index {
+    if let Some(index) = resolve_selected_index(
+        &entries
+            .iter()
+            .map(|(_, info)| info.clone())
+            .collect::<Vec<_>>(),
+        selected_index,
+        selected_name,
+    ) {
         if let Some((device, _)) = entries.iter().find(|(_, info)| info.index == index) {
-            return Ok(device.clone());
-        }
-        // Backward-compat fallback for previously persisted compact indices.
-        if let Some((device, _)) = entries.get(index) {
             return Ok(device.clone());
         }
     }
@@ -1759,25 +1731,65 @@ fn select_device(
         })
 }
 
+/// Which enumerated device a stored selection means.
+///
+/// With a name, the name decides: the stored index only breaks a tie between
+/// identically named devices. A named device that is no longer present yields
+/// `None` (use the system default) rather than whatever now sits at its old
+/// index. Selections saved before names were stored fall back to the index.
+fn resolve_selected_index(
+    devices: &[AudioDeviceInfo],
+    selected_index: Option<usize>,
+    selected_name: Option<&str>,
+) -> Option<usize> {
+    match selected_name.filter(|name| !name.is_empty()) {
+        Some(name) => {
+            let named: Vec<&AudioDeviceInfo> =
+                devices.iter().filter(|info| info.name == name).collect();
+            named
+                .iter()
+                .find(|info| Some(info.index) == selected_index)
+                .or_else(|| named.first())
+                .map(|info| info.index)
+        }
+        None => selected_index.filter(|index| devices.iter().any(|info| info.index == *index)),
+    }
+}
+
 fn choose_output_config(
     device: &Device,
     preferred_rate: u32,
 ) -> Result<(StreamConfig, SampleFormat), AudioError> {
+    // Some hosts list a mono range ahead of the stereo one. Taking the first
+    // range that fits the rate could open a stereo rig as mono, so prefer the
+    // device's own default channel count when a range offers it.
+    let default_channels = device
+        .default_output_config()
+        .ok()
+        .map(|config| config.channels());
+    let mut rate_match = None;
     let mut fallback = None;
     for range in device.supported_output_configs()? {
         let format = range.sample_format();
         let min_rate = range.min_sample_rate().0;
         let max_rate = range.max_sample_rate().0;
         if preferred_rate >= min_rate && preferred_rate <= max_rate {
+            let channels = range.channels();
             let selected = range.with_sample_rate(SampleRate(preferred_rate));
-            return Ok((selected.config(), format));
+            if Some(channels) == default_channels {
+                return Ok((selected.config(), format));
+            }
+            if rate_match.is_none() {
+                rate_match = Some((selected.config(), format));
+            }
+            continue;
         }
         if fallback.is_none() {
             let selected = range.with_max_sample_rate();
             fallback = Some((selected.config(), format));
         }
     }
-    if let Some(config) = fallback {
+    if let Some(config) = rate_match.or(fallback) {
         return Ok(config);
     }
     let default = device.default_output_config()?;
@@ -1788,42 +1800,54 @@ fn choose_input_config(
     device: &Device,
     preferred_rate: u32,
 ) -> Result<(StreamConfig, SampleFormat), AudioError> {
+    // Some hosts list a mono range ahead of the stereo one. Taking the first
+    // range that fits the rate could open a stereo rig as mono, so prefer the
+    // device's own default channel count when a range offers it.
+    let default_channels = device
+        .default_input_config()
+        .ok()
+        .map(|config| config.channels());
+    let mut rate_match = None;
     let mut fallback = None;
     for range in device.supported_input_configs()? {
         let format = range.sample_format();
         let min_rate = range.min_sample_rate().0;
         let max_rate = range.max_sample_rate().0;
         if preferred_rate >= min_rate && preferred_rate <= max_rate {
+            let channels = range.channels();
             let selected = range.with_sample_rate(SampleRate(preferred_rate));
-            return Ok((selected.config(), format));
+            if Some(channels) == default_channels {
+                return Ok((selected.config(), format));
+            }
+            if rate_match.is_none() {
+                rate_match = Some((selected.config(), format));
+            }
+            continue;
         }
         if fallback.is_none() {
             let selected = range.with_max_sample_rate();
             fallback = Some((selected.config(), format));
         }
     }
-    if let Some(config) = fallback {
+    if let Some(config) = rate_match.or(fallback) {
         return Ok(config);
     }
     let default = device.default_input_config()?;
     Ok((default.config(), default.sample_format()))
 }
 
-/// One-octave log chirp centred on `center_hz`, used by the latency test.
+/// One-octave log chirp centred on `center_hz`, used by the latency test. The
+/// band is cut at `max_hz` so a low-rate link never plays above its Nyquist.
 fn generate_latency_chirp(
     center_hz: f32,
     duration_secs: f32,
     amplitude: f32,
     sample_rate: u32,
+    max_hz: f32,
 ) -> Vec<f32> {
     let half_octave = std::f32::consts::SQRT_2;
-    generate_log_chirp(
-        center_hz / half_octave,
-        center_hz * half_octave,
-        duration_secs,
-        amplitude,
-        sample_rate,
-    )
+    let (f0, f1) = clamp_sweep_band(center_hz / half_octave, center_hz * half_octave, max_hz);
+    generate_log_chirp(f0, f1, duration_secs, amplitude, sample_rate)
 }
 
 fn generate_sine(freq_hz: f32, duration_secs: f32, amplitude: f32, sample_rate: u32) -> Vec<f32> {
@@ -1875,6 +1899,22 @@ fn generate_log_chirp(
     }
 
     signal
+}
+
+/// See [`AudioRuntime::max_excitation_hz`]. 0.475 of the lower sample rate
+/// leaves a little room below Nyquist for the converters' anti-alias filters.
+fn max_excitation_hz(output_rate: u32, input_rate: u32) -> f32 {
+    (output_rate.min(input_rate) as f32 * 0.475).min(20_000.0)
+}
+
+/// Clamp a sweep band to what the chain can carry. Never panics, whatever the
+/// request holds: `f32::clamp` does when its bounds cross, which a start
+/// frequency above the ceiling used to trigger.
+fn clamp_sweep_band(f0: f32, f1: f32, max_hz: f32) -> (f32, f32) {
+    let top = max_hz.max(21.0);
+    let start = if f0.is_finite() { f0 } else { 20.0 }.clamp(20.0, top - 1.0);
+    let end = if f1.is_finite() { f1 } else { top }.clamp(start + 1.0, top);
+    (start, end)
 }
 
 fn logspace(start: f32, end: f32, count: usize) -> Vec<f32> {
@@ -1991,6 +2031,20 @@ fn window_at(samples: &[f32], start: usize, want: usize) -> Vec<f32> {
     }
     let begin = start.min(samples.len().saturating_sub(want));
     samples[begin..begin + want].to_vec()
+}
+
+/// Which side of a two-sided capture is really a copy of the other: a mono
+/// interface has no second channel, and a dead channel is replaced by the live
+/// one downstream. A broken mic looks the same as a mono rig, so callers report
+/// it instead of shipping two identical curves as a stereo measurement.
+fn mirrored_channel(captured: &[Vec<f32>]) -> Option<&'static str> {
+    if captured.len() < 2 || is_dead_channel(&captured[1]) {
+        Some("right")
+    } else if is_dead_channel(&captured[0]) {
+        Some("left")
+    } else {
+        None
+    }
 }
 
 fn is_dead_channel(channel: &[f32]) -> bool {
@@ -2160,6 +2214,24 @@ fn latency_preset_identity(signal: TestSignalKind, frequency_hz: f32) -> (String
             }
         }
     }
+}
+
+/// Folder for everything one latency run produces: per-sound plots, the bar
+/// chart and the text report. A suite passes one `shared_run_tag` to every
+/// preset and to the exports, so they all land together.
+fn latency_output_dir(request: &LatencyTestRequest, item_name: &str) -> PathBuf {
+    if let Some(shared) = request
+        .shared_output_dir
+        .as_deref()
+        .filter(|dir| !dir.trim().is_empty())
+    {
+        return PathBuf::from(shared);
+    }
+    let run_tag = request
+        .shared_run_tag
+        .clone()
+        .unwrap_or_else(timestamp_filename);
+    resolve_measurement_output_dir(&request.output_dir, item_name, &run_tag)
 }
 
 fn latency_plot_path(output_dir: &Path, preset_key: &str) -> Result<PathBuf, AudioError> {
@@ -2459,11 +2531,13 @@ fn latency_figure_title(sound_name: &str) -> String {
     format!("{sound_name} - Delay Analysis")
 }
 
+#[allow(clippy::too_many_arguments)]
 fn save_latency_plot(
     path: &Path,
     recorded: &[f32],
     reference: &[f32],
     avg_delay_ms: f32,
+    calibrated_offset_ms: f32,
     sample_rate: u32,
     sound_name: &str,
     successful_tests: usize,
@@ -2737,7 +2811,9 @@ fn save_latency_plot(
             .map_err(|err| {
                 AudioError::FileExport(format!("plot legend marker {}: {err}", path.display()))
             })?
-            .label(format!("Avg Calibrated Delay: {avg_delay_ms:.4} ms"))
+            // The line sits on the correlation's lag axis, so it marks the raw
+            // delay; the calibrated figure is in the note box.
+            .label(format!("Avg Raw Delay: {avg_delay_ms:.4} ms"))
             .legend(|(x, y)| {
                 PathElement::new(
                     vec![(x, y), (x + 24, y)],
@@ -2787,7 +2863,7 @@ fn save_latency_plot(
                 format!(
                     "Average Calibrated Delay ({} tests): {:.4} ms",
                     successful_tests.max(1),
-                    avg_delay_ms
+                    avg_delay_ms - calibrated_offset_ms
                 ),
                 (box_left + x_span * 0.012, box_bottom + box_height * 0.5),
                 ("sans-serif", LATENCY_NOTE_FONT_SIZE, FontStyle::Normal)
@@ -3321,32 +3397,83 @@ fn save_sweep_lr_avg_plot(
 /// per-sweep plots only contain one side. This regenerates the aggregate plots
 /// using the merged left+right curves so both buds are accounted for.
 #[allow(clippy::too_many_arguments)]
-pub fn save_sweep_combined_plots(
-    all_path: Option<&Path>,
-    avg_all_path: Option<&Path>,
-    lr_avg_path: Option<&Path>,
-    freqs: &[f32],
-    all_curves: &[Vec<f32>],
-    avg_all: &[f32],
-    left_avg: &[f32],
-    right_avg: &[f32],
-) -> Result<(), AudioError> {
-    if let Some(path) = all_path {
+/// Write the Sweep FR plots and Squiglink files for a set of curves.
+///
+/// One place builds every export, whether the curves come from a single
+/// backend run or from the sweeps a user accepted one by one in the UI, so the
+/// files always describe exactly the curves they are named after.
+pub fn write_sweep_outputs(
+    output_dir: &Path,
+    ts: &str,
+    save_plots: bool,
+    save_squiglink: bool,
+    grid: &[f32],
+    mags_l: &[Vec<f32>],
+    mags_r: &[Vec<f32>],
+) -> Result<serde_json::Map<String, Value>, AudioError> {
+    let mut files = serde_json::Map::<String, Value>::new();
+    let left_avg = average_curves(mags_l);
+    let right_avg = average_curves(mags_r);
+    let mut all_curves = Vec::new();
+    all_curves.extend(mags_l.iter().filter(|curve| !curve.is_empty()).cloned());
+    all_curves.extend(mags_r.iter().filter(|curve| !curve.is_empty()).cloned());
+    let avg_all = average_curves(&all_curves);
+    let has_left_data = !left_avg.is_empty();
+    let has_right_data = !right_avg.is_empty();
+    let mut insert = |key: &str, path: &Path| {
+        files.insert(key.to_string(), Value::String(path.display().to_string()));
+    };
+
+    if save_plots {
+        ensure_output_dir(output_dir)?;
+
+        if has_left_data {
+            let path = output_dir.join(format!("sweep_fr_left_avg_{ts}.png"));
+            save_sweep_single_plot(&path, "Left Average Frequency Response", grid, &left_avg)?;
+            insert("plot_left_avg", &path);
+            let path = output_dir.join(format!("sweep_fr_left_all_{ts}.png"));
+            save_sweep_multi_plot(&path, "Left All Sweeps Frequency Response", grid, mags_l)?;
+            insert("plot_left_all", &path);
+        }
+
+        if has_right_data {
+            let path = output_dir.join(format!("sweep_fr_right_avg_{ts}.png"));
+            save_sweep_single_plot(&path, "Right Average Frequency Response", grid, &right_avg)?;
+            insert("plot_right_avg", &path);
+            let path = output_dir.join(format!("sweep_fr_right_all_{ts}.png"));
+            save_sweep_multi_plot(&path, "Right All Sweeps Frequency Response", grid, mags_r)?;
+            insert("plot_right_all", &path);
+        }
+
         if !all_curves.is_empty() {
-            save_sweep_multi_plot(path, "All Sweeps Frequency Response", freqs, all_curves)?;
+            let path = output_dir.join(format!("sweep_fr_all_{ts}.png"));
+            save_sweep_multi_plot(&path, "All Sweeps Frequency Response", grid, &all_curves)?;
+            insert("plot_all", &path);
         }
-    }
-    if let Some(path) = avg_all_path {
+
+        if has_left_data && has_right_data {
+            let path = output_dir.join(format!("sweep_fr_lr_avg_{ts}.png"));
+            save_sweep_lr_avg_plot(&path, grid, &left_avg, &right_avg)?;
+            insert("plot_lr_avg", &path);
+        }
+
         if !avg_all.is_empty() {
-            save_sweep_single_plot(path, "Average of All Frequency Response", freqs, avg_all)?;
+            let path = output_dir.join(format!("sweep_fr_avg_all_{ts}.png"));
+            save_sweep_single_plot(&path, "Average of All Frequency Response", grid, &avg_all)?;
+            insert("plot_avg_all", &path);
         }
     }
-    if let Some(path) = lr_avg_path {
-        if !left_avg.is_empty() && !right_avg.is_empty() {
-            save_sweep_lr_avg_plot(path, freqs, left_avg, right_avg)?;
+
+    if save_squiglink {
+        ensure_output_dir(output_dir)?;
+        let squig_files =
+            save_squiglink_files(output_dir, ts, grid, &left_avg, &right_avg, &avg_all)?;
+        for (key, value) in squig_files {
+            files.insert(key, Value::String(value));
         }
     }
-    Ok(())
+
+    Ok(files)
 }
 
 const ANC_PLOT_Y_MIN: f32 = -40.0;
@@ -3724,7 +3851,7 @@ fn save_squiglink_files(
     Ok(result)
 }
 
-pub fn write_squiglink_both_file(
+fn write_squiglink_both_file(
     path: &Path,
     freqs: &[f32],
     left_db: &[f32],
@@ -3947,6 +4074,7 @@ fn capture_marked_sweep(
     mono_mode: bool,
     mono_side: SweepMonoSide,
     last_diagnostics: &mut Option<AlignmentDiagnostics>,
+    mirrored_side: &mut Option<&'static str>,
 ) -> Result<MarkedSweepCapture, AudioError> {
     // The markers put the excitation at a known offset inside the playback
     // buffer, so the distance between where it was expected and where it landed
@@ -4001,6 +4129,7 @@ fn capture_marked_sweep(
 
     let (captured, layout) =
         runtime.play_and_record_marked(chirp.to_vec(), ref_signal, OutputRouting::Both)?;
+    *mirrored_side = mirrored_side.or(mirrored_channel(&captured));
 
     let raw_left = channel_or_mix(&captured, 0);
     let aligned_left = runtime.align_channel(&layout, &raw_left)?;
@@ -4240,7 +4369,11 @@ fn play_and_record(
     input_format: SampleFormat,
     record_duration_secs: f32,
     expected_input_channels: usize,
+    cancel: &AtomicBool,
 ) -> Result<Vec<Vec<f32>>, AudioError> {
+    if cancel.load(Ordering::SeqCst) {
+        return Err(AudioError::Cancelled);
+    }
     let signal = Arc::new(signal);
     let output_pos = Arc::new(AtomicUsize::new(0));
     let output_channels = output_config.channels as usize;
@@ -4291,14 +4424,35 @@ fn play_and_record(
 
     let playback_secs = target_frames as f32 / input_config.sample_rate.0 as f32;
     let guard = 0.1f32;
-    std::thread::sleep(Duration::from_secs_f32(playback_secs + guard));
+    // Sleep in short slices so a Stop request ends the capture promptly
+    // rather than after the whole recording.
+    let deadline = std::time::Instant::now() + Duration::from_secs_f32(playback_secs + guard);
+    let mut cancelled = false;
+    loop {
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            break;
+        }
+        if cancel.load(Ordering::SeqCst) {
+            cancelled = true;
+            break;
+        }
+        std::thread::sleep((deadline - now).min(Duration::from_millis(20)));
+    }
 
     output_stream.pause().ok();
     input_stream.pause().ok();
     drop(output_stream);
     drop(input_stream);
 
-    let captured = recorded.lock().map_err(|_| AudioError::Cancelled)?.clone();
+    if cancelled {
+        return Err(AudioError::Cancelled);
+    }
+
+    let captured = recorded
+        .lock()
+        .map_err(|_| AudioError::RecordingError("capture buffer was poisoned".to_string()))?
+        .clone();
 
     Ok(captured)
 }
@@ -4782,19 +4936,44 @@ fn update_monitor_stats(samples: &[f32], channels: usize, stats: &Arc<Mutex<Moni
         return;
     }
 
+    let channels = channels.max(1);
+    // Channels wired to nothing are left out of the mix, as they are for
+    // measurements (`mixdown_channels`): averaging a dead channel in would read
+    // a mono mic on a stereo interface 6 dB low.
+    let live: Vec<bool> = (0..channels)
+        .map(|channel| {
+            samples
+                .iter()
+                .skip(channel)
+                .step_by(channels)
+                .any(|sample| sample.abs() >= DEAD_CHANNEL_PEAK)
+        })
+        .collect();
+    let any_live = live.iter().any(|is_live| *is_live);
+
     let mut frame_count = 0usize;
     let mut sum_sq = 0.0f32;
     let mut clips = 0u32;
-    let mut mono_samples = Vec::with_capacity(samples.len() / channels.max(1) + 1);
+    let mut mono_samples = Vec::with_capacity(samples.len() / channels + 1);
 
-    for frame in samples.chunks(channels.max(1)) {
+    for frame in samples.chunks(channels) {
         if frame.is_empty() {
             continue;
         }
-        let mono = frame.iter().copied().sum::<f32>() / frame.len() as f32;
+        let mut sum = 0.0f32;
+        let mut used = 0usize;
+        for (channel, sample) in frame.iter().enumerate() {
+            if !any_live || live.get(channel).copied().unwrap_or(false) {
+                sum += *sample;
+                used += 1;
+            }
+        }
+        let mono = sum / used.max(1) as f32;
         mono_samples.push(mono);
         sum_sq += mono * mono;
-        if mono.abs() >= 0.98 {
+        // Clipping happens per channel. Checking the averaged mix instead
+        // halves a clipped channel next to a quiet one and never flags it.
+        if frame.iter().any(|sample| sample.abs() >= 0.98) {
             clips += 1;
         }
         frame_count += 1;
@@ -5137,7 +5316,7 @@ mod tests {
         // tone signals in exactly this layout.
         for sample_rate in [44_100u32, 48_000] {
             for center in [200.0f32, 5000.0, 10_000.0] {
-                let reference = generate_latency_chirp(center, 0.5, 0.85, sample_rate);
+                let reference = generate_latency_chirp(center, 0.5, 0.85, sample_rate, 20_000.0);
                 for delay_ms in [5.0f32, 20.0, 60.0, 200.0] {
                     let delay = (delay_ms / 1000.0 * sample_rate as f32).round() as usize;
                     let expected = delay as f32 * 1000.0 / sample_rate as f32;
@@ -5186,13 +5365,93 @@ mod tests {
     #[test]
     fn latency_chirp_spans_one_octave_around_its_centre() {
         let sample_rate = 48_000u32;
-        let chirp = generate_latency_chirp(5000.0, 0.5, 0.8, sample_rate);
+        let chirp = generate_latency_chirp(5000.0, 0.5, 0.8, sample_rate, 20_000.0);
         assert_eq!(chirp.len(), 24_000);
         let n = chirp.len().next_power_of_two();
         let spectrum = magnitude_spectrum(&chirp, n);
         let level = |hz: f32| spectrum[(hz / sample_rate as f32 * n as f32).round() as usize];
         assert!(level(5000.0) > 20.0 * level(1000.0));
         assert!(level(5000.0) > 20.0 * level(12_000.0));
+    }
+
+    fn monitor_stats() -> Arc<Mutex<MonitorStats>> {
+        Arc::new(Mutex::new(MonitorStats {
+            current_dbfs: -96.0,
+            peak_dbfs: -96.0,
+            clip_count: 0,
+            sample_rate: 48_000,
+            recent_mono: Vec::new(),
+            rough_fr_hz: Vec::new(),
+            rough_fr_db: Vec::new(),
+        }))
+    }
+
+    #[test]
+    fn monitor_ignores_a_dead_channel_and_counts_per_channel_clips() {
+        // Stereo interleaved: a 0.5-amplitude square on the left, digital
+        // silence on the right. The level is the left channel's, not 6 dB under.
+        let stats = monitor_stats();
+        let frames: Vec<f32> = (0..1024)
+            .flat_map(|i| [if i % 2 == 0 { 0.5 } else { -0.5 }, 0.0])
+            .collect();
+        update_monitor_stats(&frames, 2, &stats);
+        let level = stats.lock().unwrap().current_dbfs;
+        assert!((level - 20.0 * 0.5f32.log10()).abs() < 0.1, "level {level}");
+
+        // A clipped left channel next to a quiet live right one still counts.
+        let stats = monitor_stats();
+        let frames: Vec<f32> = (0..64).flat_map(|_| [1.0f32, 0.01]).collect();
+        update_monitor_stats(&frames, 2, &stats);
+        assert_eq!(stats.lock().unwrap().clip_count, 64);
+    }
+
+    #[test]
+    fn stored_device_selection_follows_the_name_not_the_position() {
+        let device = |index, name: &str| AudioDeviceInfo {
+            index,
+            name: name.to_string(),
+            is_input: true,
+            channels: 2,
+            default_sample_rate: 48_000,
+        };
+        // "Mic" used to be index 1; a new device now sits there.
+        let devices = vec![
+            device(0, "Speakers"),
+            device(1, "USB Dongle"),
+            device(2, "Mic"),
+        ];
+        assert_eq!(
+            resolve_selected_index(&devices, Some(1), Some("Mic")),
+            Some(2)
+        );
+        // Gone entirely: use the default, not whatever now holds index 1.
+        assert_eq!(
+            resolve_selected_index(&devices, Some(1), Some("Headset")),
+            None
+        );
+        // Two identical names: the stored index breaks the tie.
+        let twins = vec![device(3, "Mic"), device(5, "Mic")];
+        assert_eq!(
+            resolve_selected_index(&twins, Some(5), Some("Mic")),
+            Some(5)
+        );
+        // Selections saved before names existed still resolve by index.
+        assert_eq!(resolve_selected_index(&devices, Some(2), None), Some(2));
+        assert_eq!(resolve_selected_index(&devices, Some(9), None), None);
+    }
+
+    #[test]
+    fn sweep_band_is_clamped_without_panicking() {
+        // 44.1/48 kHz keep the usual 20 kHz ceiling; a 16 kHz link cannot.
+        assert_eq!(max_excitation_hz(44_100, 48_000), 20_000.0);
+        assert_eq!(max_excitation_hz(48_000, 16_000), 7_600.0);
+        assert_eq!(clamp_sweep_band(20.0, 20_000.0, 20_000.0), (20.0, 20_000.0));
+        assert_eq!(clamp_sweep_band(20.0, 20_000.0, 7_600.0), (20.0, 7_600.0));
+        // A start above the ceiling used to panic inside f32::clamp.
+        let (start, end) = clamp_sweep_band(25_000.0, 20_000.0, 20_000.0);
+        assert!(start < end && end <= 20_000.0);
+        let (start, end) = clamp_sweep_band(f32::NAN, f32::NAN, 20_000.0);
+        assert!(start < end);
     }
 
     #[test]
