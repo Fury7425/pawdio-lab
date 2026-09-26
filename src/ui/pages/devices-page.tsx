@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   AudioSettings,
   INPUT_BIT_DEPTH_LABELS,
@@ -9,53 +9,21 @@ import {
 } from "../model";
 import { CheckboxField, SelectField } from "../components/form-fields";
 import { PageHeader } from "../components/page-header";
-import {
-  ACCENT_COLORS,
-  APPEARANCE_MODES,
-  DEFAULT_APPEARANCE_MODE,
-  DEFAULT_ACCENT_COLOR,
-  DeviceUiPrefs,
-  normalizeAccentColor,
-  normalizeAppearanceMode,
-  persistDeviceUiPrefs,
-  readDeviceUiPrefs,
-} from "../theme";
 import { usePawdioLabContext } from "../pawdio-context";
 import { SplCalibrationPanel } from "../components/spl-calibration-panel";
-import { ShortcutSettings } from "../components/shortcut-settings";
-import { UpdateCheckPanel } from "../components/update-check-panel";
-import { useShortcutBindings } from "../hooks/use-shortcuts";
 
 export function DevicesPage() {
   const ctx = usePawdioLabContext();
   const inventory = ctx.inventory;
   const settings = ctx.settings;
-  const experimentalEnabled = ctx.experimentalEnabled;
-  const onChangeExperimentalEnabled = ctx.setExperimentalEnabled;
   const onCommitSettings = (next: AudioSettings) =>
     ctx.run(ctx.commitSettings(next));
   const onRefreshDevices = () => ctx.run(ctx.loadState());
-  const shortcuts = useShortcutBindings();
-  const storedUiPrefs = useMemo(() => readDeviceUiPrefs(), []);
   const [draft, setDraft] = useState(settings);
-  const [appearanceMode, setAppearanceMode] = useState(
-    storedUiPrefs?.appearanceMode ?? DEFAULT_APPEARANCE_MODE,
-  );
-  const [accentColor, setAccentColor] = useState(
-    storedUiPrefs?.accentColor ?? DEFAULT_ACCENT_COLOR,
-  );
 
   useEffect(() => {
     setDraft(settings);
   }, [settings]);
-
-  useEffect(() => {
-    const snapshot: DeviceUiPrefs = {
-      appearanceMode,
-      accentColor,
-    };
-    persistDeviceUiPrefs(snapshot);
-  }, [appearanceMode, accentColor]);
 
   // Depths the selected input offers ("System Default" resolves to the OS
   // default device). An empty list means the backend could not tell, so every
@@ -85,20 +53,51 @@ export function DevicesPage() {
     onCommitSettings(next);
   }
 
+  const draftDirty =
+    draft.outputSampleRate !== settings.outputSampleRate ||
+    draft.inputSampleRate !== settings.inputSampleRate ||
+    draft.itemName !== settings.itemName;
+
   return (
     <div className="page-stack">
       <section className="page-card">
         <PageHeader
-          title="Devices / Settings"
-          description="Audio devices, signal settings, and appearance."
+          title="Devices"
+          description="What plays the test signal, what records it, and how."
+          actions={
+            <button
+              type="button"
+              className="skin-btn secondary"
+              onClick={onRefreshDevices}
+            >
+              Refresh devices
+            </button>
+          }
         />
 
-        <section className="page-section">
-          <h3 className="section-subheading">Signal Settings</h3>
-
-          <div className="field-grid-2">
-            <label className="field-row">
-              <span className="field-label">Output Sample Rate</span>
+        <div className="field-grid-2">
+          <section className="page-card">
+            <h3 className="section-subheading">Output</h3>
+            <SelectField
+              label="Device"
+              value={toSelectValue(draft.outputDeviceIndex)}
+              onChange={(value) =>
+                commitDeviceSelection({
+                  ...draft,
+                  outputDeviceIndex: fromSelectValue(value),
+                })
+              }
+            >
+              <option value="none">System Default</option>
+              {(inventory?.outputs ?? []).map((device) => (
+                <option key={device.index} value={String(device.index)}>
+                  {device.name} ({device.channels}ch @{" "}
+                  {device.defaultSampleRate}Hz)
+                </option>
+              ))}
+            </SelectField>
+            <label className="field-row mt-10">
+              <span className="field-label">Sample rate (Hz)</span>
               <input
                 className="skin-input"
                 type="number"
@@ -111,93 +110,12 @@ export function DevicesPage() {
                 }
               />
             </label>
-            <label className="field-row">
-              <span className="field-label">Input Sample Rate</span>
-              <input
-                className="skin-input"
-                type="number"
-                value={draft.inputSampleRate}
-                onChange={(event) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    inputSampleRate: toNumber(event.target.value, 44100),
-                  }))
-                }
-              />
-            </label>
-          </div>
+          </section>
 
-          <label className="field-row mt-10">
-            <span className="field-label">Item Name</span>
-            <input
-              className="skin-input"
-              value={draft.itemName}
-              placeholder="e.g. HD600, Unit-A, My Headphone"
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  itemName: event.target.value,
-                }))
-              }
-            />
-          </label>
-
-          <div className="row-end mt-12">
-            <button
-              type="button"
-              className="skin-btn"
-              onClick={() => onCommitSettings(draft)}
-            >
-              Apply
-            </button>
-          </div>
-        </section>
-
-        <hr className="section-divider" />
-        <section className="page-section">
-          <h3 className="section-subheading">Audio Devices</h3>
-          <p className="muted mb-12">
-            Device selections apply immediately. Signal settings above apply
-            when you press Apply.
-          </p>
-
-          <div className="field-grid-4">
-            <label className="field-row field-span-3">
-              <span className="field-label">Output Device</span>
-              <select
-                className="skin-select"
-                value={toSelectValue(draft.outputDeviceIndex)}
-                onChange={(event) =>
-                  commitDeviceSelection({
-                    ...draft,
-                    outputDeviceIndex: fromSelectValue(event.target.value),
-                  })
-                }
-              >
-                <option value="none">System Default</option>
-                {(inventory?.outputs ?? []).map((device) => (
-                  <option key={device.index} value={String(device.index)}>
-                    {device.name} ({device.channels}ch @{" "}
-                    {device.defaultSampleRate}Hz)
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="row-end align-end">
-              <button
-                type="button"
-                className="skin-btn secondary"
-                onClick={onRefreshDevices}
-              >
-                Refresh
-              </button>
-            </div>
-          </div>
-
-          <div className="mt-10">
+          <section className="page-card">
+            <h3 className="section-subheading">Input</h3>
             <SelectField
-              label="Input Device"
+              label="Device"
               value={toSelectValue(draft.inputDeviceIndex)}
               onChange={(value) =>
                 commitDeviceSelection({
@@ -214,23 +132,36 @@ export function DevicesPage() {
                 </option>
               ))}
             </SelectField>
-          </div>
-
-          <div className="mt-10">
-            <SelectField
-              label="Input Bit Depth"
-              value={draft.inputBitDepth}
-              onChange={(value) =>
-                commitDeviceSelection({
-                  ...draft,
-                  inputBitDepth: value as InputBitDepth,
-                })
-              }
-              options={depthOptions.map((depth) => ({
-                value: depth,
-                label: INPUT_BIT_DEPTH_LABELS[depth],
-              }))}
-            />
+            <div className="field-grid-2 mt-10">
+              <label className="field-row">
+                <span className="field-label">Sample rate (Hz)</span>
+                <input
+                  className="skin-input"
+                  type="number"
+                  value={draft.inputSampleRate}
+                  onChange={(event) =>
+                    setDraft((prev) => ({
+                      ...prev,
+                      inputSampleRate: toNumber(event.target.value, 44100),
+                    }))
+                  }
+                />
+              </label>
+              <SelectField
+                label="Bit depth"
+                value={draft.inputBitDepth}
+                onChange={(value) =>
+                  commitDeviceSelection({
+                    ...draft,
+                    inputBitDepth: value as InputBitDepth,
+                  })
+                }
+                options={depthOptions.map((depth) => ({
+                  value: depth,
+                  label: INPUT_BIT_DEPTH_LABELS[depth],
+                }))}
+              />
+            </div>
             {depthUnavailable && (
               <p className="field-error compact-note mt-8">
                 This input does not offer{" "}
@@ -238,75 +169,62 @@ export function DevicesPage() {
                 the device default.
               </p>
             )}
-          </div>
-        </section>
+          </section>
+        </div>
 
-        <hr className="section-divider" />
-        <section className="page-section">
-          <h3 className="section-subheading">Wireless Capture</h3>
-          <p className="muted mb-12">
-            A Bluetooth link resamples and buffers, so its clock never quite
-            matches the capture clock. Wireless mode wraps each measurement
-            signal in timing markers, widens the silences around it, and
-            measures the drift so the recording can be corrected before it is
-            analysed. Leave it off for wired gear.
-          </p>
-          <CheckboxField
-            label="Bluetooth / wireless device"
-            checked={draft.bluetoothMode}
-            onChange={(checked) =>
-              commitDeviceSelection({ ...draft, bluetoothMode: checked })
-            }
-          />
-          <p className="muted compact-note mt-10">
-            The latency test ignores this setting. Removing the link delay is
-            exactly what that test is there to measure.
-          </p>
-        </section>
-
-        <hr className="section-divider" />
-        <SplCalibrationPanel />
-
-        <hr className="section-divider" />
-        <section className="page-section">
-          <h3 className="section-subheading">Appearance</h3>
-
-          <div className="field-grid-2">
-            <SelectField
-              label="Appearance Mode"
-              value={appearanceMode}
-              onChange={(value) =>
-                setAppearanceMode(normalizeAppearanceMode(value))
+        <div className="field-grid-4 mt-12">
+          <label className="field-row field-span-3">
+            <span className="field-label">Item name</span>
+            <input
+              className="skin-input"
+              value={draft.itemName}
+              placeholder="e.g. HD600, Unit-A, My Headphone"
+              onChange={(event) =>
+                setDraft((prev) => ({
+                  ...prev,
+                  itemName: event.target.value,
+                }))
               }
-              options={APPEARANCE_MODES.map((m) => ({ value: m, label: m }))}
             />
-
-            <SelectField
-              label="Accent Color"
-              value={accentColor}
-              onChange={(value) => setAccentColor(normalizeAccentColor(value))}
-              options={ACCENT_COLORS.map((c) => ({ value: c, label: c }))}
-            />
+          </label>
+          <div className="row-end align-end">
+            <button
+              type="button"
+              className="skin-btn"
+              disabled={!draftDirty}
+              onClick={() => onCommitSettings(draft)}
+            >
+              Apply
+            </button>
           </div>
+        </div>
+        <p className="muted compact-note mt-8">
+          Devices and bit depth apply immediately. Sample rates and the item
+          name apply when you press Apply.
+        </p>
+      </section>
 
-          <div className="mt-10">
-            <CheckboxField
-              label="Enable Experimental Tests"
-              checked={experimentalEnabled}
-              onChange={onChangeExperimentalEnabled}
-            />
-          </div>
-        </section>
-
-        <hr className="section-divider" />
-        <ShortcutSettings
-          bindings={shortcuts.bindings}
-          onRebind={shortcuts.rebind}
-          onReset={shortcuts.resetAll}
+      <section className="page-card">
+        <h3 className="section-subheading">Wireless capture</h3>
+        <CheckboxField
+          label="Bluetooth / wireless device"
+          checked={draft.bluetoothMode}
+          onChange={(checked) =>
+            commitDeviceSelection({ ...draft, bluetoothMode: checked })
+          }
         />
+        <p className="muted compact-note mt-8">
+          A Bluetooth link resamples and buffers, so its clock never quite
+          matches the capture clock. Wireless mode wraps each measurement signal
+          in timing markers, widens the silences around it, and measures the
+          drift so the recording can be corrected before it is analysed. Leave
+          it off for wired gear. The latency test ignores this setting, because
+          the link delay is what that test measures.
+        </p>
+      </section>
 
-        <hr className="section-divider" />
-        <UpdateCheckPanel />
+      <section className="page-card">
+        <SplCalibrationPanel />
       </section>
     </div>
   );

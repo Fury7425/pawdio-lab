@@ -29,7 +29,7 @@ export function ResultsPage() {
           }
         />
 
-        <div className="scroll-box">
+        <div className="scroll-box logs-box">
           <pre className="mono-pre">
             {ctx.logText.length > 0 ? ctx.logText : "No logs yet."}
           </pre>

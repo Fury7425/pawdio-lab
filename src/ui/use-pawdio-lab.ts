@@ -51,6 +51,16 @@ type LatencyPresetConfig = {
   frequencyHz: number;
 };
 
+export type LatencyActivePreset = {
+  label: string;
+  /** Position in the current suite, from 0. */
+  index: number;
+  count: number;
+  /** Calibration offset the finished report will subtract. */
+  offsetMs: number;
+  calibrating: boolean;
+};
+
 type LatencyExportEntry = {
   request: LatencyRequest;
   report: LatencyReport;
@@ -520,6 +530,10 @@ export function usePawdioLabController() {
   const [latencyExportSuite, setLatencyExportSuite] = useState<
     LatencyExportEntry[]
   >([]);
+  // The preset being measured right now, so the page can name it and scale
+  // the backend's raw progress delays by the same offset as the report.
+  const [latencyActivePreset, setLatencyActivePreset] =
+    useState<LatencyActivePreset | null>(null);
   // Loaded synchronously: reading it in an effect let the persist hook's
   // cleanup (run first under StrictMode) overwrite the stored offsets with the
   // empty default before they were read.
@@ -770,13 +784,23 @@ export function usePawdioLabController() {
 
     const suiteEntries: LatencyExportEntry[] = [];
     try {
-      for (const preset of presets) {
+      for (const [index, preset] of presets.entries()) {
         const request: LatencyRequest = {
           ...requestForPreset(latencyRequest, preset),
           saveOverallBarChart: false,
           sharedOutputDir: undefined,
           sharedRunTag,
         };
+        setLatencyActivePreset({
+          label: preset.label,
+          index,
+          count: presets.length,
+          offsetMs: calibrationOffsetForRequest(request, latencyCalibration),
+          calibrating: false,
+        });
+        // Progress rows are per preset; a stale row from the last one would
+        // be read against this preset's offset.
+        setLatencyProgress([]);
         appendLog(`[latency] ${preset.label} started`);
         const { report, calibratedOffsetMs } = await runLatencyOnce(request);
         setLatencyReport(report);
@@ -788,6 +812,8 @@ export function usePawdioLabController() {
           },
           report,
         });
+        // Publish each finished preset so the page can plot it mid-suite.
+        setLatencyExportSuite([...suiteEntries]);
         if (report.cancelled) {
           appendLog("[latency] preset suite stopped");
           break;
@@ -811,6 +837,7 @@ export function usePawdioLabController() {
       // Keep whatever finished, so a failure on the last preset still leaves
       // the earlier ones exportable.
       setLatencyExportSuite(suiteEntries);
+      setLatencyActivePreset(null);
       frontendBusyRef.current = false;
       refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
@@ -852,7 +879,15 @@ export function usePawdioLabController() {
     const updates: Record<string, number> = {};
     let stopped = false;
     try {
-      for (const preset of selected) {
+      for (const [index, preset] of selected.entries()) {
+        setLatencyActivePreset({
+          label: preset.label,
+          index,
+          count: selected.length,
+          offsetMs: 0,
+          calibrating: true,
+        });
+        setLatencyProgress([]);
         const request = {
           ...requestForPreset(latencyRequest, preset, repeats),
           savePerSoundPlot: false,
@@ -882,6 +917,7 @@ export function usePawdioLabController() {
       stopped = isCancellation(err);
       reportRunError("calibration", err);
     } finally {
+      setLatencyActivePreset(null);
       const calibrated = Object.keys(updates).length;
       if (calibrated > 0) {
         setLatencyCalibration((prev) => ({
@@ -1908,6 +1944,8 @@ export function usePawdioLabController() {
     latencyProgress,
     lastTestProgress,
     latencyReport,
+    latencySuite: latencyExportSuite,
+    latencyActivePreset,
     latencyCalibration,
     calibrationText,
     sweepRequest,

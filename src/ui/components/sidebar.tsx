@@ -2,12 +2,13 @@ import {
   Timer,
   AudioWaveform,
   EarOff,
-  Settings,
+  Speaker,
   FileText,
   FlaskConical,
   Library,
+  SlidersHorizontal,
 } from "lucide-react";
-import { pageItems, PageKey } from "../model";
+import { pageItems, PageKey, type PageGroup } from "../model";
 import { usePawdioLabContext } from "../pawdio-context";
 import { useShortcutBindings } from "../hooks/use-shortcuts";
 import type { ShortcutAction } from "../lib/shortcuts";
@@ -19,13 +20,19 @@ const PAGE_ICONS: Record<
   latency: Timer,
   sweep_fr: AudioWaveform,
   anc: EarOff,
-  devices: Settings,
+  devices: Speaker,
   results: FileText,
   library: Library,
   experimental: FlaskConical,
 };
 
-export function Sidebar() {
+const GROUPS: PageGroup[] = ["Tests", "Data", "Setup"];
+
+type SidebarProps = {
+  onOpenSettings: () => void;
+};
+
+export function Sidebar({ onOpenSettings }: SidebarProps) {
   const ctx = usePawdioLabContext();
   const { bindings } = useShortcutBindings();
   const visiblePages = ctx.experimentalEnabled
@@ -38,24 +45,36 @@ export function Sidebar() {
       <p className="sidebar-subtitle">Audio Diagnostics</p>
 
       <nav className="sidebar-nav" aria-label="Primary">
-        {visiblePages.map((item) => {
-          const Icon = PAGE_ICONS[item.key];
-          const binding = bindings[`page_${item.key}` as ShortcutAction];
-          return (
-            <button
-              key={item.key}
-              type="button"
-              className={`nav-btn${ctx.activePage === item.key ? " is-active" : ""}`}
-              aria-current={ctx.activePage === item.key ? "page" : undefined}
-              aria-label={item.label}
-              title={binding ? `${item.label} (${binding})` : item.label}
-              onClick={() => ctx.setActivePage(item.key)}
-            >
-              <Icon size={16} aria-hidden="true" />
-              {item.label}
-            </button>
-          );
-        })}
+        {GROUPS.map((group) => (
+          <div key={group} className="nav-group">
+            <p className="nav-group-label">{group}</p>
+            {visiblePages
+              .filter((item) => item.group === group)
+              .map((item) => {
+                const Icon = PAGE_ICONS[item.key];
+                const binding = bindings[`page_${item.key}` as ShortcutAction];
+                const active = ctx.activePage === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    type="button"
+                    className={`nav-btn${active ? " is-active" : ""}`}
+                    aria-current={active ? "page" : undefined}
+                    title={binding ? `${item.label} (${binding})` : item.label}
+                    onClick={() => ctx.setActivePage(item.key)}
+                  >
+                    <Icon size={16} aria-hidden="true" />
+                    <span className="nav-label">{item.label}</span>
+                    {binding && (
+                      <kbd className="nav-kbd" aria-hidden="true">
+                        {binding}
+                      </kbd>
+                    )}
+                  </button>
+                );
+              })}
+          </div>
+        ))}
       </nav>
 
       <div className="sidebar-footer">
@@ -68,12 +87,12 @@ export function Sidebar() {
         </span>
         <button
           type="button"
-          className="skin-btn danger"
-          disabled={!ctx.running}
-          aria-label="Stop current test"
-          onClick={() => ctx.run(ctx.stopTest())}
+          className="icon-btn sidebar-settings-btn"
+          aria-label="Settings"
+          title="Settings"
+          onClick={onOpenSettings}
         >
-          Stop
+          <SlidersHorizontal size={15} aria-hidden="true" />
         </button>
         <span className="sidebar-version">v{__APP_VERSION__}</span>
       </div>

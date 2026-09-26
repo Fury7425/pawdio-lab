@@ -2090,3 +2090,549 @@ details.raw-json-details summary:hover {
 .shortcut-row.is-conflicting .shortcut-key {
   border-color: var(--danger, #d9534f);
 }
+
+/* ────────────────────────────────────────────────────────────────────────
+   Layout pass (Sep 2026): grouped sidebar, device bar, bottom run bar,
+   folded settings, settings modal.
+   ──────────────────────────────────────────────────────────────────────── */
+
+.mt-20 {
+  margin-top: 20px;
+}
+
+/* Five numeric fields plus the capture-order control, which needs more room. */
+.sweep-settings-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(250px, 1.6fr);
+}
+
+/* Headings that lead with an icon keep it on the text line. */
+.section-subheading > svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+
+/* The Logs page is nothing but the log; let it use the window height. */
+.scroll-box.logs-box {
+  max-height: none;
+  height: calc(100vh - 150px);
+  min-height: 240px;
+}
+
+/* Sidebar groups */
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.nav-group + .nav-group {
+  margin-top: 10px;
+}
+
+.nav-group-label {
+  margin: 0 0 4px;
+  padding: 0 10px;
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.nav-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The sidebar is narrow; show the binding on hover and keyboard focus only. */
+.nav-kbd {
+  display: none;
+  margin-left: auto;
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.nav-btn:hover .nav-kbd,
+.nav-btn:focus-visible .nav-kbd {
+  display: inline;
+}
+
+.sidebar-settings-btn {
+  width: 32px;
+  height: 32px;
+  border-color: var(--secondary-button-border);
+  background: var(--secondary-button-bg);
+}
+
+/* Keyboard hint inside a button */
+.btn-kbd {
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 10.5px;
+  font-weight: 400;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.skin-btn.compact {
+  padding: 6px 12px;
+  font-size: 12.5px;
+}
+
+/* Device bar */
+.device-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+  background: var(--surface-1);
+  border: 1px solid var(--card-border);
+  border-radius: 10px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.device-bar-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+}
+
+.device-bar-name {
+  color: var(--text-main);
+  font-weight: 500;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.device-bar-sep {
+  width: 1px;
+  height: 18px;
+  background: var(--stroke);
+}
+
+.device-badge {
+  padding: 2px 9px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--toggle-text);
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.device-badge.is-good {
+  background: var(--status-idle-soft);
+  color: var(--status-idle);
+}
+
+.device-badge.is-accent {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.device-bar-change {
+  margin-left: auto;
+}
+
+/* Run bar: pinned to the bottom of the scrolling main column */
+.run-bar {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--stroke-strong);
+  border-radius: 10px;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.run-bar .skin-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+
+.run-bar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.run-bar-status {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.run-bar-line {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 12.5px;
+}
+
+.run-bar-text {
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-bar-detail {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.run-bar-emph {
+  font-weight: 600;
+  color: var(--accent-strong);
+}
+
+.run-bar.is-running .run-bar-emph {
+  color: var(--status-running);
+}
+
+.run-bar-track {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.run-bar-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent-strong);
+  transition: width 300ms var(--ease-out);
+}
+
+.run-bar.is-running .run-bar-fill {
+  background: var(--status-running);
+}
+
+/* Inset panel inside a page card */
+.inset-panel {
+  background: var(--surface-2);
+  border: 1px solid var(--stroke);
+  border-radius: 8px;
+  padding: 14px 16px 10px;
+}
+
+.inset-panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.inset-panel-head .section-subheading {
+  margin: 0;
+}
+
+/* Latency colour key */
+.tier-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: 8px 0 0;
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+
+.tier-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tier-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+.tier-swatch.is-good {
+  background: var(--status-idle);
+}
+
+.tier-swatch.is-warn {
+  background: var(--status-running);
+}
+
+.tier-swatch.is-bad {
+  background: var(--danger);
+}
+
+/* Latency per-repeat dot plot */
+.latency-dot-plot {
+  width: 100%;
+  height: auto;
+  font-size: 11px;
+}
+
+.dot-plot-grid {
+  stroke: var(--level-grid);
+  stroke-width: 1;
+}
+
+.dot-plot-row {
+  stroke: var(--stroke);
+  stroke-width: 1;
+}
+
+.dot-plot-axis {
+  fill: var(--text-muted);
+  font-family: "JetBrains Mono", "Consolas", monospace;
+  font-size: 10.5px;
+}
+
+.dot-plot-label {
+  fill: var(--text-main);
+  font-size: 11.5px;
+}
+
+.dot-plot-dot {
+  fill: var(--accent-strong);
+  fill-opacity: 0.75;
+}
+
+.dot-plot-mean {
+  stroke: var(--text-strong);
+  stroke-width: 2;
+}
+
+.dot-plot-note {
+  fill: var(--text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.dot-plot-note.is-live {
+  fill: var(--status-running);
+}
+
+/* Folded settings rows */
+.fold-list {
+  border-top: 1px solid var(--section-divider);
+}
+
+.fold {
+  border-bottom: 1px solid var(--section-divider);
+}
+
+.fold > summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 2px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-main);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.fold > summary::-webkit-details-marker {
+  display: none;
+}
+
+.fold > summary:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.fold-chevron {
+  color: var(--text-muted);
+  flex-shrink: 0;
+  transition: transform var(--dur-fast) var(--ease-out);
+}
+
+.fold[open] .fold-chevron {
+  transform: rotate(90deg);
+}
+
+.fold-summary {
+  margin-left: auto;
+  font-weight: 400;
+  font-size: 12px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.fold-body {
+  padding: 4px 2px 16px;
+}
+
+/* Segmented control */
+.segmented {
+  display: flex;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--bg-input);
+  border: 1px solid var(--stroke);
+}
+
+.segmented-btn {
+  flex: 1;
+  padding: 5px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--toggle-text);
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background var(--dur-fast) var(--ease-out),
+    color var(--dur-fast) var(--ease-out);
+}
+
+.segmented-btn:hover:not(.is-active) {
+  background: var(--nav-item-hover-bg);
+  color: var(--text-main);
+}
+
+.segmented-btn.is-active {
+  background: var(--accent);
+  color: var(--button-text);
+  font-weight: 600;
+}
+
+.segmented-btn:focus-visible {
+  outline: 2px solid var(--accent-strong);
+  outline-offset: 1px;
+}
+
+/* Settings modal */
+.modal-box.settings-modal {
+  max-width: 760px;
+  padding: 20px 22px 16px;
+}
+
+.settings-modal-body {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr);
+  /* A fixed height with a shrinkable row lets the panel scroll inside. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 18px;
+  height: min(60vh, 480px);
+  margin-bottom: 14px;
+}
+
+.settings-tabs {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-right: 12px;
+  border-right: 1px solid var(--stroke);
+}
+
+.settings-tab-panel {
+  overflow: auto;
+  min-height: 0;
+  padding-right: 4px;
+}
+
+.settings-modal-note {
+  margin: 0 auto 0 0;
+  align-self: center;
+}
+
+.settings-modal .segmented {
+  max-width: 320px;
+}
+
+.swatch-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.swatch-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--stroke);
+  background: transparent;
+  color: var(--toggle-text);
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease-out),
+    background var(--dur-fast) var(--ease-out);
+}
+
+.swatch-btn:hover:not(.is-active) {
+  border-color: var(--stroke-strong);
+}
+
+.swatch-btn.is-active {
+  border-color: var(--accent-strong);
+  background: var(--accent-soft);
+  color: var(--text-main);
+}
+
+.swatch-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+}
+
+@media (max-width: 1280px) {
+  .sweep-settings-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1024px) {
+  .sweep-settings-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .run-bar {
+    flex-wrap: wrap;
+  }
+
+  .settings-modal-body {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+
+  .settings-tabs {
+    flex-direction: row;
+    padding: 0 0 10px;
+    border-right: none;
+    border-bottom: 1px solid var(--stroke);
+  }
+}
