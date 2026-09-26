@@ -2107,6 +2107,20 @@ details.raw-json-details summary:hover {
   grid-template-columns: repeat(5, minmax(0, 1fr)) minmax(250px, 1.6fr);
 }
 
+/* Headings that lead with an icon keep it on the text line. */
+.section-subheading > svg {
+  display: inline-block;
+  vertical-align: -2px;
+  margin-right: 6px;
+}
+
+/* The Logs page is nothing but the log; let it use the window height. */
+.scroll-box.logs-box {
+  max-height: none;
+  height: calc(100vh - 150px);
+  min-height: 240px;
+}
+
 /* Sidebar groups */
 .nav-group {
   display: flex;

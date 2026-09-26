@@ -620,7 +620,7 @@ export function LatencyPage() {
             >
               <Play size={12} fill="currentColor" aria-hidden="true" />
               Run Selected
-              {bindings.start_test && (
+              {!running && bindings.start_test && (
                 <kbd className="btn-kbd">{bindings.start_test}</kbd>
               )}
             </button>

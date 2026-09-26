@@ -378,7 +378,9 @@ export function SweepFrPage() {
                     <text
                       x={guide.x}
                       y="98"
-                      textAnchor="middle"
+                      textAnchor={
+                        guide.x < 10 ? "start" : guide.x > 190 ? "end" : "middle"
+                      }
                       fontSize="7"
                       fill="var(--text-muted)"
                     >
@@ -392,7 +394,7 @@ export function SweepFrPage() {
                 <text x="4" y="52" fontSize="7" fill="var(--text-muted)">
                   0 dB
                 </text>
-                <text x="4" y="92" fontSize="7" fill="var(--text-muted)">
+                <text x="4" y="87" fontSize="7" fill="var(--text-muted)">
                   -20 dB
                 </text>
                 {pinkNoisePlaying && roughFrGraph ? (
