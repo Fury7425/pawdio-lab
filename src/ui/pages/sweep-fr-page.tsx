@@ -22,6 +22,8 @@ import { usePawdioLabContext } from "../pawdio-context";
 
 const CAPTURE_ORDERS: CaptureOrder[] = ["stereo", "left_first", "right_first"];
 
+type Anchor = "start" | "middle" | "end";
+
 const SIDE_LABEL = { stereo: "Stereo", left: "Left", right: "Right" } as const;
 
 export function SweepFrPage() {
@@ -128,7 +130,7 @@ export function SweepFrPage() {
         }
         const label = freq >= 1000 ? `${Math.round(freq / 1000)}k` : `${freq}`;
         // Keep the edge labels inside the plot instead of half cut off.
-        const anchor = x < 10 ? "start" : x > 190 ? "end" : "middle";
+        const anchor: Anchor = x < 10 ? "start" : x > 190 ? "end" : "middle";
         return { x, label, anchor };
       })
       .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
