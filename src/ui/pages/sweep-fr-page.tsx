@@ -127,9 +127,11 @@ export function SweepFrPage() {
           return null;
         }
         const label = freq >= 1000 ? `${Math.round(freq / 1000)}k` : `${freq}`;
-        return { x, label };
+        // Keep the edge labels inside the plot instead of half cut off.
+        const anchor = x < 10 ? "start" : x > 190 ? "end" : "middle";
+        return { x, label, anchor };
       })
-      .filter((entry): entry is { x: number; label: string } => entry !== null);
+      .filter((entry): entry is NonNullable<typeof entry> => entry !== null);
 
     return {
       linePath,
@@ -378,9 +380,7 @@ export function SweepFrPage() {
                     <text
                       x={guide.x}
                       y="98"
-                      textAnchor={
-                        guide.x < 10 ? "start" : guide.x > 190 ? "end" : "middle"
-                      }
+                      textAnchor={guide.anchor}
                       fontSize="7"
                       fill="var(--text-muted)"
                     >
