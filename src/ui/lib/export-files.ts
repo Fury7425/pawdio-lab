@@ -90,15 +90,3 @@ export function downloadText(
   anchor.remove();
   window.setTimeout(() => URL.revokeObjectURL(url), 0);
 }
-
-export function downloadJson(filename: string, value: unknown): void {
-  downloadText(
-    `${JSON.stringify(value, null, 2)}\n`,
-    filename,
-    "application/json;charset=utf-8",
-  );
-}
-
-export function downloadCsv(filename: string, content: string): void {
-  downloadText(content, filename, "text/csv;charset=utf-8");
-}

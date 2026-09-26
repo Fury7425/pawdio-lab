@@ -77,14 +77,13 @@ The Rust audio engine handles low-level device I/O and DSP, while the React fron
 
 ### Features
 
-- **Latency Measurement** — Output-to-input delay with 5 signal presets (200 Hz, 1 kHz, 2 kHz, 5 kHz sine + impulse click). Per-preset calibration removes system baseline for meaningful A/B comparisons.
+- **Latency Measurement** — Output-to-input delay with 3 chirp presets (one-octave log sweeps centred on 200 Hz, 5 kHz and 10 kHz). Per-preset calibration removes system baseline for meaningful A/B comparisons.
 - **Frequency Response** — Logarithmic sweep (20 Hz – 20 kHz configurable) with stereo or mono-guided mode. Exports PNG plots and Squiglink-compatible curves.
-- **Input Level Monitor** — Real-time dBFS meter with peak hold, clip detection, and SPL estimate.
+- **Input Level Monitor** — Real-time dBFS meter with peak hold, per-channel clip detection, and one-point SPL calibration.
 - **Pink Noise Generator** — Continuous playback for level checks and placement verification. Live rough FR preview.
 - **THD** — Total Harmonic Distortion at configurable tones (2nd–10th harmonic).
 - **Channel Balance** — Left vs. right level difference in dB.
 - **Crosstalk** — Channel isolation / leakage measurement.
-- **Isolation** — Inside vs. outside ambient noise delta.
 - **Multi-format Export** — Text reports, CSV, JSON, PNG charts, Squiglink `.txt` curves.
 - **Theming** — Dark/light mode with 4 accent colors (blue, teal, purple, greyscale).
 
@@ -176,14 +175,14 @@ Default export path: `~/Documents/Pawdio Lab Exports` (falls back to system temp
 
 ### Latency Measurement
 
-1. Generate a known signal (sine with 10 ms fade envelope, or impulse click)
+1. Generate a one-octave log chirp centred on the preset frequency (10 ms fade in/out)
 2. Play and record simultaneously with configurable margin time
 3. Resample reference to input rate if sample rates differ
-4. Estimate delay via FFT-based cross-correlation with sub-sample parabolic interpolation
+4. Estimate delay from the envelope of the FFT cross-correlation, with sub-sample parabolic interpolation
 5. Repeat N times, report average and standard deviation
 6. UI applies per-preset calibration offset to isolate DUT-specific delay
 
-> **Why this approach**: FFT correlation is robust to phase/noise, peak normalization reduces gain sensitivity, and per-preset calibration avoids assuming one offset generalizes across signal shapes.
+> **Why this approach**: a swept signal has one unambiguous correlation peak (a steady tone repeats every cycle), the envelope tracks group delay instead of a carrier cycle, and per-preset calibration avoids assuming one offset generalizes across frequency bands.
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -223,7 +222,6 @@ Default export path: `~/Documents/Pawdio Lab Exports` (falls back to system temp
 | **THD** | Play sine, Hann window, FFT, sum harmonic power (2nd–10th) | `THD% = sqrt(sum) / fundamental * 100` |
 | **Channel Balance** | Sine on left-only then right-only, compute RMS dBFS | `L_minus_R_dB` |
 | **Crosstalk** | Drive one channel, measure leakage on opposite | `crosstalk_dB = 20 * log10(leak / primary)` |
-| **Isolation** | Two sequential pink noise captures (inside/outside) | `delta_dB` |
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
 
@@ -257,9 +255,11 @@ Default export path: `~/Documents/Pawdio Lab Exports` (falls back to system temp
 ```
 src/                  React UI (pages, components, state, theme)
 src-tauri/            Tauri config + Rust audio engine
-  src/main.rs         Command handlers, AudioEngine, stream management
+  src/main.rs         Tauri command handlers
+  src/db.rs           SQLite measurement library
+  src/audio/mod.rs    AudioEngine: capture, DSP, plots, exports
+  src/audio/alignment.rs  Wireless marker alignment
 scripts/              Release metadata tooling
-app/                  Legacy Python prototype (not active)
 ```
 
 <p align="right">(<a href="#readme-top">back to top</a>)</p>
@@ -275,8 +275,8 @@ app/                  Legacy Python prototype (not active)
 - [x] Per-preset calibration system
 - [x] Multi-format export (text, CSV, JSON, PNG, Squiglink)
 - [x] Dark/light theme with accent color variants
-- [ ] Enable experimental test exports
-- [ ] Add target curve overlay for FR measurements
+- [x] Enable experimental test exports
+- [x] Add target curve overlay for FR measurements
 - [ ] Waterfall / spectrogram view
 
 See the [open issues](https://github.com/Fury7425/pawdio-lab/issues) for a full list of proposed features and known issues.
@@ -348,17 +348,17 @@ Project Link: [https://github.com/Fury7425/pawdio-lab](https://github.com/Fury74
 ### Calibration Implementation
 
 - UI controller (`src/ui/use-pawdio-lab.ts`) runs raw latency tests per preset and stores `averageDelayMs` as offsets
-- Offsets keyed by preset identity (`beep_200`, `beep_1k`, etc.) via `calibrationKeyForRequest`
+- Offsets keyed by preset identity (`chirp_200`, `chirp_5k`, `chirp_10k`) via `calibrationKeyForRequest`
 - Persisted in localStorage key `pawdio-lab-latency-calibration-v1`
 - Rust computes raw delay; UI applies calibration via `applyLatencyCalibration`
 
 ### Delay Estimation Pipeline
 
 1. Clamp request bounds, initialize input/output devices
-2. Generate reference (sine with fade envelope, or impulse at ~10 ms offset in 256+ sample buffer)
+2. Generate reference (one-octave log chirp around the preset frequency)
 3. Start input stream, then output stream; capture for `duration + margin` seconds
 4. Resample reference with `resample_linear` if rates differ
-5. `find_delay_ms`: normalize both signals, zero-pad to next power of 2, FFT correlation, find max absolute lag, refine with 3-point parabolic interpolation, convert to ms
+5. `find_delay_ms`: zero-pad to next power of 2, FFT cross-correlation without windowing, take the envelope (analytic-signal magnitude), find its peak over non-negative lags, refine with 3-point parabolic interpolation, convert to ms
 6. Repeat, emit progress events, compute summary from successful runs
 
 ### Sweep FR Pipeline

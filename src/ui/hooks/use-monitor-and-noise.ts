@@ -7,7 +7,6 @@ export type InputMonitorState = {
   currentDbfs: number;
   peakDbfs: number;
   clipCount: number;
-  splEstimate: number;
   roughFrHz: number[];
   roughFrDb: number[];
 };
@@ -18,7 +17,6 @@ export const DEFAULT_INPUT_MONITOR: InputMonitorState = {
   currentDbfs: -96,
   peakDbfs: -96,
   clipCount: 0,
-  splEstimate: -2,
   roughFrHz: [],
   roughFrDb: [],
 };

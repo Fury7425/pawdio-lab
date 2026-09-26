@@ -85,7 +85,7 @@ export const SHORTCUT_DEFINITIONS: ShortcutDefinition[] = [
   },
   {
     action: "page_results",
-    label: "Go to Results",
+    label: "Go to Logs",
     group: "Navigation",
     defaultBinding: "Ctrl+6",
   },

@@ -12,7 +12,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 cpal = "0.15"
 num-complex = "0.4"
-rand = "0.8"
 rusqlite = { version = "0.31", features = ["bundled"] }
 rustfft = "6.2"
 serde = { version = "1", features = ["derive"] }
@@ -22,3 +21,6 @@ tauri-plugin-dialog = "2"
 thiserror = "1"
 tokio = { version = "1", features = ["sync"] }
 plotters = "0.3"
+
+[dev-dependencies]
+rand = "0.8"

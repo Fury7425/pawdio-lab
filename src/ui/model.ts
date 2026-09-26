@@ -17,12 +17,27 @@ export enum PageKeyEnum {
   Library = "library",
 }
 
+/**
+ * Capture resolution. "24" is 24-bit audio in a 32-bit integer container
+ * (the backend has no packed 24-bit type); "32" is 32-bit float.
+ */
+export type InputBitDepth = "auto" | "16" | "24" | "32";
+
+export const INPUT_BIT_DEPTH_LABELS: Record<InputBitDepth, string> = {
+  auto: "Auto (device default)",
+  "16": "16-bit integer",
+  "24": "24-bit integer",
+  "32": "32-bit float",
+};
+
 export type AudioDeviceInfo = {
   index: number;
   name: string;
   isInput: boolean;
   channels: number;
   defaultSampleRate: number;
+  /** Capture depths this input offers; empty for outputs. */
+  bitDepths?: InputBitDepth[];
 };
 
 export type DeviceInventory = {
@@ -35,6 +50,13 @@ export type DeviceInventory = {
 export type AudioSettings = {
   outputDeviceIndex: number | null;
   inputDeviceIndex: number | null;
+  /**
+   * Names of the selected devices. Enumeration order shifts when devices are
+   * plugged in or removed, so the name is what identifies a saved selection;
+   * the index only breaks ties between identically named devices.
+   */
+  outputDeviceName?: string | null;
+  inputDeviceName?: string | null;
   outputSampleRate: number;
   inputSampleRate: number;
   durationSecs: number;
@@ -47,12 +69,15 @@ export type AudioSettings = {
    * reports.
    */
   bluetoothMode: boolean;
+  /** Capture sample format. Falls back to "auto" when the input lacks it. */
+  inputBitDepth: InputBitDepth;
 };
 
 export type RuntimeStatus = { running: boolean };
 
 export type LatencyRequest = {
-  signal: "sine" | "impulse" | "pinkNoise";
+  /** One-octave log chirp centred on `frequencyHz`. */
+  signal: "chirp";
   frequencyHz: number;
   durationSecs: number;
   amplitude: number;
@@ -117,11 +142,6 @@ export type CrosstalkRequest = {
 export type ThdRequest = {
   tones: number[];
   toneDurationSecs: number;
-  amplitude: number;
-};
-
-export type IsolationRequest = {
-  noiseDurationSecs: number;
   amplitude: number;
 };
 
@@ -261,7 +281,6 @@ export type LibraryTestType =
   | "thd"
   | "balance"
   | "crosstalk"
-  | "isolation"
   | "anc";
 
 export type DeviceRecord = {
@@ -297,7 +316,6 @@ export const LIBRARY_TEST_LABELS: Record<LibraryTestType, string> = {
   thd: "THD",
   balance: "Channel Balance",
   crosstalk: "Crosstalk",
-  isolation: "Isolation",
   anc: "ANC / Transparency",
 };
 
@@ -313,7 +331,7 @@ export const pageItems: Array<{ key: PageKey; label: string }> = [
   { key: "sweep_fr", label: "Sweep FR" },
   { key: "anc", label: "ANC / Transparency" },
   { key: "devices", label: "Devices / Settings" },
-  { key: "results", label: "Results / Export" },
+  { key: "results", label: "Logs" },
   { key: "library", label: "Library / Compare" },
   { key: "experimental", label: "Experimental Tests" },
 ];
@@ -353,11 +371,12 @@ export const defaultSettings: AudioSettings = {
   chunkSize: 1024,
   itemName: "",
   bluetoothMode: false,
+  inputBitDepth: "auto",
 };
 
 export const defaultLatencyRequest: LatencyRequest = {
-  signal: "impulse",
-  frequencyHz: 1000,
+  signal: "chirp",
+  frequencyHz: 5000,
   durationSecs: 0.5,
   amplitude: 0.85,
   repeats: 5,
@@ -402,11 +421,6 @@ export const defaultThdRequest: ThdRequest = {
   tones: [100, 1000, 6000],
   toneDurationSecs: 1,
   amplitude: 0.6,
-};
-
-export const defaultIsolationRequest: IsolationRequest = {
-  noiseDurationSecs: 2,
-  amplitude: 0.4,
 };
 
 export function toSelectValue(index: number | null): string {

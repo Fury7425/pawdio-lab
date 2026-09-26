@@ -39,6 +39,14 @@ function averageMetric(payloads: TestPayload[], key: string): number | null {
   return values.reduce((sum, value) => sum + value, 0) / values.length;
 }
 
+function lastMetric(payloads: TestPayload[], key: string): unknown {
+  for (let index = payloads.length - 1; index >= 0; index -= 1) {
+    const value = recordOrEmpty(payloads[index].metrics)[key];
+    if (value !== null && value !== undefined) return value;
+  }
+  return null;
+}
+
 export type AcceptedSweepSummary = {
   acceptedPerSide: number;
   attempts: number;
@@ -92,6 +100,10 @@ export function combineAcceptedSweepPayloads(
     metrics: {
       delay_ms_left: averageMetric(payloads, "delay_ms_left"),
       delay_ms_right: averageMetric(payloads, "delay_ms_right"),
+      // Wireless timing diagnostics of the most recent accepted capture, so
+      // the alignment report survives the combine.
+      alignment: lastMetric(payloads, "alignment"),
+      mirrored_channel: lastMetric(payloads, "mirrored_channel"),
     },
     data: {
       freqs,

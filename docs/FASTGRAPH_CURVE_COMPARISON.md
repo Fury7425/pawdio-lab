@@ -45,7 +45,7 @@ The design follows Fastgraph's useful separation between raw session curves and 
 - **Sweep FR**: last/all JSON and last-result CSV.
 - **Latency**: CSV.
 - **ANC**: complete JSON with raw captures and derived attenuation, plus long-form CSV with left, right, and average attenuation.
-- **Experimental tests**: session JSON and flattened CSV for balance, crosstalk, THD, and isolation results.
+- **Experimental tests**: session JSON and flattened CSV for balance, crosstalk, and THD results.
 - **Library**: selected records of any test type as complete JSON or flattened CSV.
 - **Comparison view**: the currently displayed overlay, delta, or variation result as JSON or long-form CSV, including normalization and smoothing metadata and percentile columns.
 

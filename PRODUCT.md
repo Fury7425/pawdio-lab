@@ -12,7 +12,7 @@ Headphone and IEM enthusiasts, measurement hobbyists (Squiglink community), and 
 
 ## Product Purpose
 
-Pawdio Lab is a free, open-source Tauri desktop app that measures latency, frequency response, THD, crosstalk, channel balance, isolation, and per-frequency ANC attenuation using a Rust DSP engine. Success: an enthusiast downloads it, measures their own gear, and exports curves they can share (Squiglink text, PNG, CSV).
+Pawdio Lab is a free, open-source Tauri desktop app that measures latency, frequency response, THD, crosstalk, channel balance, and per-frequency ANC attenuation using a Rust DSP engine. Success: an enthusiast downloads it, measures their own gear, and exports curves they can share (Squiglink text, PNG, CSV).
 
 ## Brand Personality
 

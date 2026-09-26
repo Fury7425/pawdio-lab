@@ -1,18 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   AudioSettings,
+  INPUT_BIT_DEPTH_LABELS,
+  type InputBitDepth,
   fromSelectValue,
   toNumber,
   toSelectValue,
 } from "../model";
-import { LabeledNumberInput } from "../components/labeled-input";
 import { CheckboxField, SelectField } from "../components/form-fields";
 import { PageHeader } from "../components/page-header";
 import {
   ACCENT_COLORS,
   APPEARANCE_MODES,
   DEFAULT_APPEARANCE_MODE,
-  DEFAULT_INPUT_BIT_DEPTH,
   DEFAULT_ACCENT_COLOR,
   DeviceUiPrefs,
   normalizeAccentColor,
@@ -44,9 +44,6 @@ export function DevicesPage() {
   const [accentColor, setAccentColor] = useState(
     storedUiPrefs?.accentColor ?? DEFAULT_ACCENT_COLOR,
   );
-  const [inputBitDepth, setInputBitDepth] = useState(
-    storedUiPrefs?.inputBitDepth ?? DEFAULT_INPUT_BIT_DEPTH,
-  );
 
   useEffect(() => {
     setDraft(settings);
@@ -56,10 +53,32 @@ export function DevicesPage() {
     const snapshot: DeviceUiPrefs = {
       appearanceMode,
       accentColor,
-      inputBitDepth,
     };
     persistDeviceUiPrefs(snapshot);
-  }, [appearanceMode, accentColor, inputBitDepth]);
+  }, [appearanceMode, accentColor]);
+
+  // Depths the selected input offers ("System Default" resolves to the OS
+  // default device). An empty list means the backend could not tell, so every
+  // option stays available.
+  const selectedInput = inventory?.inputs.find(
+    (device) =>
+      device.index ===
+      (draft.inputDeviceIndex ?? inventory?.defaultInputIndex ?? null),
+  );
+  const offeredDepths = selectedInput?.bitDepths ?? [];
+  const depthOptions: InputBitDepth[] = [
+    "auto",
+    ...(offeredDepths.length > 0
+      ? offeredDepths
+      : (["16", "24", "32"] as InputBitDepth[])),
+  ];
+  if (!depthOptions.includes(draft.inputBitDepth)) {
+    depthOptions.push(draft.inputBitDepth);
+  }
+  const depthUnavailable =
+    draft.inputBitDepth !== "auto" &&
+    offeredDepths.length > 0 &&
+    !offeredDepths.includes(draft.inputBitDepth);
 
   function commitDeviceSelection(next: AudioSettings) {
     setDraft(next);
@@ -106,29 +125,6 @@ export function DevicesPage() {
                 }
               />
             </label>
-          </div>
-
-          <div className="field-grid-2 mt-10">
-            <LabeledNumberInput
-              label="Signal Duration (s)"
-              value={draft.durationSecs}
-              step={0.05}
-              onChange={(event) =>
-                setDraft((prev) => ({
-                  ...prev,
-                  durationSecs: toNumber(event.target.value, 0.5),
-                }))
-              }
-            />
-            <SelectField
-              label="Input Bit Depth"
-              value={inputBitDepth}
-              onChange={setInputBitDepth}
-              options={["Auto", "16", "24", "32"].map((depth) => ({
-                value: depth,
-                label: depth,
-              }))}
-            />
           </div>
 
           <label className="field-row mt-10">
@@ -220,21 +216,29 @@ export function DevicesPage() {
             </SelectField>
           </div>
 
-          <LabeledNumberInput
-            label="Chunk Size"
-            value={draft.chunkSize}
-            min={64}
-            step={1}
-            onChange={(event) =>
-              setDraft((prev) => ({
-                ...prev,
-                chunkSize: Math.max(
-                  64,
-                  Math.round(toNumber(event.target.value, 1024)),
-                ),
-              }))
-            }
-          />
+          <div className="mt-10">
+            <SelectField
+              label="Input Bit Depth"
+              value={draft.inputBitDepth}
+              onChange={(value) =>
+                commitDeviceSelection({
+                  ...draft,
+                  inputBitDepth: value as InputBitDepth,
+                })
+              }
+              options={depthOptions.map((depth) => ({
+                value: depth,
+                label: INPUT_BIT_DEPTH_LABELS[depth],
+              }))}
+            />
+            {depthUnavailable && (
+              <p className="field-error compact-note mt-8">
+                This input does not offer{" "}
+                {INPUT_BIT_DEPTH_LABELS[draft.inputBitDepth]}, so captures use
+                the device default.
+              </p>
+            )}
+          </div>
         </section>
 
         <hr className="section-divider" />

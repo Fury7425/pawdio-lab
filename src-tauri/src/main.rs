@@ -8,8 +8,8 @@ use std::sync::{
 
 use audio::{
     AncSnapshot, AncSnapshotRequest, AudioEngine, AudioSettings, BalanceRequest, CrosstalkRequest,
-    DeviceInventory, IsolationRequest, LatencyExportEntry, LatencyTestReport, LatencyTestRequest,
-    SweepFrRequest, TestProgressEvent, TestResultPayload, ThdRequest,
+    DeviceInventory, LatencyExportEntry, LatencyTestReport, LatencyTestRequest, SweepFrRequest,
+    TestProgressEvent, TestResultPayload, ThdRequest,
 };
 use db::{DeviceRecord, MeasurementRecord, MeasurementSummary};
 use serde::Serialize;
@@ -34,6 +34,27 @@ fn validate_output_path(path: &std::path::Path) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// Validate a folder the user typed or picked, when one was given. An empty
+/// value means "use the default export folder" and is always fine.
+fn validate_requested_dir(dir: &Option<String>) -> Result<(), String> {
+    match dir.as_deref().map(str::trim) {
+        Some(raw) if !raw.is_empty() => validate_output_path(std::path::Path::new(raw)),
+        _ => Ok(()),
+    }
+}
+
+/// Wait briefly for a stream thread that was just told to stop to finish, so
+/// an immediate restart is not swallowed by the old thread's running flag.
+fn wait_for_stop(running: &AtomicBool, cancel: &AtomicBool) {
+    if !cancel.load(Ordering::SeqCst) {
+        return;
+    }
+    let deadline = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+    while running.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
 }
 
 #[derive(Clone)]
@@ -113,6 +134,8 @@ async fn run_latency_test(
     state: State<'_, AppState>,
     request: LatencyTestRequest,
 ) -> Result<LatencyTestReport, String> {
+    validate_requested_dir(&request.output_dir)?;
+    validate_requested_dir(&request.shared_output_dir)?;
     state.begin_run("A latency test is already running.")?;
 
     let settings = {
@@ -142,6 +165,8 @@ async fn export_latency_report(
     report: LatencyTestReport,
     suite: Option<Vec<LatencyExportEntry>>,
 ) -> Result<String, String> {
+    validate_requested_dir(&request.output_dir)?;
+    validate_requested_dir(&request.shared_output_dir)?;
     let item_name = {
         let engine = state.audio.lock().await;
         engine.settings().item_name
@@ -168,6 +193,8 @@ async fn save_latency_overall_bar_chart(
     request: LatencyTestRequest,
     suite: Vec<LatencyExportEntry>,
 ) -> Result<String, String> {
+    validate_requested_dir(&request.output_dir)?;
+    validate_requested_dir(&request.shared_output_dir)?;
     let item_name = {
         let engine = state.audio.lock().await;
         engine.settings().item_name
@@ -184,6 +211,7 @@ async fn run_sweep_fr_test(
     state: State<'_, AppState>,
     request: SweepFrRequest,
 ) -> Result<TestResultPayload, String> {
+    validate_requested_dir(&request.output_dir)?;
     state.begin_run("A test is already running.")?;
 
     let settings = {
@@ -312,6 +340,10 @@ async fn start_input_monitor(
     app: tauri::AppHandle,
     state: State<'_, AppState>,
 ) -> Result<(), String> {
+    if state.running.load(Ordering::SeqCst) {
+        return Err("Cannot start the input monitor while a test is running.".to_string());
+    }
+    wait_for_stop(&state.monitor_running, &state.monitor_cancel);
     if state.monitor_running.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
@@ -365,6 +397,7 @@ async fn start_pink_noise(app: tauri::AppHandle, state: State<'_, AppState>) -> 
     if state.running.load(Ordering::SeqCst) {
         return Err("Cannot start pink noise while a test is running.".to_string());
     }
+    wait_for_stop(&state.pink_noise_running, &state.pink_noise_cancel);
     if state.pink_noise_running.swap(true, Ordering::SeqCst) {
         return Ok(());
     }
@@ -486,32 +519,6 @@ async fn run_crosstalk_test(
 }
 
 #[tauri::command]
-async fn run_isolation_test(
-    state: State<'_, AppState>,
-    request: IsolationRequest,
-) -> Result<TestResultPayload, String> {
-    state.begin_run("A test is already running.")?;
-
-    let settings = {
-        let engine = state.audio.lock().await;
-        engine.settings()
-    };
-    let cancel = state.cancel.clone();
-
-    let task = tauri::async_runtime::spawn_blocking(move || {
-        AudioEngine::run_isolation_test(settings, request, cancel)
-    });
-
-    let join_result = task.await;
-    state.running.store(false, Ordering::SeqCst);
-
-    match join_result {
-        Ok(inner) => inner.map_err(|error| error.to_string()),
-        Err(error) => Err(format!("Audio test task join error: {error}")),
-    }
-}
-
-#[tauri::command]
 fn stop_test(state: State<'_, AppState>) {
     state.cancel.store(true, Ordering::SeqCst);
     state.monitor_cancel.store(true, Ordering::SeqCst);
@@ -558,13 +565,6 @@ fn open_external_url(url: String) -> Result<(), String> {
 }
 
 #[tauri::command]
-fn ensure_output_dir(path: String) -> Result<(), String> {
-    let p = std::path::Path::new(&path);
-    validate_output_path(p)?;
-    std::fs::create_dir_all(p).map_err(|e| format!("failed to create directory {}: {}", path, e))
-}
-
-#[tauri::command]
 fn write_text_export(
     output_dir: String,
     filename: String,
@@ -594,54 +594,44 @@ fn write_text_export(
     Ok(path.to_string_lossy().into_owned())
 }
 
-#[tauri::command]
-fn write_squiglink_combined(
-    output_path: String,
-    freqs: Vec<f32>,
-    left_db: Vec<f32>,
-    right_db: Vec<f32>,
-) -> Result<(), String> {
-    let path = std::path::Path::new(&output_path);
-    validate_output_path(path)?;
-    audio::write_squiglink_both_file(path, &freqs, &left_db, &right_db).map_err(|e| e.to_string())
-}
-
+/// Write the Sweep FR plots and Squiglink files for the sweeps a user
+/// accepted. Guided runs capture one sweep per call and let the user discard
+/// bad ones, so the exports are written once, here, from the accepted curves
+/// only.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)]
-fn save_sweep_combined_plots(
-    all_plot_path: Option<String>,
-    avg_all_plot_path: Option<String>,
-    lr_avg_plot_path: Option<String>,
+async fn save_sweep_outputs(
+    state: State<'_, AppState>,
+    output_dir: Option<String>,
+    run_tag: String,
+    save_plots: bool,
+    save_squiglink: bool,
     freqs: Vec<f32>,
-    all_curves: Vec<Vec<f32>>,
-    avg_all: Vec<f32>,
-    left_avg: Vec<f32>,
-    right_avg: Vec<f32>,
-) -> Result<(), String> {
-    let resolve = |value: &Option<String>| -> Result<Option<std::path::PathBuf>, String> {
-        match value {
-            Some(raw) if !raw.is_empty() => {
-                let path = std::path::Path::new(raw);
-                validate_output_path(path)?;
-                Ok(Some(path.to_path_buf()))
-            }
-            _ => Ok(None),
-        }
+    left_curves: Vec<Vec<f32>>,
+    right_curves: Vec<Vec<f32>>,
+) -> Result<serde_json::Map<String, serde_json::Value>, String> {
+    validate_requested_dir(&output_dir)?;
+    let item_name = {
+        let engine = state.audio.lock().await;
+        engine.settings().item_name
     };
-    let all = resolve(&all_plot_path)?;
-    let avg_all_path = resolve(&avg_all_plot_path)?;
-    let lr_avg = resolve(&lr_avg_plot_path)?;
-    audio::save_sweep_combined_plots(
-        all.as_deref(),
-        avg_all_path.as_deref(),
-        lr_avg.as_deref(),
-        &freqs,
-        &all_curves,
-        &avg_all,
-        &left_avg,
-        &right_avg,
-    )
-    .map_err(|e| e.to_string())
+    let tag = audio::sanitize_output_name(&run_tag);
+    let dir = audio::resolve_measurement_output_dir(&output_dir, &item_name, &tag);
+    validate_output_path(&dir)?;
+    tauri::async_runtime::spawn_blocking(move || {
+        audio::write_sweep_outputs(
+            &dir,
+            &tag,
+            save_plots,
+            save_squiglink,
+            &freqs,
+            &left_curves,
+            &right_curves,
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await
+    .map_err(|e| format!("Sweep export task join error: {e}"))?
 }
 
 // Measurement library (SQLite) -----------------------------------------------
@@ -755,17 +745,14 @@ fn main() {
             run_thd_test,
             run_balance_test,
             run_crosstalk_test,
-            run_isolation_test,
             capture_anc_snapshot,
             save_anc_plots,
             save_anc_squiglink,
             stop_test,
             get_runtime_status,
             open_external_url,
-            ensure_output_dir,
             write_text_export,
-            write_squiglink_combined,
-            save_sweep_combined_plots,
+            save_sweep_outputs,
             db_list_devices,
             db_create_device,
             db_rename_device,

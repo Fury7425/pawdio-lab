@@ -18,6 +18,8 @@ import { ChartLegend } from "../components/chart-legend";
 import { OverlayChart, type OverlaySeries } from "../components/overlay-chart";
 import { fmtHz } from "../lib/chart-scale";
 import { exportTimestampTag, rowsToCsv } from "../lib/export-files";
+import { ancAttenuation, averageSides } from "../lib/anc";
+import { CheckboxField } from "../components/form-fields";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type Channel = "L" | "R" | "both" | "avg";
@@ -100,13 +102,16 @@ export function AncPage() {
   const onExportPlots = (
     baseline: AncSnapshot,
     modes: Array<{ key: AncModeKey; label: string; snapshot: AncSnapshot }>,
-  ) => ctx.run(ctx.exportAncPlots(baseline, modes));
+    timestamp?: string,
+  ) => ctx.run(ctx.exportAncPlots(baseline, modes, timestamp));
   const onExportSquiglink = (
     baseline: AncSnapshot,
     key: AncModeKey,
     label: string,
     snapshot: AncSnapshot,
-  ) => ctx.run(ctx.exportAncSquiglink(baseline, key, label, snapshot));
+    timestamp?: string,
+  ) =>
+    ctx.run(ctx.exportAncSquiglink(baseline, key, label, snapshot, timestamp));
   const lastTestProgress = ctx.lastTestProgress;
 
   const modeMeta = ANC_MODE_META;
@@ -149,20 +154,12 @@ export function AncPage() {
 
   // Attenuation for one physical channel = snapshot mag − baseline mag.
   function attenSide(snap: AncSnapshot, side: "L" | "R"): number[] {
-    if (!baseline) return [];
-    const bArr = side === "L" ? baseline.magDbLeft : baseline.magDbRight;
-    const aArr = side === "L" ? snap.magDbLeft : snap.magDbRight;
-    return aArr.map((a, i) => a - (bArr[i] ?? NaN));
+    return baseline ? ancAttenuation(snap, baseline, side) : [];
   }
 
   // Mean of L and R attenuation; falls back to whichever side has data.
   function attenAvg(snap: AncSnapshot): number[] {
-    const l = attenSide(snap, "L");
-    const r = attenSide(snap, "R");
-    if (l.length === 0) return r;
-    if (r.length === 0) return l;
-    const n = Math.min(l.length, r.length);
-    return Array.from({ length: n }, (_, i) => (l[i] + r[i]) / 2);
+    return averageSides(attenSide(snap, "L"), attenSide(snap, "R"));
   }
 
   // Single curve used for per-mode stats: a chosen side, or the average
@@ -180,18 +177,6 @@ export function AncPage() {
     nonBaselineCaptured.length === 1 &&
     nonBaselineCaptured[0] === "transparency";
 
-  let yMin: number;
-  let yMax: number;
-  if (yAxisMode === "wide") {
-    yMin = -40;
-    yMax = 10;
-  } else if (yAxisMode === "narrow") {
-    yMin = -20;
-    yMax = 5;
-  } else {
-    yMin = hasTransOnly ? -15 : -40;
-    yMax = hasTransOnly ? 15 : 10;
-  }
   // One drawable line per visible non-baseline mode. `both` expands each mode
   // into two lines (L solid, R dashed); `avg` collapses to a single mean line.
   const chartSeries = useMemo<OverlaySeries[]>(() => {
@@ -233,6 +218,29 @@ export function AncPage() {
     // attenSide/attenAvg close over baseline + channel — listed deps cover both.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [baseline, baselineKey, captures, visibleModes, channel]);
+
+  // "Auto" fits the drawn curves (rounded out to 5 dB, at least 20 dB tall);
+  // Wide and Zoom are fixed ranges.
+  const autoRange = (() => {
+    const values = chartSeries
+      .flatMap((item) => item.values)
+      .filter((value) => Number.isFinite(value));
+    if (values.length === 0) {
+      return hasTransOnly ? { min: -15, max: 15 } : { min: -40, max: 10 };
+    }
+    let min = Math.floor((Math.min(...values) - 3) / 5) * 5;
+    let max = Math.ceil((Math.max(...values) + 3) / 5) * 5;
+    if (max - min < 20) {
+      const pad = (20 - (max - min)) / 2;
+      min -= Math.ceil(pad / 5) * 5;
+      max += Math.ceil(pad / 5) * 5;
+    }
+    return { min, max };
+  })();
+  const yMin =
+    yAxisMode === "wide" ? -40 : yAxisMode === "narrow" ? -20 : autoRange.min;
+  const yMax =
+    yAxisMode === "wide" ? 10 : yAxisMode === "narrow" ? 5 : autoRange.max;
 
   function toggleMode(key: AncModeKey) {
     onChangeSelectedModes(
@@ -337,9 +345,11 @@ export function AncPage() {
       label: modeMeta[key].label,
       snapshot: captures[key]!,
     }));
-    onExportPlots(baseline, modesPayload);
+    // One tag, so the PNGs and every TXT land in the same folder.
+    const runTag = exportTimestampTag();
+    onExportPlots(baseline, modesPayload, runTag);
     for (const item of modesPayload) {
-      onExportSquiglink(baseline, item.key, item.label, item.snapshot);
+      onExportSquiglink(baseline, item.key, item.label, item.snapshot, runTag);
     }
   }
 
@@ -710,6 +720,16 @@ export function AncPage() {
               You will be prompted to reposition a single mic between sides.
             </p>
           )}
+        </section>
+
+        <section className="page-section">
+          <CheckboxField
+            label="Save plots and TXT automatically when a run finishes"
+            checked={request.savePlots}
+            onChange={(checked) =>
+              onChangeRequest({ ...request, savePlots: checked })
+            }
+          />
         </section>
 
         {request.savePlots && (

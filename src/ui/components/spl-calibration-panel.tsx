@@ -125,8 +125,15 @@ export function SplCalibrationPanel() {
             </div>
           )}
           <div className="diagnostic-cell">
-            <dt>Clipping at</dt>
-            <dd>{(20 * Math.log10(sensitivity / 20e-6)).toFixed(1)} dB SPL</dd>
+            {/* Sensitivity maps RMS to pascals. A sine reaches full-scale peak
+                at an RMS of 1/√2 (−3 dB), so that is where a tone clips. */}
+            <dt>Sine clips at</dt>
+            <dd>
+              {(20 * Math.log10((sensitivity * Math.SQRT1_2) / 20e-6)).toFixed(
+                1,
+              )}{" "}
+              dB SPL
+            </dd>
           </div>
         </dl>
       )}

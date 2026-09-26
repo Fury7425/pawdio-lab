@@ -22,13 +22,14 @@ import {
   type FrequencyCurve,
 } from "../../lib/curve-processing";
 import {
-  downloadCsv,
-  downloadJson,
   exportTimestampTag,
   rowsToCsv,
   type CsvValue,
 } from "../../lib/export-files";
+import { saveCsvFile, saveJsonFile } from "../../lib/save-text";
+import { ancAttenuation, averageSides } from "../../lib/anc";
 import type { CompareEntry } from "./comparison-panel";
+import { usePawdioLabContext } from "../../pawdio-context";
 
 export type Channel = "L" | "R" | "avg";
 
@@ -40,12 +41,7 @@ function asNumArray(value: unknown): number[] {
     : [];
 }
 
-function avgArrays(left: number[], right: number[]): number[] {
-  if (left.length === 0) return right;
-  if (right.length === 0) return left;
-  const length = Math.min(left.length, right.length);
-  return Array.from({ length }, (_, index) => (left[index] + right[index]) / 2);
-}
+const avgArrays = averageSides;
 
 /** Auto-fit a padded dB range (rounded to 5) across all drawn curves. */
 function autoRange(curves: number[][]): { yMin: number; yMax: number } {
@@ -99,11 +95,8 @@ export function ancCurve(
   if (!modeKey) return null;
   const snapshot = captures[modeKey];
   if (!snapshot) return null;
-  const attenuation = (side: "L" | "R") => {
-    const before = side === "L" ? baseline.magDbLeft : baseline.magDbRight;
-    const after = side === "L" ? snapshot.magDbLeft : snapshot.magDbRight;
-    return after.map((value, index) => value - (before[index] ?? NaN));
-  };
+  const attenuation = (side: "L" | "R") =>
+    ancAttenuation(snapshot, baseline, side);
   const values =
     channel === "L"
       ? attenuation("L")
@@ -128,6 +121,7 @@ type Props = {
  * intentionally view-only: stored payloads always remain raw and unchanged.
  */
 export function CompareCurves({ entries, kind }: Props) {
+  const ctx = usePawdioLabContext();
   const [channel, setChannel] = useState<Channel>("avg");
   const [normalize, setNormalize] = useState(kind === "sweep_fr");
   const [compareMode, setCompareMode] = useState<AncModeKey | null>(null);
@@ -247,7 +241,7 @@ export function CompareCurves({ entries, kind }: Props) {
       : "overlay";
 
   function exportViewJson() {
-    downloadJson(
+    return saveJsonFile(
       `${kind}_comparison_${viewMode}_${exportTimestampTag()}.json`,
       {
         format: "pawdio-lab-comparison-view",
@@ -298,7 +292,7 @@ export function CompareCurves({ entries, kind }: Props) {
         ]);
       }
     }
-    downloadCsv(
+    return saveCsvFile(
       `${kind}_comparison_${viewMode}_${exportTimestampTag()}.csv`,
       rowsToCsv(
         [
@@ -378,8 +372,14 @@ export function CompareCurves({ entries, kind }: Props) {
           label="Export View"
           disabled={series.length === 0}
           items={[
-            { label: "Export JSON", onSelect: exportViewJson },
-            { label: "Export CSV", onSelect: exportViewCsv },
+            {
+              label: "Export JSON",
+              onSelect: () => ctx.run(exportViewJson()),
+            },
+            {
+              label: "Export CSV",
+              onSelect: () => ctx.run(exportViewCsv()),
+            },
           ]}
         />
 

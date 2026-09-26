@@ -27,9 +27,9 @@ export function ComparisonPanel({ entries }: { entries: CompareEntry[] }) {
   return (
     <div className="empty-state">
       <span>
-        Side-by-side comparison for {LIBRARY_TEST_LABELS[testType]} is coming
-        soon. These records are saved and will compare once the table view
-        ships.
+        Side-by-side comparison for {LIBRARY_TEST_LABELS[testType] ?? testType}{" "}
+        is coming soon. These records are saved and will compare once the table
+        view ships.
       </span>
     </div>
   );

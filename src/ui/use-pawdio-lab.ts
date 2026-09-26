@@ -1,6 +1,4 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
-import { open } from "@tauri-apps/plugin-dialog";
 import * as ipc from "../ipc/commands";
 import { useDebouncedPersist } from "./hooks/use-debounced-persist";
 import { useMonitorAndNoise } from "./hooks/use-monitor-and-noise";
@@ -8,7 +6,9 @@ import { useResultsLog } from "./hooks/use-results-log";
 import { useDevicesController } from "./hooks/use-devices-controller";
 import { useLibrary } from "./hooks/use-library";
 import { useToast } from "./components/toast";
-import { downloadText, exportTimestampTag } from "./lib/export-files";
+import { exportTimestampTag } from "./lib/export-files";
+import { saveTextFile } from "./lib/save-text";
+import { ancAttenuation } from "./lib/anc";
 import { combineAcceptedSweepPayloads } from "./lib/sweep-results";
 import {
   ANC_MODE_META,
@@ -20,7 +20,6 @@ import {
   AudioSettings,
   CrosstalkRequest,
   DeviceInventory,
-  IsolationRequest,
   LatencyCalibration,
   LatencyProgress,
   LatencyReport,
@@ -33,7 +32,6 @@ import {
   defaultAncRequest,
   defaultBalanceRequest,
   defaultCrosstalkRequest,
-  defaultIsolationRequest,
   defaultLatencyCalibration,
   defaultLatencyRequest,
   defaultSettings,
@@ -46,7 +44,7 @@ import {
 
 // Type for database entries from Rust backend
 type LatencyPresetConfig = {
-  uiKey: "beep1k" | "beep2k" | "beep5k" | "beep200" | "impulse";
+  uiKey: "chirp200" | "chirp5k" | "chirp10k";
   storageKey: string;
   label: string;
   signal: LatencyRequest["signal"];
@@ -63,19 +61,47 @@ type LatencyRunResult = {
   calibratedOffsetMs: number;
 };
 
-type InputLevelEvent = {
-  currentDbfs: number;
-  peakDbfs: number;
-  clipCount: number;
-  roughFrHz?: number[];
-  roughFrDb?: number[];
-};
-
 const CALIBRATION_STORAGE_KEY = "pawdio-lab-latency-calibration-v1";
 const UI_STATE_STORAGE_KEY = "pawdio-lab-ui-state-v1";
 // Long runs emit one latency-progress event per repeat; cap retained rows so
 // the array cannot grow without bound across many runs.
 const MAX_LATENCY_PROGRESS_ROWS = 1000;
+
+/**
+ * A Stop request surfaces from the backend as a "measurement cancelled" error.
+ * It is the user's own action, so it is logged rather than shown as a failure.
+ */
+function isCancellation(err: unknown): boolean {
+  return String(err).includes("measurement cancelled");
+}
+
+/** Thrown inside a guided sweep session when the user presses Stop. */
+class SweepSessionStopped extends Error {
+  constructor() {
+    super("measurement cancelled");
+  }
+}
+
+function readStoredCalibration(): LatencyCalibration {
+  try {
+    const raw = window.localStorage.getItem(CALIBRATION_STORAGE_KEY);
+    if (!raw) return defaultLatencyCalibration;
+    const parsed = JSON.parse(raw) as Partial<LatencyCalibration> | null;
+    const offsets = parsed?.perSoundOffsetsMs;
+    if (!offsets || typeof offsets !== "object") {
+      return defaultLatencyCalibration;
+    }
+    const perSoundOffsetsMs: Record<string, number> = {};
+    for (const [key, value] of Object.entries(offsets)) {
+      if (typeof value === "number" && Number.isFinite(value)) {
+        perSoundOffsetsMs[key] = value;
+      }
+    }
+    return { perSoundOffsetsMs };
+  } catch {
+    return defaultLatencyCalibration;
+  }
+}
 
 const logCaughtError =
   (label: string) =>
@@ -84,41 +110,30 @@ const logCaughtError =
     return undefined;
   };
 
+// Each preset is a one-octave log chirp centred on its frequency. A swept
+// excitation has one unambiguous correlation peak, which the old steady beeps
+// did not.
 const LATENCY_PRESETS: LatencyPresetConfig[] = [
   {
-    uiKey: "beep1k",
-    storageKey: "beep_1k",
-    label: "1kHz Beep",
-    signal: "sine",
-    frequencyHz: 1000,
-  },
-  {
-    uiKey: "beep2k",
-    storageKey: "beep_2k",
-    label: "Mixed (2kHz Sine)",
-    signal: "sine",
-    frequencyHz: 2000,
-  },
-  {
-    uiKey: "beep5k",
-    storageKey: "beep_5k",
-    label: "5kHz Beep",
-    signal: "sine",
-    frequencyHz: 5000,
-  },
-  {
-    uiKey: "beep200",
-    storageKey: "beep_200",
-    label: "200Hz Low Beep",
-    signal: "sine",
+    uiKey: "chirp200",
+    storageKey: "chirp_200",
+    label: "200 Hz Chirp",
+    signal: "chirp",
     frequencyHz: 200,
   },
   {
-    uiKey: "impulse",
-    storageKey: "impulse",
-    label: "Click (Impulse)",
-    signal: "impulse",
-    frequencyHz: 1000,
+    uiKey: "chirp5k",
+    storageKey: "chirp_5k",
+    label: "5 kHz Chirp",
+    signal: "chirp",
+    frequencyHz: 5000,
+  },
+  {
+    uiKey: "chirp10k",
+    storageKey: "chirp_10k",
+    label: "10 kHz Chirp",
+    signal: "chirp",
+    frequencyHz: 10000,
   },
 ];
 
@@ -133,7 +148,6 @@ type PersistedUiState = {
   crosstalkRequest?: Partial<CrosstalkRequest>;
   thdRequest?: Partial<ThdRequest>;
   thdToneText?: string;
-  isolationRequest?: Partial<IsolationRequest>;
 };
 
 function toRecord(value: unknown): Record<string, unknown> | null {
@@ -157,6 +171,46 @@ function readPersistedUiState(): PersistedUiState | null {
   } catch {
     return null;
   }
+}
+
+const INPUT_BIT_DEPTHS: ReadonlySet<string> = new Set([
+  "auto",
+  "16",
+  "24",
+  "32",
+]);
+
+/**
+ * Initial audio settings. The bit depth used to live, unused, in the device
+ * UI prefs as "Auto"/"16"/"24"/"32"; carry that choice over once.
+ */
+export function initialAudioSettings(stored: unknown): AudioSettings {
+  const merged = mergeWithDefaults(defaultSettings, stored);
+  // Look at what was saved, not the merge: the default fills the gap first.
+  const saved = toRecord(stored)?.inputBitDepth;
+  if (saved !== undefined) {
+    return {
+      ...merged,
+      inputBitDepth: INPUT_BIT_DEPTHS.has(String(saved))
+        ? (saved as AudioSettings["inputBitDepth"])
+        : "auto",
+    };
+  }
+  let legacy: unknown;
+  try {
+    legacy = JSON.parse(
+      window.localStorage.getItem("pawdio-lab-device-ui-v1") ?? "{}",
+    )?.inputBitDepth;
+  } catch {
+    legacy = undefined;
+  }
+  const normalized = String(legacy ?? "auto").toLowerCase();
+  return {
+    ...merged,
+    inputBitDepth: INPUT_BIT_DEPTHS.has(normalized)
+      ? (normalized as AudioSettings["inputBitDepth"])
+      : "auto",
+  };
 }
 
 function mergeWithDefaults<T extends Record<string, unknown>>(
@@ -259,27 +313,6 @@ function numberList(value: unknown): number[] {
     .filter((item) => Number.isFinite(item));
 }
 
-/**
- * Derive a sibling file path by replacing a token in the final path segment
- * (basename) only. Returns undefined when the basename does not contain the
- * token, so callers never fabricate a path from a filename that doesn't match.
- * Scoping the replacement to the basename avoids clobbering an earlier
- * directory segment that happens to contain the same token.
- */
-function siblingPathByBasename(
-  path: string,
-  search: string,
-  replacement: string,
-): string | undefined {
-  const sepIndex = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\"));
-  const dir = sepIndex >= 0 ? path.slice(0, sepIndex + 1) : "";
-  const base = sepIndex >= 0 ? path.slice(sepIndex + 1) : path;
-  if (!base.includes(search)) {
-    return undefined;
-  }
-  return `${dir}${base.replace(search, replacement)}`;
-}
-
 function sweepAverageCurve(
   payload: TestPayload,
 ): { freqs: number[]; mags: number[] } | null {
@@ -348,27 +381,19 @@ function stdDev(values: number[], avg: number): number {
   return Math.sqrt(variance);
 }
 
+/** Must match `latency_preset_identity` in src-tauri/src/audio/mod.rs. */
 function calibrationKeyForRequest(request: LatencyRequest): string {
-  if (request.signal === "impulse") {
-    return "impulse";
+  const frequency = request.frequencyHz;
+  if (Math.abs(frequency - 200) <= 5) {
+    return "chirp_200";
   }
-  if (request.signal === "sine") {
-    const frequency = request.frequencyHz;
-    if (Math.abs(frequency - 1000) <= 20) {
-      return "beep_1k";
-    }
-    if (Math.abs(frequency - 2000) <= 20) {
-      return "beep_2k";
-    }
-    if (Math.abs(frequency - 5000) <= 50) {
-      return "beep_5k";
-    }
-    if (Math.abs(frequency - 200) <= 5) {
-      return "beep_200";
-    }
-    return `sine_${Math.round(frequency)}`;
+  if (Math.abs(frequency - 5000) <= 50) {
+    return "chirp_5k";
   }
-  return "pink_noise";
+  if (Math.abs(frequency - 10000) <= 100) {
+    return "chirp_10k";
+  }
+  return `chirp_${Math.round(frequency)}`;
 }
 
 function calibrationOffsetForRequest(
@@ -445,10 +470,7 @@ export function usePawdioLabController() {
   // Devices + audio settings (extracted to hooks/use-devices-controller.ts)
   const { inventory, settings, loadState, commitSettings } =
     useDevicesController({
-      initialSettings: mergeWithDefaults(
-        defaultSettings,
-        persistedUiState?.settings,
-      ),
+      initialSettings: initialAudioSettings(persistedUiState?.settings),
       setError: (m) => setError(m),
     });
 
@@ -479,9 +501,15 @@ export function usePawdioLabController() {
     notify: (m) => toast(m, { kind: "success" }),
   });
 
-  const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(
-    mergeWithDefaults(defaultLatencyRequest, persistedUiState?.latencyRequest),
-  );
+  const [latencyRequest, setLatencyRequest] = useState<LatencyRequest>(() => ({
+    ...mergeWithDefaults(
+      defaultLatencyRequest,
+      persistedUiState?.latencyRequest,
+    ),
+    // State saved before the chirp presets can still carry "sine"/"impulse",
+    // which the backend no longer accepts.
+    signal: "chirp",
+  }));
   const [latencyProgress, setLatencyProgress] = useState<LatencyProgress[]>([]);
   const [lastTestProgress, setLastTestProgress] = useState<TestProgress | null>(
     null,
@@ -492,8 +520,11 @@ export function usePawdioLabController() {
   const [latencyExportSuite, setLatencyExportSuite] = useState<
     LatencyExportEntry[]
   >([]);
+  // Loaded synchronously: reading it in an effect let the persist hook's
+  // cleanup (run first under StrictMode) overwrite the stored offsets with the
+  // empty default before they were read.
   const [latencyCalibration, setLatencyCalibration] =
-    useState<LatencyCalibration>(defaultLatencyCalibration);
+    useState<LatencyCalibration>(readStoredCalibration);
 
   const [sweepRequest, setSweepRequest] = useState<SweepRequest>(
     mergeWithDefaults(defaultSweepRequest, persistedUiState?.sweepRequest),
@@ -513,6 +544,12 @@ export function usePawdioLabController() {
     useState<SweepRunProgress | null>(null);
   const [sweepSessionActive, setSweepSessionActive] = useState(false);
   const sweepSessionActiveRef = useRef(false);
+  // Set by Stop while a guided sweep session runs; checked between captures.
+  const sweepAbortRef = useRef(false);
+  // True while a multi-step run (preset suite, calibration, ANC step) is in
+  // progress. The backend reports idle between its steps, and the 1 s status
+  // poll would otherwise flip the UI to idle mid-run.
+  const frontendBusyRef = useRef(false);
   // Input monitor + pink noise (extracted to hooks/use-monitor-and-noise.ts)
   const {
     inputMonitor,
@@ -555,12 +592,6 @@ export function usePawdioLabController() {
       ? persistedUiState.thdToneText
       : defaultThdRequest.tones.join(", "),
   );
-  const [isolationRequest, setIsolationRequest] = useState<IsolationRequest>(
-    mergeWithDefaults(
-      defaultIsolationRequest,
-      persistedUiState?.isolationRequest,
-    ),
-  );
 
   const [ancSelectedModes, setAncSelectedModes] = useState<AncModeKey[]>([
     "reference",
@@ -583,6 +614,7 @@ export function usePawdioLabController() {
       return 0;
     }
     const latest = latencyProgress[latencyProgress.length - 1];
+    if (latest.total <= 0) return 0;
     return Math.floor((latest.current / latest.total) * 100);
   }, [latencyProgress]);
 
@@ -598,158 +630,119 @@ export function usePawdioLabController() {
   // appendLog and appendResult come from useResultsLog (top of hook).
 
   async function refreshRuntimeStatus() {
+    const busy = sweepSessionActiveRef.current || frontendBusyRef.current;
     try {
       const status = await ipc.getRuntimeStatus();
-      setRunning(status.running || sweepSessionActiveRef.current);
+      setRunning(status.running || busy);
     } catch {
-      setRunning(sweepSessionActiveRef.current);
+      setRunning(busy);
     }
+  }
+
+  /**
+   * Stop the monitor and pink noise before a measurement. The backend stops
+   * them too when a run claims the slot; this keeps the UI in step.
+   */
+  async function prepareForTest() {
+    try {
+      await ipc.stopInputMonitor();
+    } catch {
+      // no-op
+    }
+    try {
+      await ipc.stopPinkNoise();
+    } catch {
+      // no-op
+    }
+    setPinkNoisePlaying(false);
+    setInputMonitor((prev) =>
+      prev.monitoring
+        ? { ...prev, monitoring: false, status: "Monitoring stopped." }
+        : prev,
+    );
+  }
+
+  /** Report a failed run, or just log it when the user stopped it. */
+  function reportRunError(tag: string, err: unknown) {
+    if (isCancellation(err)) {
+      appendLog(`[${tag}] stopped`);
+      return;
+    }
+    setError(String(err));
+    appendLog(`[error] ${String(err)}`);
   }
 
   // loadState and commitSettings come from useDevicesController (top of hook).
 
   async function runPayloadTest(
-    command:
-      | "run_sweep_fr_test"
-      | "run_thd_test"
-      | "run_balance_test"
-      | "run_crosstalk_test"
-      | "run_isolation_test",
-    request: unknown,
+    tag: string,
+    run: () => Promise<TestPayload>,
     startLog: string,
   ) {
     if (running) {
       return;
     }
-    try {
-      await ipc.stopInputMonitor();
-    } catch {
-      // no-op
-    }
-    try {
-      await ipc.stopPinkNoise();
-    } catch {
-      // no-op
-    }
-    setPinkNoisePlaying(false);
-    setInputMonitor((prev) => ({
-      ...prev,
-      monitoring: false,
-      status: "Monitoring stopped.",
-    }));
+    await prepareForTest();
     setRunning(true);
     setError(null);
     appendLog(startLog);
 
     try {
-      const payload = await ipc.runPayloadTestRaw(command, request);
+      const payload = await run();
       appendResult({
         ...payload,
         timestamp: legacyTimestamp(payload.timestamp),
       });
     } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
+      reportRunError(tag, err);
     } finally {
       refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
 
-  async function invokeLatencyRaw(
-    request: LatencyRequest,
-  ): Promise<LatencyReport> {
-    return ipc.runLatencyTest(request);
-  }
-
   async function runLatencyOnce(
     request: LatencyRequest,
-    includeResult = true,
   ): Promise<LatencyRunResult> {
-    const rawReport = await invokeLatencyRaw(request);
     const calibratedOffsetMs = calibrationOffsetForRequest(
       request,
       latencyCalibration,
     );
+    // The backend returns raw delays; it only needs the offset to label the
+    // plot and bar chart it saves with the calibrated figures.
+    const rawReport = await ipc.runLatencyTest({
+      ...request,
+      calibratedOffsetMs,
+    });
     const calibratedReport = applyLatencyCalibration(
       rawReport,
       request,
       latencyCalibration,
     );
-    if (includeResult) {
-      appendResult({
-        test: "latency",
-        timestamp: legacyTimestamp(calibratedReport.timestampUtc),
-        params: {
-          signal: request.signal,
-          frequency_hz: request.frequencyHz,
-          duration: request.durationSecs,
-          repeats: request.repeats,
-          amplitude: request.amplitude,
-          record_margin: request.recordMarginSecs,
-          calibrated_offset_ms: calibratedOffsetMs,
-        },
-        metrics: {
-          average_delay_ms: calibratedReport.averageDelayMs,
-          std_dev_ms: calibratedReport.stdDevMs,
-          cancelled: calibratedReport.cancelled,
-        },
-        data: {
-          sample_rate: calibratedReport.sampleRate,
-          input_sample_rate: calibratedReport.inputSampleRate,
-          measurements: calibratedReport.measurements,
-        },
-        files: {},
-      });
-    }
+    appendResult({
+      test: "latency",
+      timestamp: legacyTimestamp(calibratedReport.timestampUtc),
+      params: {
+        signal: request.signal,
+        frequency_hz: request.frequencyHz,
+        duration: request.durationSecs,
+        repeats: request.repeats,
+        amplitude: request.amplitude,
+        record_margin: request.recordMarginSecs,
+        calibrated_offset_ms: calibratedOffsetMs,
+      },
+      metrics: {
+        average_delay_ms: calibratedReport.averageDelayMs,
+        std_dev_ms: calibratedReport.stdDevMs,
+        cancelled: calibratedReport.cancelled,
+      },
+      data: {
+        sample_rate: calibratedReport.sampleRate,
+        input_sample_rate: calibratedReport.inputSampleRate,
+        measurements: calibratedReport.measurements,
+      },
+      files: {},
+    });
     return { report: calibratedReport, calibratedOffsetMs };
-  }
-
-  async function runLatencyTest() {
-    if (running) {
-      return;
-    }
-    try {
-      await ipc.stopInputMonitor();
-    } catch {
-      // no-op
-    }
-    try {
-      await ipc.stopPinkNoise();
-    } catch {
-      // no-op
-    }
-    setPinkNoisePlaying(false);
-    setInputMonitor((prev) => ({
-      ...prev,
-      monitoring: false,
-      status: "Monitoring stopped.",
-    }));
-    setRunning(true);
-    setError(null);
-    setLatencyProgress([]);
-    setLatencyReport(null);
-    setLatencyExportSuite([]);
-    appendLog(`[latency] started (${latencyRequest.signal})`);
-
-    try {
-      const request = { ...latencyRequest };
-      const { report, calibratedOffsetMs } = await runLatencyOnce(
-        request,
-        true,
-      );
-      setLatencyReport(report);
-      setLatencyExportSuite([
-        {
-          request: { ...request, calibratedOffsetMs },
-          report,
-        },
-      ]);
-    } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
-    } finally {
-      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
-    }
   }
 
   async function runLatencyPresetSuite(presets: LatencyPresetConfig[]) {
@@ -757,26 +750,12 @@ export function usePawdioLabController() {
       return;
     }
     if (presets.length === 0) {
-      appendLog("[latency] no presets selected");
+      setError("Select at least one latency preset.");
       return;
     }
 
-    try {
-      await ipc.stopInputMonitor();
-    } catch {
-      // no-op
-    }
-    try {
-      await ipc.stopPinkNoise();
-    } catch {
-      // no-op
-    }
-    setPinkNoisePlaying(false);
-    setInputMonitor((prev) => ({
-      ...prev,
-      monitoring: false,
-      status: "Monitoring stopped.",
-    }));
+    await prepareForTest();
+    frontendBusyRef.current = true;
     setRunning(true);
     setError(null);
     setLatencyProgress([]);
@@ -784,30 +763,22 @@ export function usePawdioLabController() {
     setLatencyExportSuite([]);
     appendLog(`[latency] preset suite started (${presets.length})`);
 
-    // Use a shared run tag so all presets land in the same output folder
+    // One run tag for every preset and for the exports that follow, so the
+    // plots, bar chart and text report all land in the same folder.
     const sharedRunTag = exportTimestampTag();
-    let sharedOutputDir: string | undefined;
-    if (latencyRequest.outputDir) {
-      sharedOutputDir = `${latencyRequest.outputDir}/latency_suite_${sharedRunTag}`;
-      appendLog(`[latency] shared output directory -> ${sharedOutputDir}`);
-    } else {
-      appendLog(`[latency] shared run tag -> ${sharedRunTag}`);
-    }
+    appendLog(`[latency] run tag -> ${sharedRunTag}`);
 
+    const suiteEntries: LatencyExportEntry[] = [];
     try {
-      const suiteEntries: LatencyExportEntry[] = [];
       for (const preset of presets) {
-        const request = {
+        const request: LatencyRequest = {
           ...requestForPreset(latencyRequest, preset),
           saveOverallBarChart: false,
-          sharedOutputDir,
+          sharedOutputDir: undefined,
           sharedRunTag,
         };
         appendLog(`[latency] ${preset.label} started`);
-        const { report, calibratedOffsetMs } = await runLatencyOnce(
-          request,
-          true,
-        );
+        const { report, calibratedOffsetMs } = await runLatencyOnce(request);
         setLatencyReport(report);
         suiteEntries.push({
           request: {
@@ -818,15 +789,14 @@ export function usePawdioLabController() {
           report,
         });
         if (report.cancelled) {
-          appendLog("[latency] preset suite cancelled");
+          appendLog("[latency] preset suite stopped");
           break;
         }
       }
-      setLatencyExportSuite(suiteEntries);
       if (latencyRequest.saveOverallBarChart && suiteEntries.length > 0) {
         try {
           const barPath = await ipc.saveLatencyOverallBarChart(
-            { ...latencyRequest, calibratedOffsetMs: 0 },
+            { ...latencyRequest, calibratedOffsetMs: 0, sharedRunTag },
             suiteEntries,
           );
           appendLog(`[latency] overall bar chart saved -> ${barPath}`);
@@ -836,9 +806,12 @@ export function usePawdioLabController() {
       }
       appendLog("[latency] preset suite completed");
     } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
+      reportRunError("latency", err);
     } finally {
+      // Keep whatever finished, so a failure on the last preset still leaves
+      // the earlier ones exportable.
+      setLatencyExportSuite(suiteEntries);
+      frontendBusyRef.current = false;
       refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
@@ -863,39 +836,39 @@ export function usePawdioLabController() {
     if (running) {
       return;
     }
-    try {
-      await ipc.stopInputMonitor();
-    } catch {
-      // no-op
+    const selected = LATENCY_PRESETS.filter((preset) =>
+      selectedUiKeys.includes(preset.uiKey),
+    );
+    if (selected.length === 0) {
+      setError("Select at least one preset to calibrate.");
+      return;
     }
-    try {
-      await ipc.stopPinkNoise();
-    } catch {
-      // no-op
-    }
-    setPinkNoisePlaying(false);
-    setInputMonitor((prev) => ({
-      ...prev,
-      monitoring: false,
-      status: "Monitoring stopped.",
-    }));
+    await prepareForTest();
+    frontendBusyRef.current = true;
     setRunning(true);
     setError(null);
     appendLog(`[calibration] selected presets x${repeats}`);
 
     const updates: Record<string, number> = {};
+    let stopped = false;
     try {
-      const selected = LATENCY_PRESETS.filter((preset) =>
-        selectedUiKeys.includes(preset.uiKey),
-      );
       for (const preset of selected) {
         const request = {
           ...requestForPreset(latencyRequest, preset, repeats),
           savePerSoundPlot: false,
           saveOverallBarChart: false,
+          calibratedOffsetMs: 0,
+          sharedOutputDir: undefined,
+          sharedRunTag: undefined,
         };
         appendLog(`[calibration] ${preset.label} measuring...`);
-        const report = await invokeLatencyRaw(request);
+        const report = await ipc.runLatencyTest(request);
+        if (report.cancelled) {
+          // A partial average is not a baseline; keep the old offset.
+          appendLog(`[calibration] ${preset.label} stopped; offset unchanged`);
+          stopped = true;
+          break;
+        }
         if (report.averageDelayMs !== null) {
           updates[preset.storageKey] = report.averageDelayMs;
           appendLog(
@@ -905,18 +878,29 @@ export function usePawdioLabController() {
           appendLog(`[calibration] ${preset.label} failed`);
         }
       }
-      if (Object.keys(updates).length > 0) {
+    } catch (err) {
+      stopped = isCancellation(err);
+      reportRunError("calibration", err);
+    } finally {
+      const calibrated = Object.keys(updates).length;
+      if (calibrated > 0) {
         setLatencyCalibration((prev) => ({
           ...prev,
           perSoundOffsetsMs: { ...prev.perSoundOffsetsMs, ...updates },
         }));
       }
-      appendLog("[calibration] selected presets complete");
-      toast("Calibration complete", { kind: "success" });
-    } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
-    } finally {
+      if (calibrated === selected.length) {
+        appendLog("[calibration] selected presets complete");
+        toast("Calibration complete", { kind: "success" });
+      } else if (calibrated > 0) {
+        toast(
+          `Calibrated ${calibrated} of ${selected.length} presets${stopped ? " before stopping" : ""}`,
+          { kind: "info" },
+        );
+      } else if (!stopped) {
+        setError("Calibration failed: no preset produced a delay.");
+      }
+      frontendBusyRef.current = false;
       refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
   }
@@ -998,88 +982,39 @@ export function usePawdioLabController() {
     resolveSweepReview(false);
   }
 
-  async function rewriteAcceptedSweepArtifacts(
-    payload: TestPayload,
+  /**
+   * Write the plots and Squiglink files for the accepted sweeps. Each capture
+   * runs with exports off, so a discarded sweep never leaves files behind and
+   * every file describes exactly the curves that were kept.
+   */
+  async function writeAcceptedSweepOutputs(
+    result: TestPayload,
+    runTag: string,
   ): Promise<TestPayload> {
-    const files = recordOrEmpty(payload.files);
-    const data = recordOrEmpty(payload.data);
+    if (!sweepRequest.savePlots && !sweepRequest.saveSquiglink) {
+      return { ...result, files: {} };
+    }
+    const data = recordOrEmpty(result.data);
     const freqs = numberList(data.freqs);
-    const leftAvg = numberList(data.left_mag_db_avg);
-    const rightAvg = numberList(data.right_mag_db_avg);
-    const allCurves = numberCurveList(data.mag_db_all);
-    const avgAll = numberList(data.mag_db_avg_all);
-    const extraFiles: Record<string, string> = {};
-
-    const existingBoth =
-      typeof files.squiglink_both === "string" ? files.squiglink_both : "";
-    const leftSquiglink =
-      typeof files.squiglink_left === "string" ? files.squiglink_left : "";
-    const bothSquiglink =
-      existingBoth ||
-      (leftSquiglink
-        ? siblingPathByBasename(
-            leftSquiglink,
-            "squiglink_left_",
-            "squiglink_both_",
-          )
-        : undefined);
-    if (
-      bothSquiglink &&
-      freqs.length > 0 &&
-      leftAvg.length > 0 &&
-      rightAvg.length > 0
-    ) {
-      await ipc
-        .writeSquiglinkCombined({
-          outputPath: bothSquiglink,
-          freqs,
-          leftDb: leftAvg,
-          rightDb: rightAvg,
-        })
-        .catch(logCaughtError("writeSquiglinkCombined"));
-      extraFiles.squiglink_both = bothSquiglink;
+    if (freqs.length === 0) return result;
+    try {
+      const files = await ipc.saveSweepOutputs({
+        outputDir: sweepRequest.outputDir.trim() || null,
+        runTag,
+        savePlots: sweepRequest.savePlots,
+        saveSquiglink: sweepRequest.saveSquiglink,
+        freqs,
+        leftCurves: numberCurveList(data.left_mag_db_all),
+        rightCurves: numberCurveList(data.right_mag_db_all),
+      });
+      return { ...result, files };
+    } catch (err) {
+      setError(
+        `Sweeps kept, but saving the export files failed: ${String(err)}`,
+      );
+      appendLog(`[SWEEP FR] export failed: ${String(err)}`);
+      return { ...result, files: {} };
     }
-
-    const allPlotPath =
-      typeof files.plot_all === "string" ? files.plot_all : "";
-    const avgAllPlotPath =
-      typeof files.plot_avg_all === "string" ? files.plot_avg_all : "";
-    const existingLrPath =
-      typeof files.plot_lr_avg === "string" ? files.plot_lr_avg : "";
-    const lrAvgPlotPath =
-      existingLrPath ||
-      (allPlotPath
-        ? siblingPathByBasename(
-            allPlotPath,
-            "sweep_fr_all_",
-            "sweep_fr_lr_avg_",
-          )
-        : undefined);
-    if (freqs.length > 0 && (allPlotPath || avgAllPlotPath || lrAvgPlotPath)) {
-      const written = await ipc
-        .saveSweepCombinedPlots({
-          allPlotPath: allPlotPath || undefined,
-          avgAllPlotPath: avgAllPlotPath || undefined,
-          lrAvgPlotPath,
-          freqs,
-          allCurves,
-          avgAll,
-          leftAvg,
-          rightAvg,
-        })
-        .then(() => true)
-        .catch((err) => {
-          logCaughtError("saveSweepCombinedPlots")(err);
-          return false;
-        });
-      if (written && lrAvgPlotPath && leftAvg.length && rightAvg.length) {
-        extraFiles.plot_lr_avg = lrAvgPlotPath;
-      }
-    }
-
-    return Object.keys(extraFiles).length > 0
-      ? { ...payload, files: { ...payload.files, ...extraFiles } }
-      : payload;
   }
 
   async function runSweepFrTest() {
@@ -1087,6 +1022,7 @@ export function usePawdioLabController() {
       return;
     }
     sweepSessionActiveRef.current = true;
+    sweepAbortRef.current = false;
     setSweepSessionActive(true);
     setRunning(true);
     // captureOrder is the source of truth; fall back to the legacy monoMode flag
@@ -1111,6 +1047,7 @@ export function usePawdioLabController() {
       const acceptedPayloads: TestPayload[] = [];
       let sideAttempts = 0;
       while (acceptedPayloads.length < target) {
+        if (sweepAbortRef.current) throw new SweepSessionStopped();
         sideAttempts += 1;
         totalAttempts += 1;
         setSweepRunProgress({
@@ -1130,7 +1067,11 @@ export function usePawdioLabController() {
           monoMode: side !== "stereo",
           monoSide: side === "stereo" ? undefined : side,
           sharedRunTag,
+          // Exports are written once from the accepted sweeps, below.
+          savePlots: false,
+          saveSquiglink: false,
         });
+        if (sweepAbortRef.current) throw new SweepSessionStopped();
         const normalized = {
           ...payload,
           timestamp: legacyTimestamp(payload.timestamp),
@@ -1142,6 +1083,7 @@ export function usePawdioLabController() {
           acceptedPayloads.length,
           target,
         );
+        if (sweepAbortRef.current) throw new SweepSessionStopped();
         if (accepted) {
           acceptedPayloads.push(normalized);
           appendLog(
@@ -1179,22 +1121,7 @@ export function usePawdioLabController() {
         return;
       }
     }
-    try {
-      await ipc.stopInputMonitor();
-    } catch {
-      // no-op
-    }
-    try {
-      await ipc.stopPinkNoise();
-    } catch {
-      // no-op
-    }
-    setPinkNoisePlaying(false);
-    setInputMonitor((prev) => ({
-      ...prev,
-      monitoring: false,
-      status: "Monitoring stopped.",
-    }));
+    await prepareForTest();
     setRunning(true);
     setError(null);
     appendLog(
@@ -1242,7 +1169,10 @@ export function usePawdioLabController() {
         attempts: totalAttempts,
         captureOrder: order,
       });
-      acceptedResult = await rewriteAcceptedSweepArtifacts(acceptedResult);
+      acceptedResult = await writeAcceptedSweepOutputs(
+        acceptedResult,
+        sharedRunTag,
+      );
       setSweepLastResult(acceptedResult);
       setSweepLastResultStatus("final");
       appendResult(acceptedResult);
@@ -1259,10 +1189,16 @@ export function usePawdioLabController() {
           : `[SWEEP FR] completed with ${target} accepted sweeps`,
       );
     } catch (err) {
-      setError(String(err));
-      appendLog(`[error] ${String(err)}`);
+      if (isCancellation(err)) {
+        setSweepRunProgress(null);
+        appendLog("[SWEEP FR] session stopped; no result recorded");
+      } else {
+        reportRunError("SWEEP FR", err);
+      }
     } finally {
       setSweepReviewState(null);
+      setMonoConfirmState(null);
+      sweepAbortRef.current = false;
       sweepSessionActiveRef.current = false;
       setSweepSessionActive(false);
       refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
@@ -1274,16 +1210,16 @@ export function usePawdioLabController() {
 
   async function runBalanceTest() {
     await runPayloadTest(
-      "run_balance_test",
-      balanceRequest,
+      "BALANCE",
+      () => ipc.runBalanceTest(balanceRequest),
       "[BALANCE] running",
     );
   }
 
   async function runCrosstalkTest() {
     await runPayloadTest(
-      "run_crosstalk_test",
-      crosstalkRequest,
+      "CROSSTALK",
+      () => ipc.runCrosstalkTest(crosstalkRequest),
       "[CROSSTALK] running",
     );
   }
@@ -1296,15 +1232,7 @@ export function usePawdioLabController() {
     }
     const next = { ...thdRequest, tones };
     setThdRequest(next);
-    await runPayloadTest("run_thd_test", next, "[THD] running");
-  }
-
-  async function runIsolationTest() {
-    await runPayloadTest(
-      "run_isolation_test",
-      isolationRequest,
-      "[ISOLATION] running",
-    );
+    await runPayloadTest("THD", () => ipc.runThdTest(next), "[THD] running");
   }
 
   async function exportLatencyReport() {
@@ -1328,17 +1256,19 @@ export function usePawdioLabController() {
     }
   }
 
+  /**
+   * Save an export into `outputDir`, or ask where to save when none is set.
+   * Resolves to the written path, or null when the user cancelled.
+   */
   async function exportTextFile(
     outputDir: string,
     filename: string,
     content: string,
     mimeType: string,
-  ): Promise<string> {
-    if (outputDir.trim()) {
-      return ipc.writeTextExport({ outputDir, filename, content });
-    }
-    downloadText(content, filename, mimeType);
-    return filename;
+  ): Promise<string | null> {
+    const path = await saveTextFile({ outputDir, filename, content, mimeType });
+    if (path) toast(`Exported ${path}`, { kind: "success" });
+    return path;
   }
 
   async function exportSweepLastJson() {
@@ -1356,8 +1286,7 @@ export function usePawdioLabController() {
         `${JSON.stringify(sweepLastResult, null, 2)}\n`,
         "application/json;charset=utf-8",
       );
-      appendLog(`[sweep_fr] exported LAST JSON -> ${path}`);
-      toast(`Exported ${path}`, { kind: "success" });
+      if (path) appendLog(`[sweep_fr] exported LAST JSON -> ${path}`);
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1387,10 +1316,10 @@ export function usePawdioLabController() {
         `${JSON.stringify(bundle, null, 2)}\n`,
         "application/json;charset=utf-8",
       );
-      appendLog(
-        `[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${path}`,
-      );
-      toast(`Exported ${path}`, { kind: "success" });
+      if (path)
+        appendLog(
+          `[sweep_fr] exported ALL JSON (${sweepResults.length}) -> ${path}`,
+        );
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1427,8 +1356,7 @@ export function usePawdioLabController() {
         `${lines.join("\n")}\n`,
         "text/plain;charset=utf-8",
       );
-      appendLog(`[sweep_fr] exported LAST Squiglink -> ${path}`);
-      toast(`Exported ${path}`, { kind: "success" });
+      if (path) appendLog(`[sweep_fr] exported LAST Squiglink -> ${path}`);
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1457,35 +1385,34 @@ export function usePawdioLabController() {
       const leftAll = numberCurveList(data.left_mag_db_all);
       const rightAll = numberCurveList(data.right_mag_db_all);
 
-      let header = "Frequency(Hz)";
-      if (leftAvg.length > 0) header += ",Left_Avg(dB)";
-      if (rightAvg.length > 0) header += ",Right_Avg(dB)";
-      for (let i = 0; i < leftAll.length; i++)
-        header += `,Left_Sweep_${i + 1}(dB)`;
-      for (let i = 0; i < rightAll.length; i++)
-        header += `,Right_Sweep_${i + 1}(dB)`;
-
-      const lines = [header];
-
-      const numRows = Math.min(
-        freqs.length,
-        leftAvg.length,
-        rightAvg.length,
-        ...leftAll.map((c) => c.length),
-        ...rightAll.map((c) => c.length),
+      // One column per curve. A side that was not captured simply has no
+      // column; rows run the full grid so a missing side cannot empty the file.
+      const columns: Array<{ header: string; values: number[] }> = [];
+      if (leftAvg.length > 0) {
+        columns.push({ header: "Left_Avg(dB)", values: leftAvg });
+      }
+      if (rightAvg.length > 0) {
+        columns.push({ header: "Right_Avg(dB)", values: rightAvg });
+      }
+      leftAll.forEach((values, i) =>
+        columns.push({ header: `Left_Sweep_${i + 1}(dB)`, values }),
+      );
+      rightAll.forEach((values, i) =>
+        columns.push({ header: `Right_Sweep_${i + 1}(dB)`, values }),
       );
 
-      for (let i = 0; i < numRows; i++) {
-        let row = freqs[i].toFixed(2);
-        if (leftAvg.length > i) row += `,${leftAvg[i].toFixed(3)}`;
-        if (rightAvg.length > i) row += `,${rightAvg[i].toFixed(3)}`;
-        for (const curve of leftAll) {
-          if (curve.length > i) row += `,${curve[i].toFixed(3)}`;
-        }
-        for (const curve of rightAll) {
-          if (curve.length > i) row += `,${curve[i].toFixed(3)}`;
-        }
-        lines.push(row);
+      const lines = [
+        ["Frequency(Hz)", ...columns.map((column) => column.header)].join(","),
+      ];
+      for (let i = 0; i < freqs.length; i++) {
+        lines.push(
+          [
+            freqs[i].toFixed(2),
+            ...columns.map((column) =>
+              i < column.values.length ? column.values[i].toFixed(3) : "",
+            ),
+          ].join(","),
+        );
       }
 
       const path = await exportTextFile(
@@ -1494,8 +1421,7 @@ export function usePawdioLabController() {
         `${lines.join("\n")}\n`,
         "text/csv;charset=utf-8",
       );
-      appendLog(`[sweep_fr] exported LAST CSV -> ${path}`);
-      toast(`Exported ${path}`, { kind: "success" });
+      if (path) appendLog(`[sweep_fr] exported LAST CSV -> ${path}`);
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1518,18 +1444,20 @@ export function usePawdioLabController() {
       for (const entry of latencyExportSuite) {
         const freq = entry.request.frequencyHz;
         const signal = entry.request.signal;
+        // Average and std dev sit in their own columns on each preset's first
+        // row (they used to be appended after two empty cells, shifting them
+        // out from under their headers).
+        const average = entry.report.averageDelayMs?.toFixed(3) ?? "";
+        const std = entry.report.stdDevMs?.toFixed(3) ?? "";
 
-        for (const measurement of entry.report.measurements) {
+        entry.report.measurements.forEach((measurement, index) => {
           const delay =
             measurement.delayMs !== null ? measurement.delayMs.toFixed(3) : "";
-          lines.push(`${signal},${freq},${measurement.iteration},${delay},,`);
-        }
-
-        if (entry.report.averageDelayMs !== null) {
-          const avgIdx = lines.length - entry.report.measurements.length;
-          const std = entry.report.stdDevMs?.toFixed(3) ?? "";
-          lines[avgIdx] += `,${entry.report.averageDelayMs.toFixed(3)},${std}`;
-        }
+          const summary = index === 0 ? `${average},${std}` : ",";
+          lines.push(
+            `${signal},${freq},${measurement.iteration},${delay},${summary}`,
+          );
+        });
       }
 
       const path = await exportTextFile(
@@ -1538,8 +1466,7 @@ export function usePawdioLabController() {
         `${lines.join("\n")}\n`,
         "text/csv;charset=utf-8",
       );
-      appendLog(`[latency] exported CSV -> ${path}`);
-      toast(`Exported ${path}`, { kind: "success" });
+      if (path) appendLog(`[latency] exported CSV -> ${path}`);
     } catch (err) {
       setError(String(err));
       appendLog(`[error] ${String(err)}`);
@@ -1549,12 +1476,8 @@ export function usePawdioLabController() {
   async function browseLatencyOutputFolder() {
     setError(null);
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: latencyRequest.outputDir || undefined,
-      });
-      if (typeof selected === "string" && selected.length > 0) {
+      const selected = await ipc.pickDirectory(latencyRequest.outputDir);
+      if (selected) {
         setLatencyRequest((prev) => ({ ...prev, outputDir: selected }));
         appendLog(`[latency] output folder set -> ${selected}`);
       }
@@ -1567,12 +1490,8 @@ export function usePawdioLabController() {
   async function browseSweepOutputFolder() {
     setError(null);
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: sweepRequest.outputDir || undefined,
-      });
-      if (typeof selected === "string" && selected.length > 0) {
+      const selected = await ipc.pickDirectory(sweepRequest.outputDir);
+      if (selected) {
         setSweepRequest((prev) => ({ ...prev, outputDir: selected }));
         appendLog(`[sweep_fr] output folder set -> ${selected}`);
       }
@@ -1605,17 +1524,19 @@ export function usePawdioLabController() {
   }
 
   async function confirmAncStep() {
-    if (!ancCurrentStep) return;
+    if (!ancCurrentStep || running) return;
     const { mode, side } = ancCurrentStep;
-    const isLastStep = ancRunQueue.length === 0;
-    // Keep the step modal open and flag the run so its in-progress ("Recording…")
-    // state shows immediately, rather than waiting on the 1s runtime-status poll.
-    // The prompt advances to the next step once the capture resolves (below).
+    const remaining = ancRunQueue;
+    const isLastStep = remaining.length === 0;
+    await prepareForTest();
+    // Keep the step modal open and flag the run so its in-progress state shows
+    // immediately. The prompt advances once the capture resolves (below).
+    frontendBusyRef.current = true;
     setRunning(true);
+    setError(null);
     // Only a capture that actually landed may advance the guided flow. A failed
-    // step (device unplugged mid-run, engine error) leaves the prompt on the
-    // same mode so the user can retry or cancel — advancing regardless would
-    // auto-export a run with a mode silently missing.
+    // or stopped step stays on the same mode so the user can retry or cancel;
+    // advancing regardless would auto-export a run with a mode missing.
     let captured = false;
     try {
       const result = await ipc.captureAncSnapshot({
@@ -1632,63 +1553,63 @@ export function usePawdioLabController() {
       captured = true;
       appendLog(`[anc] captured ${mode} (${side}) @ ${result.timestamp}`);
 
-      // Auto-export once the last mode is captured. No output dir needed —
-      // the backend falls back to the default export folder. Export runs in its
-      // own try: the captures are already saved, so a failed write must not
-      // strand the flow on a step that succeeded.
+      // Auto-export once the last mode is captured. No output dir needed: the
+      // backend falls back to the default export folder. The captures are
+      // already kept, so a failed write never strands the flow.
       if (isLastStep && ancRequest.savePlots) {
-        try {
-          const baselineKey = ANC_MODE_ORDERED.find(
-            (m) => newCaptures[m] !== undefined,
+        const baselineKey = ANC_MODE_ORDERED.find(
+          (m) => newCaptures[m] !== undefined,
+        );
+        const baseline = baselineKey ? newCaptures[baselineKey] : undefined;
+        const exportable = ANC_MODE_ORDERED.filter(
+          (m) => m !== baselineKey && newCaptures[m] !== undefined,
+        );
+        if (baseline && exportable.length > 0) {
+          // One tag for the whole run so plots and TXT share one folder.
+          const runTag = exportTimestampTag();
+          let exported = await exportAncPlots(
+            baseline,
+            exportable.map((key) => ({
+              key,
+              label: ANC_MODE_META[key].label,
+              snapshot: newCaptures[key]!,
+            })),
+            runTag,
           );
-          const baseline = baselineKey ? newCaptures[baselineKey] : undefined;
-          if (baseline && baselineKey) {
-            const exportable = ANC_MODE_ORDERED.filter(
-              (m) => m !== baselineKey && newCaptures[m] !== undefined,
+          for (const key of exportable) {
+            const ok = await exportAncSquiglink(
+              baseline,
+              key,
+              ANC_MODE_META[key].label,
+              newCaptures[key]!,
+              runTag,
             );
-            if (exportable.length > 0) {
-              // One tag for the whole run so plots and TXT share one folder.
-              const runTag = exportTimestampTag();
-              await exportAncPlots(
-                baseline,
-                exportable.map((key) => ({
-                  key,
-                  label: ANC_MODE_META[key].label,
-                  snapshot: newCaptures[key]!,
-                })),
-                runTag,
-              );
-              for (const key of exportable) {
-                await exportAncSquiglink(
-                  baseline,
-                  key,
-                  ANC_MODE_META[key].label,
-                  newCaptures[key]!,
-                  runTag,
-                );
-              }
-            }
+            exported = exported && ok;
           }
-        } catch (err) {
-          setError(`Captures kept, export failed: ${String(err)}`);
-          appendLog(`[anc] export error: ${String(err)}`);
+          if (!exported) {
+            appendLog("[anc] captures kept; some exports failed");
+          }
         }
       }
     } catch (err) {
-      setError(String(err));
-      appendLog(`[anc] capture failed on ${mode} (${side}): ${String(err)}`);
+      if (isCancellation(err)) {
+        appendLog(`[anc] ${mode} (${side}) stopped; step kept for retry`);
+      } else {
+        setError(String(err));
+        appendLog(`[anc] capture failed on ${mode} (${side}): ${String(err)}`);
+      }
     } finally {
-      setRunning(false);
+      frontendBusyRef.current = false;
+      refreshRuntimeStatus().catch(logCaughtError("refreshRuntimeStatus"));
     }
 
     if (!captured) return;
 
-    setAncRunQueue((q) => {
-      const next = q[0] ?? null;
-      setAncCurrentStep(next);
-      setAncStepPrompt(next !== null);
-      return q.slice(1);
-    });
+    const next = remaining[0] ?? null;
+    setAncCurrentStep(next);
+    setAncStepPrompt(next !== null);
+    setAncRunQueue(remaining.slice(1));
+    if (next === null) setAncTotalSteps(0);
   }
 
   function cancelAncFlow() {
@@ -1706,12 +1627,8 @@ export function usePawdioLabController() {
   async function browseAncOutputFolder() {
     setError(null);
     try {
-      const selected = await open({
-        directory: true,
-        multiple: false,
-        defaultPath: ancRequest.outputDir || undefined,
-      });
-      if (typeof selected === "string" && selected.length > 0) {
+      const selected = await ipc.pickDirectory(ancRequest.outputDir);
+      if (selected) {
         setAncRequest((prev) => ({ ...prev, outputDir: selected }));
         appendLog(`[anc] output folder set -> ${selected}`);
       }
@@ -1721,6 +1638,7 @@ export function usePawdioLabController() {
     }
   }
 
+  /** Save the attenuation PNGs. Resolves true when they were written. */
   async function exportAncPlots(
     baseline: AncSnapshot,
     modesToExport: Array<{
@@ -1728,21 +1646,17 @@ export function usePawdioLabController() {
       label: string;
       snapshot: AncSnapshot;
     }>,
-    // ponytail: manual exports from the ANC page pass no tag and get their own
-    // folder; the guided run passes one tag so plots and TXT land together.
+    // Manual exports from the ANC page pass no tag and get their own folder;
+    // the guided run passes one tag so plots and TXT land together.
     timestamp: string = exportTimestampTag(),
-  ) {
+  ): Promise<boolean> {
     try {
       // negative = cancelled (active quieter than baseline)
       const modes = modesToExport.map(({ key, label, snapshot }) => ({
         key,
         label,
-        attenuationLeft: snapshot.magDbLeft.map(
-          (a, i) => a - baseline.magDbLeft[i],
-        ),
-        attenuationRight: snapshot.magDbRight.map(
-          (a, i) => a - baseline.magDbRight[i],
-        ),
+        attenuationLeft: ancAttenuation(snapshot, baseline, "L"),
+        attenuationRight: ancAttenuation(snapshot, baseline, "R"),
       }));
       const saved = await ipc.saveAncPlots({
         outputDir: ancRequest.outputDir || null,
@@ -1750,35 +1664,43 @@ export function usePawdioLabController() {
         freqs: baseline.freqs,
         modes,
       });
-      const savedPath = saved[0]?.[1] ?? "";
+      const savedPath = saved[0]?.[1];
+      if (!savedPath) {
+        appendLog("[anc] no attenuation data to plot");
+        return false;
+      }
       const folder = savedPath.slice(
         0,
         Math.max(savedPath.lastIndexOf("/"), savedPath.lastIndexOf("\\")),
       );
       appendLog(`[anc] plots saved to ${folder}`);
       toast(`ANC plots saved to ${folder}`, { kind: "success" });
+      return true;
     } catch (err) {
       setError(String(err));
       appendLog(`[anc] export error: ${String(err)}`);
+      return false;
     }
   }
 
+  /** Save one mode's attenuation as Squiglink TXT. Resolves true on success. */
   async function exportAncSquiglink(
     baseline: AncSnapshot,
     modeKey: AncModeKey,
     modeLabel: string,
     snapshot: AncSnapshot,
     timestamp: string = exportTimestampTag(),
-  ) {
+  ): Promise<boolean> {
     try {
-      // Squiglink is single-channel: prefer the left curve, but fall back to the
-      // right when a guided right-only capture left magDbLeft empty — otherwise
-      // the exported file would have no data.
-      const useRight =
-        snapshot.magDbLeft.length === 0 || baseline.magDbLeft.length === 0;
-      const aArr = useRight ? snapshot.magDbRight : snapshot.magDbLeft;
-      const bArr = useRight ? baseline.magDbRight : baseline.magDbLeft;
-      const attenuationDb = aArr.map((a, i) => a - (bArr[i] ?? NaN));
+      // Squiglink is single-channel: prefer the left curve, but fall back to
+      // the right when a guided right-only capture left the left side empty.
+      const left = ancAttenuation(snapshot, baseline, "L");
+      const attenuationDb =
+        left.length > 0 ? left : ancAttenuation(snapshot, baseline, "R");
+      if (attenuationDb.length === 0) {
+        appendLog(`[anc] ${modeKey}: no attenuation data to export`);
+        return false;
+      }
       const outputPath = await ipc.saveAncSquiglink({
         outputDir: ancRequest.outputDir || null,
         timestamp,
@@ -1789,13 +1711,24 @@ export function usePawdioLabController() {
       });
       appendLog(`[anc] squiglink saved: ${outputPath}`);
       toast(`Saved anc_${modeKey}_${timestamp}.txt`, { kind: "success" });
+      return true;
     } catch (err) {
       setError(String(err));
       appendLog(`[anc] squiglink error: ${String(err)}`);
+      return false;
     }
   }
 
   async function stopTest() {
+    // A guided sweep session spans several captures and dialogs; end all of
+    // it, not just the capture in flight.
+    if (sweepSessionActiveRef.current) {
+      sweepAbortRef.current = true;
+      sweepReviewState?.resolve(false);
+      setSweepReviewState(null);
+      monoConfirmState?.reject(new Error("measurement cancelled"));
+      setMonoConfirmState(null);
+    }
     try {
       await ipc.stopTest();
       setPinkNoisePlaying(false);
@@ -1821,23 +1754,6 @@ export function usePawdioLabController() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(CALIBRATION_STORAGE_KEY);
-      if (!raw) {
-        return;
-      }
-      const parsed = JSON.parse(raw) as LatencyCalibration;
-      if (parsed && typeof parsed === "object") {
-        setLatencyCalibration({
-          perSoundOffsetsMs: parsed.perSoundOffsetsMs ?? {},
-        });
-      }
-    } catch {
-      // ignore invalid persisted calibration state
-    }
-  }, []);
-
   // Debounced persistence: rapid bursts (slider drags, keystrokes) coalesce into
   // one localStorage write 250ms after the last change.
   useDebouncedPersist(CALIBRATION_STORAGE_KEY, latencyCalibration);
@@ -1860,7 +1776,6 @@ export function usePawdioLabController() {
       crosstalkRequest,
       thdRequest,
       thdToneText,
-      isolationRequest,
     }),
     [
       activePage,
@@ -1873,7 +1788,6 @@ export function usePawdioLabController() {
       crosstalkRequest,
       thdRequest,
       thdToneText,
-      isolationRequest,
     ],
   );
   useDebouncedPersist(UI_STATE_STORAGE_KEY, persistedUiSnapshot);
@@ -1893,84 +1807,72 @@ export function usePawdioLabController() {
 
     async function attachListeners() {
       try {
-        const offLatency = await listen<LatencyProgress>(
-          "latency-progress",
-          (event) => {
-            setLatencyProgress((prev) => [
-              ...prev.slice(-(MAX_LATENCY_PROGRESS_ROWS - 1)),
-              event.payload,
-            ]);
-          },
-        );
+        const offLatency = await ipc.onLatencyProgress((progress) => {
+          setLatencyProgress((prev) => [
+            ...prev.slice(-(MAX_LATENCY_PROGRESS_ROWS - 1)),
+            progress,
+          ]);
+        });
         if (cancelled) {
           offLatency();
           return;
         }
         unlisteners.push(offLatency);
 
-        const offProgress = await listen<TestProgress>(
-          "test-progress",
-          (event) => {
-            appendLog(`[${event.payload.test}] ${event.payload.message}`);
-            setLastTestProgress(event.payload);
-            if (
-              event.payload.test === "monitor" &&
-              event.payload.message.toLowerCase().includes("error")
-            ) {
-              setInputMonitor((prev) => ({
-                ...prev,
-                monitoring: false,
-                status: "Monitor error. Check input device/sample rate.",
-              }));
-            }
-            if (
-              event.payload.test === "pink_noise" &&
-              event.payload.message.toLowerCase().includes("error")
-            ) {
-              setPinkNoisePlaying(false);
-              setInputMonitor((prev) => ({
-                ...prev,
-                status: "Pink noise error. Check output device/sample rate.",
-              }));
-            }
-          },
-        );
+        const offProgress = await ipc.onTestProgress((payload) => {
+          appendLog(`[${payload.test}] ${payload.message}`);
+          setLastTestProgress(payload);
+          if (
+            payload.test === "monitor" &&
+            payload.message.toLowerCase().includes("error")
+          ) {
+            setInputMonitor((prev) => ({
+              ...prev,
+              monitoring: false,
+              status: "Monitor error. Check input device/sample rate.",
+            }));
+          }
+          if (
+            payload.test === "pink_noise" &&
+            payload.message.toLowerCase().includes("error")
+          ) {
+            setPinkNoisePlaying(false);
+            setInputMonitor((prev) => ({
+              ...prev,
+              status: "Pink noise error. Check output device/sample rate.",
+            }));
+          }
+        });
         if (cancelled) {
           offProgress();
           return;
         }
         unlisteners.push(offProgress);
 
-        const offInput = await listen<InputLevelEvent>(
-          "input-level",
-          (event) => {
-            const current = event.payload.currentDbfs;
-            const peakFromBackend = event.payload.peakDbfs;
-            const clips = event.payload.clipCount;
-            setInputMonitor((prev) => {
-              const peak = Math.max(prev.peakDbfs, current, peakFromBackend);
-              return {
-                ...prev,
-                monitoring: true,
-                status: "Monitoring input...",
-                currentDbfs: current,
-                peakDbfs: peak,
-                clipCount: clips,
-                splEstimate: current + 94,
-                roughFrHz:
-                  Array.isArray(event.payload.roughFrHz) &&
-                  event.payload.roughFrHz.length > 0
-                    ? event.payload.roughFrHz
-                    : prev.roughFrHz,
-                roughFrDb:
-                  Array.isArray(event.payload.roughFrDb) &&
-                  event.payload.roughFrDb.length > 0
-                    ? event.payload.roughFrDb
-                    : prev.roughFrDb,
-              };
-            });
-          },
-        );
+        const offInput = await ipc.onInputLevel((level) => {
+          const current = level.currentDbfs;
+          const peakFromBackend = level.peakDbfs;
+          const clips = level.clipCount;
+          setInputMonitor((prev) => {
+            const peak = Math.max(prev.peakDbfs, current, peakFromBackend);
+            return {
+              ...prev,
+              monitoring: true,
+              status: "Monitoring input...",
+              currentDbfs: current,
+              peakDbfs: peak,
+              clipCount: clips,
+              roughFrHz:
+                Array.isArray(level.roughFrHz) && level.roughFrHz.length > 0
+                  ? level.roughFrHz
+                  : prev.roughFrHz,
+              roughFrDb:
+                Array.isArray(level.roughFrDb) && level.roughFrDb.length > 0
+                  ? level.roughFrDb
+                  : prev.roughFrDb,
+            };
+          });
+        });
         if (cancelled) {
           offInput();
           return;
@@ -2035,8 +1937,6 @@ export function usePawdioLabController() {
     setThdRequest,
     thdToneText,
     setThdToneText,
-    isolationRequest,
-    setIsolationRequest,
     ancRequest,
     setAncRequest,
     ancSelectedModes,
@@ -2054,7 +1954,6 @@ export function usePawdioLabController() {
     latencyProgressPercent,
     loadState,
     commitSettings,
-    runLatencyTest,
     runLatencySelectedTests,
     runLatencyAllTests,
     calibrateLatencySelected,
@@ -2063,7 +1962,6 @@ export function usePawdioLabController() {
     runBalanceTest,
     runCrosstalkTest,
     runThdTest,
-    runIsolationTest,
     startAncFlow,
     confirmAncStep,
     cancelAncFlow,

@@ -59,7 +59,7 @@ jobs:
             libasound2-dev
 
       - name: Install frontend deps
-        run: npm install
+        run: npm ci
 
       - name: Resolve macOS signing mode
         if: matrix.platform == 'macos'

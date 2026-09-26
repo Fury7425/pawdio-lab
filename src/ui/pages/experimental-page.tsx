@@ -4,12 +4,8 @@ import { toNumber, CrosstalkRequest } from "../model";
 import { SelectField } from "../components/form-fields";
 import { ExportMenu } from "../components/export-menu";
 import { PageHeader } from "../components/page-header";
-import {
-  downloadCsv,
-  downloadJson,
-  exportTimestampTag,
-  objectsToCsv,
-} from "../lib/export-files";
+import { exportTimestampTag, objectsToCsv } from "../lib/export-files";
+import { saveCsvFile, saveJsonFile } from "../lib/save-text";
 import { usePawdioLabContext } from "../pawdio-context";
 
 type RunButtonProps = ButtonHTMLAttributes<HTMLButtonElement>;
@@ -33,18 +29,15 @@ export function ExperimentalPage() {
   const thdToneText = ctx.thdToneText;
   const onChangeThdRequest = ctx.setThdRequest;
   const onChangeThdToneText = ctx.setThdToneText;
-  const isolationRequest = ctx.isolationRequest;
-  const onChangeIsolation = ctx.setIsolationRequest;
   const onRunBalance = () => ctx.run(ctx.runBalanceTest());
   const onRunCrosstalk = () => ctx.run(ctx.runCrosstalkTest());
   const onRunThd = () => ctx.run(ctx.runThdTest());
-  const onRunIsolation = () => ctx.run(ctx.runIsolationTest());
   const experimentalResults = ctx.results.filter((entry) =>
-    ["balance", "crosstalk", "thd", "isolation"].includes(entry.payload.test),
+    ["balance", "crosstalk", "thd"].includes(entry.payload.test),
   );
 
   function exportExperimentalJson() {
-    downloadJson(`experimental_${exportTimestampTag()}.json`, {
+    return saveJsonFile(`experimental_${exportTimestampTag()}.json`, {
       format: "pawdio-lab-experimental-export",
       version: 1,
       generatedAt: new Date().toISOString(),
@@ -60,7 +53,10 @@ export function ExperimentalPage() {
       savedAt: entry.savedAt ?? null,
       ...entry.payload,
     }));
-    downloadCsv(`experimental_${exportTimestampTag()}.csv`, objectsToCsv(rows));
+    return saveCsvFile(
+      `experimental_${exportTimestampTag()}.csv`,
+      objectsToCsv(rows),
+    );
   }
 
   return (
@@ -68,7 +64,7 @@ export function ExperimentalPage() {
       <section className="page-card">
         <PageHeader
           title="Experimental Tests"
-          description="Channel balance, crosstalk, THD, and isolation measurements."
+          description="Channel balance, crosstalk, and THD measurements."
           actions={
             <ExportMenu
               label={`Export Results (${experimentalResults.length})`}
@@ -76,11 +72,11 @@ export function ExperimentalPage() {
               items={[
                 {
                   label: "Export JSON",
-                  onSelect: exportExperimentalJson,
+                  onSelect: () => ctx.run(exportExperimentalJson()),
                 },
                 {
                   label: "Export CSV",
-                  onSelect: exportExperimentalCsv,
+                  onSelect: () => ctx.run(exportExperimentalCsv()),
                 },
               ]}
             />
@@ -148,9 +144,7 @@ export function ExperimentalPage() {
 
           <section className="page-card">
             <h3 className="section-subheading">THD</h3>
-            <p className="muted">
-              Runs 100 / 1k / 6k Hz distortion measurements.
-            </p>
+            <p className="muted">Measures distortion at each listed tone.</p>
             <div className="field-grid-2 mt-10">
               <label className="field-row">
                 <span className="field-label">Tones (Hz)</span>
@@ -181,49 +175,6 @@ export function ExperimentalPage() {
             </div>
             <div className="row-end mt-12">
               <RunButton disabled={running} onClick={onRunThd} />
-            </div>
-          </section>
-
-          <section className="page-card">
-            <h3 className="section-subheading">Isolation</h3>
-            <p className="muted">Measures inside to outside isolation.</p>
-            <div className="field-grid-2 mt-10">
-              <label className="field-row">
-                <span className="field-label">Noise Duration (s)</span>
-                <input
-                  className="skin-input"
-                  type="number"
-                  min={0.1}
-                  step={0.1}
-                  value={isolationRequest.noiseDurationSecs}
-                  onChange={(event) =>
-                    onChangeIsolation({
-                      ...isolationRequest,
-                      noiseDurationSecs: toNumber(event.target.value, 2),
-                    })
-                  }
-                />
-              </label>
-              <label className="field-row">
-                <span className="field-label">Amplitude</span>
-                <input
-                  className="skin-input"
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  value={isolationRequest.amplitude}
-                  onChange={(event) =>
-                    onChangeIsolation({
-                      ...isolationRequest,
-                      amplitude: toNumber(event.target.value, 0.4),
-                    })
-                  }
-                />
-              </label>
-            </div>
-            <div className="row-end mt-12">
-              <RunButton disabled={running} onClick={onRunIsolation} />
             </div>
           </section>
         </div>

@@ -64,6 +64,9 @@ export function ShortcutSettings({ bindings, onRebind, onReset }: Props) {
                   onKeyDown={(event) => {
                     if (!isCapturing) return;
                     event.preventDefault();
+                    // Keep the chord away from the global listener, or
+                    // capturing an already-bound key would also fire it.
+                    event.stopPropagation();
                     if (event.key === "Escape") {
                       setCapturing(null);
                       return;

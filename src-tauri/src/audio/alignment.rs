@@ -641,7 +641,6 @@ pub struct EndMarkerAlignment {
     /// How closely the two markers agree on the same time base, as a ratio of
     /// the measured spacing to the nominal spacing.
     pub agreement: f32,
-    pub timing_error_samples: i64,
 }
 
 /// Locate both end markers, searching only after the excitation is expected to
@@ -657,9 +656,6 @@ pub fn find_end_markers(
     stretch: f64,
 ) -> Option<EndMarkerAlignment> {
     let excitation_at = start_marker_at + layout.start_marker_to_excitation() as f64 * stretch;
-    let nominal_a = (start_marker_at + layout.marker_span() as f64 * stretch)
-        .max(0.0)
-        .round() as usize;
     let search_from = ((excitation_at + layout.excitation_len as f64 * stretch)
         .max(0.0)
         .round() as usize)
@@ -695,7 +691,6 @@ pub fn find_end_markers(
         marker_a_at_exact,
         confidence,
         agreement,
-        timing_error_samples: marker_a_at as i64 - nominal_a as i64,
     })
 }
 
@@ -874,8 +869,14 @@ pub fn align_recording(
 
     diagnostics.end_marker_confidence = end.confidence;
     diagnostics.end_marker_agreement = end.agreement;
+    // How far the first end marker landed from where it would sit if the two
+    // clocks agreed. This is the drift the resample below has to undo, so it
+    // is what the budget limits. Measuring it against the drift-stretched
+    // position instead would read ~0 by construction, since that stretch is
+    // derived from this same marker.
+    let undrifted_a = start.marker_at_exact + marker_span as f64;
     diagnostics.timing_error_ms =
-        end.timing_error_samples as f32 * 1000.0 / layout.sample_rate as f32;
+        ((end.marker_a_at_exact - undrifted_a) * 1000.0 / layout.sample_rate as f64) as f32;
 
     if end.confidence < settings.end_marker_confidence_min {
         return Err(fail(
@@ -1072,6 +1073,45 @@ mod tests {
         assert!(
             corrected > uncorrected,
             "corrected {corrected} should beat uncorrected {uncorrected}"
+        );
+    }
+
+    #[test]
+    fn rejects_drift_beyond_the_timing_budget() {
+        // A 2% clock ratio over a 3 s sweep puts the end marker ~65 ms late:
+        // past the 35 ms wired budget. The drift-stretched comparison used to
+        // report ~0 ms here and accept it.
+        let sample_rate = 48_000;
+        let excitation = chirp(sample_rate, 3.0);
+        let layout =
+            build_measurement_layout(sample_rate, &excitation, MeasurementProfile::standard());
+        let recording = simulate(&layout, 4_000, 1.02, 0.0);
+
+        let error = align_recording(&recording, &layout, AlignmentSettings::standard(), false)
+            .expect_err("2% drift is far outside the wired budget");
+        assert_eq!(error.failure, AlignmentFailure::TimingDriftTooLarge);
+        assert!(
+            error.diagnostics.timing_error_ms > 35.0,
+            "timing error was {}",
+            error.diagnostics.timing_error_ms
+        );
+    }
+
+    #[test]
+    fn reports_the_real_timing_error_for_small_drift() {
+        let sample_rate = 48_000;
+        let excitation = chirp(sample_rate, 1.0);
+        let layout =
+            build_measurement_layout(sample_rate, &excitation, MeasurementProfile::bluetooth());
+        let recording = simulate(&layout, 12_000, 1.003, 0.0);
+        let aligned = align_recording(&recording, &layout, AlignmentSettings::bluetooth(), true)
+            .expect("small drift should align");
+        let span_ms = layout.marker_span() as f32 * 1000.0 / sample_rate as f32;
+        let expected = span_ms * 0.003;
+        assert!(
+            (aligned.diagnostics.timing_error_ms - expected).abs() < 0.5,
+            "expected ~{expected:.2} ms, got {:.2} ms",
+            aligned.diagnostics.timing_error_ms
         );
     }
 

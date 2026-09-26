@@ -584,13 +584,13 @@ export function SweepFrPage() {
                     </g>
                   ))}
                   <text x="4" y="12" fontSize="7" fill="var(--text-muted)">
-                    +18 dB
+                    +20 dB
                   </text>
                   <text x="4" y="52" fontSize="7" fill="var(--text-muted)">
                     0 dB
                   </text>
                   <text x="4" y="92" fontSize="7" fill="var(--text-muted)">
-                    -18 dB
+                    -20 dB
                   </text>
                   {pinkNoisePlaying && roughFrGraph ? (
                     <>

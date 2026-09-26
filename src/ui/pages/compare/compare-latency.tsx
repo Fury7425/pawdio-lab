@@ -1,5 +1,41 @@
-import { type LatencyReport } from "../../model";
+import type { MeasurementRecord } from "../../model";
 import type { CompareEntry } from "./comparison-panel";
+
+type LatencySummary = {
+  avg: number | null;
+  std: number | null;
+  measurements: Array<{ delayMs: number | null }>;
+};
+
+function num(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+/**
+ * Latency is saved in two shapes: the latest-run `LatencyReport`
+ * (`averageDelayMs`, …) and the results-list `TestPayload`
+ * (`metrics.average_delay_ms`, `data.measurements`). Read either.
+ */
+export function latencySummary(
+  payload: MeasurementRecord["payload"],
+): LatencySummary {
+  const record = payload as unknown as Record<string, unknown>;
+  const metrics = record.metrics as Record<string, unknown> | undefined;
+  const data = record.data as Record<string, unknown> | undefined;
+  const rawMeasurements = Array.isArray(record.measurements)
+    ? record.measurements
+    : Array.isArray(data?.measurements)
+      ? data.measurements
+      : [];
+  const measurements = rawMeasurements.map((item) => ({
+    delayMs: num((item as Record<string, unknown>)?.delayMs),
+  }));
+  return {
+    avg: num(record.averageDelayMs) ?? num(metrics?.average_delay_ms),
+    std: num(record.stdDevMs) ?? num(metrics?.std_dev_ms),
+    measurements,
+  };
+}
 
 function fmt(value: number | null | undefined): string {
   return value === null || value === undefined || !Number.isFinite(value)
@@ -14,16 +50,14 @@ function fmt(value: number | null | undefined): string {
  */
 export function CompareLatency({ entries }: { entries: CompareEntry[] }) {
   const rows = entries.map(({ record, deviceName, color }) => {
-    const report = record.payload as LatencyReport;
-    const n =
-      report.measurements?.filter((m) => m.delayMs !== null).length ?? 0;
+    const summary = latencySummary(record.payload);
     return {
       id: record.id,
       deviceName,
       color,
-      avg: report.averageDelayMs ?? null,
-      std: report.stdDevMs ?? null,
-      n,
+      avg: summary.avg,
+      std: summary.std,
+      n: summary.measurements.filter((m) => m.delayMs !== null).length,
     };
   });
 
