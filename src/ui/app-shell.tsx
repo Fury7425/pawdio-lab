@@ -1,5 +1,8 @@
-import { useCallback, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Sidebar } from "./components/sidebar";
+import { DeviceBar } from "./components/device-bar";
+import { RunBar } from "./components/run-bar";
+import { SettingsModal } from "./components/settings-modal";
 import { ErrorBoundary } from "./components/error-boundary";
 import { AncPage } from "./pages/anc-page";
 import { DevicesPage } from "./pages/devices-page";
@@ -34,9 +37,24 @@ export function PawdioLabApp() {
   );
 }
 
+/** Pages that measure through the selected devices. */
+const TEST_PAGES: ReadonlySet<PageKey> = new Set<PageKey>([
+  PageKeyEnum.Latency,
+  PageKeyEnum.SweepFr,
+  PageKeyEnum.Anc,
+  PageKeyEnum.Experimental,
+]);
+
+/** Pages that render their own RunBar with run buttons. */
+const RUN_BAR_PAGES: ReadonlySet<PageKey> = new Set<PageKey>([
+  PageKeyEnum.Latency,
+  PageKeyEnum.SweepFr,
+]);
+
 function PawdioLabShell() {
   const ctx = usePawdioLabContext();
   const { bindings } = useShortcutBindings();
+  const [settingsOpen, setSettingsOpen] = useState(false);
 
   /** Which page each navigation shortcut goes to. */
   const NAVIGATION: Partial<Record<ShortcutAction, PageKey>> = {
@@ -90,14 +108,22 @@ function PawdioLabShell() {
     [ctx], // eslint-disable-line react-hooks/exhaustive-deps
   );
 
-  useShortcutListener(bindings, onShortcut);
+  // Keys pressed in Settings (Enter on a button, a chord being rebound) must
+  // not start a test or switch pages behind the dialog.
+  useShortcutListener(bindings, onShortcut, !settingsOpen);
 
   return (
     <main className="app-canvas">
       <div className="app-layout">
-        <Sidebar />
+        <Sidebar onOpenSettings={() => setSettingsOpen(true)} />
 
         <div className="main-column" key={ctx.activePage}>
+          {TEST_PAGES.has(ctx.activePage) && (
+            <DeviceBar
+              wirelessIgnored={ctx.activePage === PageKeyEnum.Latency}
+            />
+          )}
+
           {ctx.error && (
             <section className="page-card">
               <h2 className="section-heading">Runtime Error</h2>
@@ -115,8 +141,18 @@ function PawdioLabShell() {
             {ctx.activePage === PageKeyEnum.Results && <ResultsPage />}
             {ctx.activePage === PageKeyEnum.Library && <LibraryPage />}
           </ErrorBoundary>
+
+          {/* Pages without their own run bar still need a way to stop. */}
+          {ctx.running && !RUN_BAR_PAGES.has(ctx.activePage) && (
+            <RunBar status="A measurement is running." />
+          )}
         </div>
       </div>
+
+      <SettingsModal
+        open={settingsOpen}
+        onClose={() => setSettingsOpen(false)}
+      />
     </main>
   );
 }

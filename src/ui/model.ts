@@ -326,14 +326,27 @@ export const COMPARABLE_TEST_TYPES: ReadonlySet<LibraryTestType> = new Set([
   "anc",
 ]);
 
-export const pageItems: Array<{ key: PageKey; label: string }> = [
-  { key: "latency", label: "Latency" },
-  { key: "sweep_fr", label: "Sweep FR" },
-  { key: "anc", label: "ANC / Transparency" },
-  { key: "devices", label: "Devices / Settings" },
-  { key: "results", label: "Logs" },
-  { key: "library", label: "Library / Compare" },
-  { key: "experimental", label: "Experimental Tests" },
+/**
+ * Where plots land when no output folder is set (default_output_dir in
+ * src-tauri/src/audio/mod.rs). Exports ask with a Save dialog instead.
+ */
+export const DEFAULT_OUTPUT_LABEL = "Documents\\Pawdio Lab Exports";
+
+export type PageGroup = "Tests" | "Data" | "Setup";
+
+/** Navigable pages in sidebar order, each under its sidebar group heading. */
+export const pageItems: Array<{
+  key: PageKey;
+  label: string;
+  group: PageGroup;
+}> = [
+  { key: "latency", label: "Latency", group: "Tests" },
+  { key: "sweep_fr", label: "Sweep FR", group: "Tests" },
+  { key: "anc", label: "ANC / Transparency", group: "Tests" },
+  { key: "experimental", label: "Experimental", group: "Tests" },
+  { key: "library", label: "Library / Compare", group: "Data" },
+  { key: "results", label: "Logs", group: "Data" },
+  { key: "devices", label: "Devices", group: "Setup" },
 ];
 
 const VALID_PAGE_KEYS: ReadonlySet<string> = new Set(
