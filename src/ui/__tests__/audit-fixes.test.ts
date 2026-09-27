@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { ancAttenuation, averageSides } from "../lib/anc";
 import { splitSavePath } from "../lib/save-text";
-import { latencySummary } from "../pages/compare/compare-latency";
+import { latencyStats } from "../lib/library";
 import { parseCompensationText } from "../lib/compensation";
 import { combineAcceptedSweepPayloads } from "../lib/sweep-results";
 import type { AncSnapshot, TestPayload } from "../model";
@@ -42,9 +42,9 @@ describe("splitSavePath", () => {
   });
 });
 
-describe("latencySummary", () => {
+describe("latencyStats", () => {
   it("reads a saved LatencyReport", () => {
-    const summary = latencySummary({
+    const summary = latencyStats({
       signal: "chirp",
       sampleRate: 48000,
       inputSampleRate: 48000,
@@ -58,9 +58,7 @@ describe("latencySummary", () => {
       timestampUtc: "",
     });
     expect(summary.avg).toBe(10);
-    expect(summary.measurements.filter((m) => m.delayMs !== null)).toHaveLength(
-      1,
-    );
+    expect(summary.n).toBe(1);
   });
 
   it("reads a latency entry saved from the results list", () => {
@@ -72,10 +70,10 @@ describe("latencySummary", () => {
       data: { measurements: [{ iteration: 1, delayMs: 42.5 }] },
       files: {},
     };
-    const summary = latencySummary(payload);
+    const summary = latencyStats(payload);
     expect(summary.avg).toBe(42.5);
     expect(summary.std).toBe(1.5);
-    expect(summary.measurements).toHaveLength(1);
+    expect(summary.n).toBe(1);
   });
 });
 

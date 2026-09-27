@@ -207,13 +207,24 @@ export const dbListMeasurements = (
 export const dbGetMeasurement = (id: number): Promise<MeasurementRecord> =>
   invoke<MeasurementRecord>("db_get_measurement", { id });
 
+/** `capturedAt` defaults to now; imports pass the original capture time. */
 export const dbSaveMeasurement = (params: {
   deviceId: number;
   testType: LibraryTestType;
   label?: string;
+  notes?: string;
+  capturedAt?: number;
   payload: MeasurementRecord["payload"];
 }): Promise<MeasurementRecord> =>
   invoke<MeasurementRecord>("db_save_measurement", params);
+
+/** Replace a measurement's label and notes (blank clears). */
+export const dbUpdateMeasurement = (
+  id: number,
+  label: string,
+  notes: string,
+): Promise<MeasurementRecord> =>
+  invoke<MeasurementRecord>("db_update_measurement", { id, label, notes });
 
 export const dbDeleteMeasurement = (id: number): Promise<void> =>
   invoke("db_delete_measurement", { id });

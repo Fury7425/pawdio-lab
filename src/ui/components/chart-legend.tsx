@@ -6,12 +6,19 @@ export type ChartLegendItem = {
   dash?: string;
 };
 
-export function ChartLegend({ items }: { items: ChartLegendItem[] }) {
+type ChartLegendProps = {
+  items: ChartLegendItem[];
+  /** With `onToggle`, entries become buttons that hide and show a series. */
+  hiddenIds?: ReadonlySet<string>;
+  onToggle?: (id: string) => void;
+};
+
+export function ChartLegend({ items, hiddenIds, onToggle }: ChartLegendProps) {
   if (items.length === 0) return null;
   return (
     <div className="chart-legend">
-      {items.map((item) => (
-        <span key={item.id} className="chart-legend-item">
+      {items.map((item) => {
+        const swatch = (
           <span
             className="chart-swatch"
             aria-hidden="true"
@@ -23,9 +30,30 @@ export function ChartLegend({ items }: { items: ChartLegendItem[] }) {
                 : { background: item.color }
             }
           />
-          {item.label}
-        </span>
-      ))}
+        );
+        if (!onToggle) {
+          return (
+            <span key={item.id} className="chart-legend-item">
+              {swatch}
+              {item.label}
+            </span>
+          );
+        }
+        const off = hiddenIds?.has(item.id) ?? false;
+        return (
+          <button
+            key={item.id}
+            type="button"
+            className={`chart-legend-item chart-legend-toggle${off ? " is-off" : ""}`}
+            aria-pressed={!off}
+            title={off ? "Show this curve" : "Hide this curve"}
+            onClick={() => onToggle(item.id)}
+          >
+            {swatch}
+            {item.label}
+          </button>
+        );
+      })}
     </div>
   );
 }

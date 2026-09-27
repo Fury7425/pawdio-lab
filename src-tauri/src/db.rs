@@ -36,6 +36,7 @@ pub struct MeasurementSummary {
     pub test_type: String,
     pub captured_at: i64,
     pub label: Option<String>,
+    pub notes: Option<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -190,7 +191,7 @@ pub fn list_measurements(
     test_type: Option<String>,
 ) -> Result<Vec<MeasurementSummary>, String> {
     let mut sql = String::from(
-        "SELECT id, device_id, test_type, captured_at, label FROM measurements WHERE 1=1",
+        "SELECT id, device_id, test_type, captured_at, label, notes FROM measurements WHERE 1=1",
     );
     let mut binds: Vec<SqlValue> = Vec::new();
     if let Some(d) = device_id {
@@ -211,6 +212,7 @@ pub fn list_measurements(
                 test_type: row.get(2)?,
                 captured_at: row.get(3)?,
                 label: row.get(4)?,
+                notes: row.get(5)?,
             })
         })
         .map_err(|e| e.to_string())?;
@@ -261,24 +263,38 @@ pub fn get_measurement(conn: &Connection, id: i64) -> Result<MeasurementRecord, 
     })
 }
 
+/// Trim free text; blank becomes NULL so "cleared" and "never set" read the same.
+fn clean_text(value: Option<String>) -> Option<String> {
+    value
+        .map(|text| text.trim().to_string())
+        .filter(|text| !text.is_empty())
+}
+
+/// Insert a measurement. `captured_at` defaults to now; an import passes the
+/// original capture time so the history keeps its order.
 pub fn save_measurement(
     conn: &Connection,
     device_id: i64,
     test_type: &str,
     label: Option<String>,
+    notes: Option<String>,
+    captured_at: Option<i64>,
     payload: &Value,
 ) -> Result<MeasurementRecord, String> {
-    let captured_at = now_millis();
+    let captured_at = captured_at.unwrap_or_else(now_millis);
+    let label = clean_text(label);
+    let notes = clean_text(notes);
     let payload_json = serde_json::to_string(payload).map_err(|e| e.to_string())?;
     conn.execute(
         "INSERT INTO measurements
             (device_id, test_type, captured_at, label, notes, payload_json, schema_ver)
-         VALUES (?1, ?2, ?3, ?4, NULL, ?5, ?6)",
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             device_id,
             test_type,
             captured_at,
             label,
+            notes,
             payload_json,
             DB_VERSION
         ],
@@ -290,10 +306,29 @@ pub fn save_measurement(
         test_type: test_type.to_string(),
         captured_at,
         label,
-        notes: None,
+        notes,
         schema_ver: DB_VERSION,
         payload: payload.clone(),
     })
+}
+
+/// Replace a measurement's label and notes. The payload is never edited.
+pub fn update_measurement(
+    conn: &Connection,
+    id: i64,
+    label: Option<String>,
+    notes: Option<String>,
+) -> Result<MeasurementRecord, String> {
+    let changed = conn
+        .execute(
+            "UPDATE measurements SET label = ?1, notes = ?2 WHERE id = ?3",
+            params![clean_text(label), clean_text(notes), id],
+        )
+        .map_err(|e| e.to_string())?;
+    if changed == 0 {
+        return Err(format!("measurement {id} not found"));
+    }
+    get_measurement(conn, id)
 }
 
 pub fn delete_measurement(conn: &Connection, id: i64) -> Result<(), String> {
@@ -319,8 +354,16 @@ mod tests {
         assert!(dev.id > 0);
 
         let payload = serde_json::json!({ "test": "latency", "averageDelayMs": 12.5 });
-        let rec =
-            save_measurement(&conn, dev.id, "latency", Some("run 1".into()), &payload).unwrap();
+        let rec = save_measurement(
+            &conn,
+            dev.id,
+            "latency",
+            Some("run 1".into()),
+            None,
+            None,
+            &payload,
+        )
+        .unwrap();
         assert_eq!(rec.device_id, dev.id);
 
         let summaries = list_measurements(&conn, Some(dev.id), None).unwrap();
@@ -340,13 +383,42 @@ mod tests {
     fn filter_by_test_type_and_rename() {
         let conn = mem();
         let dev = create_device(&conn, "Device B", None).unwrap();
-        save_measurement(&conn, dev.id, "sweep_fr", None, &serde_json::json!({})).unwrap();
-        save_measurement(&conn, dev.id, "anc", None, &serde_json::json!({})).unwrap();
+        let empty = serde_json::json!({});
+        save_measurement(&conn, dev.id, "sweep_fr", None, None, None, &empty).unwrap();
+        save_measurement(&conn, dev.id, "anc", None, None, None, &empty).unwrap();
 
         let only_anc = list_measurements(&conn, None, Some("anc".into())).unwrap();
         assert_eq!(only_anc.len(), 1);
 
         let renamed = rename_device(&conn, dev.id, "Device B2").unwrap();
         assert_eq!(renamed.name, "Device B2");
+    }
+
+    #[test]
+    fn import_keeps_capture_time_and_update_edits_text() {
+        let conn = mem();
+        let dev = create_device(&conn, "Device C", None).unwrap();
+        let rec = save_measurement(
+            &conn,
+            dev.id,
+            "thd",
+            Some("  ".into()),
+            Some(" imported ".into()),
+            Some(1_700_000_000_000),
+            &serde_json::json!({}),
+        )
+        .unwrap();
+        assert_eq!(rec.captured_at, 1_700_000_000_000);
+        assert_eq!(rec.label, None);
+        assert_eq!(rec.notes.as_deref(), Some("imported"));
+
+        let label = Some("Tips M".to_string());
+        let edited = update_measurement(&conn, rec.id, label, Some(String::new())).unwrap();
+        assert_eq!(edited.label.as_deref(), Some("Tips M"));
+        assert_eq!(edited.notes, None);
+        let summaries = list_measurements(&conn, None, None).unwrap();
+        assert_eq!(summaries[0].label.as_deref(), Some("Tips M"));
+
+        assert!(update_measurement(&conn, 9999, None, None).is_err());
     }
 }

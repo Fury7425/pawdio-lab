@@ -1,5 +1,11 @@
 import { useRef, useState } from "react";
 import * as ipc from "../../ipc/commands";
+import {
+  captureKey,
+  existingCaptureKeys,
+  normalizeDeviceName,
+  type ImportedRecord,
+} from "../lib/library";
 import type {
   DeviceRecord,
   LibraryTestType,
@@ -84,6 +90,7 @@ export function useLibrary({ setError, notify }: Deps) {
     deviceId: number;
     testType: LibraryTestType;
     label?: string;
+    notes?: string;
     payload: MeasurementRecord["payload"];
   }): Promise<MeasurementRecord | null> {
     try {
@@ -95,6 +102,75 @@ export function useLibrary({ setError, notify }: Deps) {
     } catch (err) {
       setError(String(err));
       return null;
+    }
+  }
+
+  async function updateMeasurement(
+    id: number,
+    label: string,
+    notes: string,
+  ): Promise<MeasurementRecord | null> {
+    try {
+      const record = await ipc.dbUpdateMeasurement(id, label, notes);
+      recordCache.current.set(id, record);
+      await loadLibrary();
+      notify?.("Measurement updated");
+      return record;
+    } catch (err) {
+      setError(String(err));
+      return null;
+    }
+  }
+
+  /**
+   * Add records from a library export. Devices are matched by name (created
+   * when missing) and a capture already in the library is skipped, so
+   * importing the same file twice adds nothing.
+   */
+  async function importRecords(
+    records: ImportedRecord[],
+  ): Promise<{ added: number; skipped: number } | null> {
+    const deviceIds = new Map(
+      devices.map((d) => [normalizeDeviceName(d.name), d.id]),
+    );
+    const seen = existingCaptureKeys(measurements);
+    let added = 0;
+    let skipped = 0;
+    try {
+      for (const record of records) {
+        const nameKey = normalizeDeviceName(record.deviceName);
+        let deviceId = deviceIds.get(nameKey);
+        if (deviceId === undefined) {
+          deviceId = (await ipc.dbCreateDevice(record.deviceName)).id;
+          deviceIds.set(nameKey, deviceId);
+        }
+        const key = captureKey(deviceId, record.testType, record.capturedAt);
+        if (seen.has(key)) {
+          skipped += 1;
+          continue;
+        }
+        await ipc.dbSaveMeasurement({
+          deviceId,
+          testType: record.testType,
+          label: record.label ?? undefined,
+          notes: record.notes ?? undefined,
+          capturedAt: record.capturedAt,
+          payload: record.payload,
+        });
+        seen.add(key);
+        added += 1;
+      }
+      notify?.(
+        `Imported ${added} measurement${added === 1 ? "" : "s"}` +
+          (skipped ? `, ${skipped} already in the library` : ""),
+      );
+      return { added, skipped };
+    } catch (err) {
+      setError(String(err));
+      return null;
+    } finally {
+      // Reload even after a failure: earlier records may already be saved.
+      await loadLibrary();
     }
   }
 
@@ -131,6 +207,8 @@ export function useLibrary({ setError, notify }: Deps) {
     renameDevice,
     deleteDevice,
     saveMeasurement,
+    updateMeasurement,
+    importRecords,
     deleteMeasurement,
     getMeasurement,
   };
