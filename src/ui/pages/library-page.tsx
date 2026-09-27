@@ -516,8 +516,7 @@ export function LibraryPage() {
               {formatCaptured(summary.capturedAt)}
               {summary.notes && (
                 <span className="lib-row-note" title={summary.notes}>
-                  <StickyNote size={11} aria-hidden="true" />
-                  Note
+                  <StickyNote size={11} aria-label="Has notes" />
                 </span>
               )}
             </span>

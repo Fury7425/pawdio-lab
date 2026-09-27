@@ -473,7 +473,7 @@ export function CompareCurves({ entries, kind, referenceIndex }: Props) {
 
         <span className="compare-controls-end">
           <ExportMenu
-            label="Export view"
+            label="Export"
             disabled={visibleSeries.length === 0}
             items={[
               {

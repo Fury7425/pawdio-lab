@@ -213,12 +213,13 @@ export function existingCaptureKeys(summaries: MeasurementSummary[]) {
   );
 }
 
-/** Short capture time for list rows and column headers. */
+/** Short capture time for list rows and column headers; the year only when it is not this one. */
 export function formatCaptured(ms: number): string {
   const date = new Date(ms);
   if (Number.isNaN(date.getTime())) return "—";
+  const otherYear = date.getFullYear() !== new Date().getFullYear();
   return date.toLocaleString(undefined, {
-    year: "numeric",
+    year: otherYear ? "numeric" : undefined,
     month: "short",
     day: "numeric",
     hour: "2-digit",

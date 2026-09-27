@@ -2909,7 +2909,8 @@ details.raw-json-details summary:hover {
 .lib-row-meta {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  white-space: nowrap;
   color: var(--text-faint);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
@@ -2963,6 +2964,11 @@ details.raw-json-details summary:hover {
 }
 .lib-compare-head .section-subheading {
   margin: 0;
+}
+.lib-compare-head .skin-select {
+  max-width: 280px;
+  padding-right: 30px;
+  text-overflow: ellipsis;
 }
 .lib-chips {
   display: flex;
@@ -3044,6 +3050,9 @@ details.raw-json-details summary:hover {
 
 .compare-controls .channel-selector {
   margin-left: 0;
+}
+.compare-controls .channel-btn {
+  font-size: 12px;
 }
 .compare-controls-end {
   margin-left: auto;
