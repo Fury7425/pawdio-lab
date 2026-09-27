@@ -114,20 +114,42 @@ export function ancCurve(
 type Props = {
   entries: CompareEntry[];
   kind: Extract<LibraryTestType, "sweep_fr" | "anc">;
+  /** Index into `entries` of the curve that delta mode subtracts. */
+  referenceIndex: number;
 };
+
+/** View channel: one curve per record, or both sides with R dashed. */
+type ViewChannel = Channel | "LR";
+
+const CHANNEL_OPTIONS: Array<{ key: ViewChannel; label: string }> = [
+  { key: "avg", label: "Avg" },
+  { key: "L", label: "L" },
+  { key: "R", label: "R" },
+  { key: "LR", label: "L + R" },
+];
+
+type PreparedSeries = OverlaySeries & { recordId: number; side: Channel };
 
 /**
  * Compare saved frequency-domain measurements. Processing controls are
  * intentionally view-only: stored payloads always remain raw and unchanged.
  */
-export function CompareCurves({ entries, kind }: Props) {
+export function CompareCurves({ entries, kind, referenceIndex }: Props) {
   const ctx = usePawdioLabContext();
-  const [channel, setChannel] = useState<Channel>("avg");
+  const [channel, setChannel] = useState<ViewChannel>("avg");
   const [normalize, setNormalize] = useState(kind === "sweep_fr");
   const [compareMode, setCompareMode] = useState<AncModeKey | null>(null);
   const [smoothing, setSmoothing] = useState<number | null>(null);
   const [deltaMode, setDeltaMode] = useState(false);
   const [variationMode, setVariationMode] = useState(false);
+  const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
+
+  const reference = entries[referenceIndex] ?? entries[0];
+  const canDelta = entries.length > 1;
+  const canVariation =
+    kind === "sweep_fr" && entries.length > 1 && channel !== "LR";
+  const showDelta = deltaMode && canDelta;
+  const showVariation = variationMode && canVariation;
 
   const ancModeOptions = useMemo<AncModeKey[]>(() => {
     if (kind !== "anc") return [];
@@ -145,33 +167,40 @@ export function CompareCurves({ entries, kind }: Props) {
   }, [entries, kind]);
 
   const series = useMemo<OverlaySeries[]>(() => {
-    const prepared: OverlaySeries[] = [];
+    const sides: Channel[] = channel === "LR" ? ["L", "R"] : [channel];
+    const prepared: PreparedSeries[] = [];
     for (const { record, deviceName, color } of entries) {
-      const curve =
-        kind === "sweep_fr"
-          ? sweepCurve(record, channel)
-          : ancCurve(record, channel, compareMode);
-      if (!curve) continue;
+      for (const side of sides) {
+        const curve =
+          kind === "sweep_fr"
+            ? sweepCurve(record, side)
+            : ancCurve(record, side, compareMode);
+        if (!curve) continue;
 
-      let processed: FrequencyCurve = curve;
-      if (kind === "sweep_fr" && normalize) {
-        processed = normalizeCurveAt(processed, 1000);
-      }
-      processed = smoothFractionalOctave(processed, smoothing);
-      const label =
-        kind === "anc" && "modeLabel" in curve
-          ? `${deviceName} · ${curve.modeLabel}`
+        let processed: FrequencyCurve = curve;
+        if (kind === "sweep_fr" && normalize) {
+          processed = normalizeCurveAt(processed, 1000);
+        }
+        processed = smoothFractionalOctave(processed, smoothing);
+        const name = record.label
+          ? `${deviceName} · ${record.label}`
           : deviceName;
-      prepared.push({
-        id: String(record.id),
-        label,
-        color,
-        freqs: processed.freqs,
-        values: processed.values,
-      });
+        const modeLabel =
+          kind === "anc" && "modeLabel" in curve ? ` · ${curve.modeLabel}` : "";
+        prepared.push({
+          id: channel === "LR" ? `${record.id}-${side}` : String(record.id),
+          recordId: record.id,
+          side,
+          label: `${name}${modeLabel}${channel === "LR" ? ` (${side})` : ""}`,
+          color,
+          dash: channel === "LR" && side === "R" ? "2.5 2" : undefined,
+          freqs: processed.freqs,
+          values: processed.values,
+        });
+      }
     }
 
-    if (variationMode && kind === "sweep_fr") {
+    if (showVariation) {
       const variation = computeVariationBand(prepared);
       if (!variation) return [];
       return [
@@ -191,17 +220,26 @@ export function CompareCurves({ entries, kind }: Props) {
       ];
     }
 
-    if (deltaMode && prepared.length > 1) {
-      const reference = prepared[0];
-      return prepared.slice(1).map((item) => {
-        const delta = subtractReference(item, reference);
-        return {
-          ...item,
-          label: `${item.label} − ${reference.label}`,
+    if (showDelta && reference) {
+      const refId = reference.record.id;
+      const out: OverlaySeries[] = [];
+      for (const item of prepared) {
+        if (item.recordId === refId) continue;
+        const base = prepared.find(
+          (p) => p.recordId === refId && p.side === item.side,
+        );
+        if (!base) continue;
+        const delta = subtractReference(item, base);
+        out.push({
+          id: item.id,
+          label: `${item.label} vs ref`,
+          color: item.color,
+          dash: item.dash,
           freqs: delta.freqs,
           values: delta.values,
-        };
-      });
+        });
+      }
+      return out;
     }
 
     return prepared;
@@ -212,14 +250,29 @@ export function CompareCurves({ entries, kind }: Props) {
     normalize,
     compareMode,
     smoothing,
-    deltaMode,
-    variationMode,
+    showDelta,
+    showVariation,
+    reference,
   ]);
+
+  const visibleSeries = useMemo(
+    () => series.filter((item) => !hidden.has(item.id)),
+    [series, hidden],
+  );
+
+  function toggleHidden(id: string) {
+    setHidden((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
 
   const { yMin, yMax } = useMemo(
     () =>
       autoRange(
-        series.flatMap((item) => [
+        visibleSeries.flatMap((item) => [
           item.values,
           ...(item.band
             ? [
@@ -231,12 +284,12 @@ export function CompareCurves({ entries, kind }: Props) {
             : []),
         ]),
       ),
-    [series],
+    [visibleSeries],
   );
 
-  const viewMode = variationMode
+  const viewMode = showVariation
     ? "variation"
-    : deltaMode
+    : showDelta
       ? "delta"
       : "overlay";
 
@@ -255,24 +308,24 @@ export function CompareCurves({ entries, kind }: Props) {
           smoothingFraction: smoothing,
           ancMode: kind === "anc" ? compareMode : null,
           reference:
-            deltaMode && entries[0]
+            showDelta && reference
               ? {
-                  recordId: entries[0].record.id,
-                  deviceName: entries[0].deviceName,
+                  recordId: reference.record.id,
+                  deviceName: reference.deviceName,
                 }
               : null,
-          variationPercentiles: variationMode
+          variationPercentiles: showVariation
             ? { outer: [10, 90], inner: [25, 75], center: 50 }
             : null,
         },
-        series,
+        series: visibleSeries,
       },
     );
   }
 
   function exportViewCsv() {
     const rows: CsvValue[][] = [];
-    for (const item of series) {
+    for (const item of visibleSeries) {
       const length = Math.min(item.freqs.length, item.values.length);
       for (let index = 0; index < length; index += 1) {
         rows.push([
@@ -317,7 +370,25 @@ export function CompareCurves({ entries, kind }: Props) {
 
   return (
     <div>
-      <div className="graph-controls-row" style={{ marginBottom: 12 }}>
+      <div className="graph-controls-row compare-controls">
+        <span
+          className="channel-selector"
+          role="group"
+          aria-label="Select channel"
+        >
+          {CHANNEL_OPTIONS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              className={`channel-btn${channel === option.key ? " is-active" : ""}`}
+              aria-pressed={channel === option.key}
+              onClick={() => setChannel(option.key)}
+            >
+              {option.label}
+            </button>
+          ))}
+        </span>
+
         <label className="chart-control-field">
           <span className="muted">Smoothing</span>
           <select
@@ -338,81 +409,6 @@ export function CompareCurves({ entries, kind }: Props) {
           </select>
         </label>
 
-        <button
-          type="button"
-          className={`chip-btn${deltaMode ? " is-on" : ""}`}
-          aria-pressed={deltaMode}
-          disabled={entries.length < 2}
-          title="Subtract the first selected measurement from every other curve"
-          onClick={() => {
-            setDeltaMode((value) => !value);
-            setVariationMode(false);
-          }}
-        >
-          Delta vs first
-        </button>
-
-        {kind === "sweep_fr" && (
-          <button
-            type="button"
-            className={`chip-btn${variationMode ? " is-on" : ""}`}
-            aria-pressed={variationMode}
-            disabled={entries.length < 2}
-            title="Replace individual curves with percentile variation bands"
-            onClick={() => {
-              setVariationMode((value) => !value);
-              setDeltaMode(false);
-            }}
-          >
-            Variation band
-          </button>
-        )}
-
-        <ExportMenu
-          label="Export View"
-          disabled={series.length === 0}
-          items={[
-            {
-              label: "Export JSON",
-              onSelect: () => ctx.run(exportViewJson()),
-            },
-            {
-              label: "Export CSV",
-              onSelect: () => ctx.run(exportViewCsv()),
-            },
-          ]}
-        />
-
-        <span
-          className="channel-selector"
-          role="group"
-          aria-label="Select channel"
-        >
-          {(["L", "R", "avg"] as Channel[]).map((option) => (
-            <button
-              key={option}
-              type="button"
-              className={`channel-btn${channel === option ? " is-active" : ""}`}
-              aria-pressed={channel === option}
-              onClick={() => setChannel(option)}
-            >
-              {option === "avg" ? "Avg" : option}
-            </button>
-          ))}
-        </span>
-
-        {kind === "sweep_fr" && (
-          <button
-            type="button"
-            className={`chip-btn${normalize ? " is-on" : ""}`}
-            aria-pressed={normalize}
-            onClick={() => setNormalize((value) => !value)}
-            title="Align each curve to 0 dB at 1 kHz"
-          >
-            Normalize @ 1kHz
-          </button>
-        )}
-
         {kind === "anc" && ancModeOptions.length > 0 && (
           <label className="chart-control-field">
             <span className="muted">Mode</span>
@@ -432,26 +428,72 @@ export function CompareCurves({ entries, kind }: Props) {
             </select>
           </label>
         )}
+
+        {kind === "sweep_fr" && (
+          <button
+            type="button"
+            className={`chip-btn${normalize ? " is-on" : ""}`}
+            aria-pressed={normalize}
+            onClick={() => setNormalize((value) => !value)}
+            title="Align each curve to 0 dB at 1 kHz"
+          >
+            Normalize @ 1kHz
+          </button>
+        )}
+
+        <button
+          type="button"
+          className={`chip-btn${showDelta ? " is-on" : ""}`}
+          aria-pressed={showDelta}
+          disabled={!canDelta}
+          title="Subtract the reference measurement from every other curve"
+          onClick={() => {
+            setDeltaMode((value) => !value);
+            setVariationMode(false);
+          }}
+        >
+          Delta vs ref
+        </button>
+
+        {kind === "sweep_fr" && (
+          <button
+            type="button"
+            className={`chip-btn${showVariation ? " is-on" : ""}`}
+            aria-pressed={showVariation}
+            disabled={!canVariation}
+            title="Replace individual curves with percentile variation bands"
+            onClick={() => {
+              setVariationMode((value) => !value);
+              setDeltaMode(false);
+            }}
+          >
+            Variation band
+          </button>
+        )}
+
+        <span className="compare-controls-end">
+          <ExportMenu
+            label="Export"
+            disabled={visibleSeries.length === 0}
+            items={[
+              {
+                label: "Export JSON",
+                onSelect: () => ctx.run(exportViewJson()),
+              },
+              {
+                label: "Export CSV",
+                onSelect: () => ctx.run(exportViewCsv()),
+              },
+            ]}
+          />
+        </span>
       </div>
 
-      {deltaMode && series.length > 0 && (
-        <p className="chart-mode-note">
-          Reference: first selected measurement. Positive values are above the
-          reference curve.
-        </p>
-      )}
-      {variationMode && series.length > 0 && (
-        <p className="chart-mode-note">
-          Outer band: p10–p90 · inner band: p25–p75 · line: median. Saved data
-          is unchanged.
-        </p>
-      )}
+      <ChartLegend items={series} hiddenIds={hidden} onToggle={toggleHidden} />
 
-      <ChartLegend items={series} />
-
-      <div className="level-meter" style={{ marginBottom: 12 }}>
+      <div className="level-meter compare-chart">
         <OverlayChart
-          series={series}
+          series={visibleSeries}
           yMin={yMin}
           yMax={yMax}
           yAxisLabel="dB"
@@ -460,9 +502,32 @@ export function CompareCurves({ entries, kind }: Props) {
               ? "Frequency response comparison"
               : "ANC attenuation comparison"
           }
-          emptyMessage="No comparable curve data in the selected records"
+          emptyMessage={
+            series.length > 0
+              ? "Every curve is hidden. Click a legend entry to show it."
+              : "No comparable curve data in the selected records"
+          }
         />
       </div>
+
+      {showDelta && reference && series.length > 0 && (
+        <p className="chart-mode-note">
+          Reference: {reference.deviceName}
+          {reference.record.label ? ` · ${reference.record.label}` : ""}.
+          Positive values are above the reference curve.
+        </p>
+      )}
+      {showVariation && series.length > 0 && (
+        <p className="chart-mode-note">
+          Outer band: p10–p90 · inner band: p25–p75 · line: median. Saved data
+          is unchanged.
+        </p>
+      )}
+      {!showDelta && !showVariation && series.length > 1 && (
+        <p className="chart-mode-note">
+          Click a legend entry to hide or show that curve.
+        </p>
+      )}
     </div>
   );
 }

@@ -297,6 +297,7 @@ export type MeasurementSummary = {
   testType: LibraryTestType;
   capturedAt: number;
   label?: string | null;
+  notes?: string | null;
 };
 
 /**
@@ -305,7 +306,6 @@ export type MeasurementSummary = {
  * for "anc", otherwise `TestPayload`.
  */
 export type MeasurementRecord = MeasurementSummary & {
-  notes?: string | null;
   schemaVer: number;
   payload: LatencyReport | TestPayload | AncCaptures;
 };
@@ -319,12 +319,15 @@ export const LIBRARY_TEST_LABELS: Record<LibraryTestType, string> = {
   anc: "ANC / Transparency",
 };
 
-/** Test types that have a comparison renderer in v1. */
-export const COMPARABLE_TEST_TYPES: ReadonlySet<LibraryTestType> = new Set([
+/** Library tab order: the curve comparisons first, then the metric tables. */
+export const LIBRARY_TEST_ORDER: LibraryTestType[] = [
   "sweep_fr",
-  "latency",
   "anc",
-]);
+  "latency",
+  "thd",
+  "balance",
+  "crosstalk",
+];
 
 /**
  * Where plots land when no output folder is set (default_output_dir in

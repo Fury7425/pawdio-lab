@@ -1,6 +1,11 @@
-import { LIBRARY_TEST_LABELS, type MeasurementRecord } from "../../model";
+import type { MeasurementRecord } from "../../model";
 import { CompareCurves } from "./compare-curves";
-import { CompareLatency } from "./compare-latency";
+import {
+  CompareBalance,
+  CompareCrosstalk,
+  CompareLatency,
+  CompareThd,
+} from "./compare-metrics";
 
 export type CompareEntry = {
   record: MeasurementRecord;
@@ -10,27 +15,51 @@ export type CompareEntry = {
 
 /**
  * Renders the right comparison view for the selected records. All entries share
- * one `testType` (enforced by the library page's selection model). sweep_fr/anc
- * overlay as curves, latency as a metric table; other types are saved but get a
- * "coming soon" placeholder in v1.
+ * one `testType` (the library page shows one test type at a time). sweep_fr and
+ * anc overlay as curves, the rest compare as metric tables. One entry shows
+ * that measurement on its own.
  */
-export function ComparisonPanel({ entries }: { entries: CompareEntry[] }) {
-  if (entries.length < 2) return null;
+export function ComparisonPanel({
+  entries,
+  referenceId,
+}: {
+  entries: CompareEntry[];
+  referenceId: number | null;
+}) {
+  if (entries.length === 0) return null;
   const testType = entries[0].record.testType;
-
-  if (testType === "sweep_fr" || testType === "anc") {
-    return <CompareCurves entries={entries} kind={testType} />;
-  }
-  if (testType === "latency") {
-    return <CompareLatency entries={entries} />;
-  }
-  return (
-    <div className="empty-state">
-      <span>
-        Side-by-side comparison for {LIBRARY_TEST_LABELS[testType] ?? testType}{" "}
-        is coming soon. These records are saved and will compare once the table
-        view ships.
-      </span>
-    </div>
+  const referenceIndex = Math.max(
+    0,
+    entries.findIndex((entry) => entry.record.id === referenceId),
   );
+  const props = { entries, referenceIndex };
+
+  switch (testType) {
+    case "sweep_fr":
+    case "anc":
+      return (
+        <CompareCurves
+          entries={entries}
+          kind={testType}
+          referenceIndex={referenceIndex}
+        />
+      );
+    case "latency":
+      return <CompareLatency {...props} />;
+    case "thd":
+      return <CompareThd {...props} />;
+    case "balance":
+      return <CompareBalance {...props} />;
+    case "crosstalk":
+      return <CompareCrosstalk {...props} />;
+    default:
+      return (
+        <div className="empty-state">
+          <span>
+            &ldquo;{String(testType)}&rdquo; is a test this version no longer
+            runs. Its records can still be exported.
+          </span>
+        </div>
+      );
+  }
 }

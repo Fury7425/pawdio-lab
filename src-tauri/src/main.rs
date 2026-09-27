@@ -693,10 +693,31 @@ async fn db_save_measurement(
     device_id: i64,
     test_type: String,
     label: Option<String>,
+    notes: Option<String>,
+    captured_at: Option<i64>,
     payload: serde_json::Value,
 ) -> Result<MeasurementRecord, String> {
     let conn = state.db.lock().await;
-    db::save_measurement(&conn, device_id, &test_type, label, &payload)
+    db::save_measurement(
+        &conn,
+        device_id,
+        &test_type,
+        label,
+        notes,
+        captured_at,
+        &payload,
+    )
+}
+
+#[tauri::command]
+async fn db_update_measurement(
+    state: State<'_, AppState>,
+    id: i64,
+    label: Option<String>,
+    notes: Option<String>,
+) -> Result<MeasurementRecord, String> {
+    let conn = state.db.lock().await;
+    db::update_measurement(&conn, id, label, notes)
 }
 
 #[tauri::command]
@@ -760,6 +781,7 @@ fn main() {
             db_list_measurements,
             db_get_measurement,
             db_save_measurement,
+            db_update_measurement,
             db_delete_measurement,
         ])
         .run(tauri::generate_context!())
