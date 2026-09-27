@@ -698,7 +698,15 @@ async fn db_save_measurement(
     payload: serde_json::Value,
 ) -> Result<MeasurementRecord, String> {
     let conn = state.db.lock().await;
-    db::save_measurement(&conn, device_id, &test_type, label, notes, captured_at, &payload)
+    db::save_measurement(
+        &conn,
+        device_id,
+        &test_type,
+        label,
+        notes,
+        captured_at,
+        &payload,
+    )
 }
 
 #[tauri::command]

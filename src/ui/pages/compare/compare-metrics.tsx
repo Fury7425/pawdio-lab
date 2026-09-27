@@ -25,7 +25,9 @@ export type MetricRow = {
 type ViewProps = { entries: CompareEntry[]; referenceIndex: number };
 
 function fmt(value: number | null, digits = 2): string {
-  return value === null || !Number.isFinite(value) ? "—" : value.toFixed(digits);
+  return value === null || !Number.isFinite(value)
+    ? "—"
+    : value.toFixed(digits);
 }
 
 function signed(value: number, digits: number): string {
@@ -106,7 +108,9 @@ export function CompareTable({
                         className={index === best ? "is-best" : undefined}
                       >
                         <span className="compare-value">
-                          {text !== undefined ? (text ?? "—") : fmt(value, digits)}
+                          {text !== undefined
+                            ? (text ?? "—")
+                            : fmt(value, digits)}
                           {text === undefined && value !== null && row.unit && (
                             <span className="compare-unit"> {row.unit}</span>
                           )}
@@ -140,10 +144,7 @@ export function CompareTable({
 /** Average delay bars with a ±1 std dev spread, above the full table. */
 export function CompareLatency({ entries, referenceIndex }: ViewProps) {
   const stats = entries.map(({ record }) => latencyStats(record.payload));
-  const scale = Math.max(
-    1,
-    ...stats.map((s) => (s.avg ?? 0) + (s.std ?? 0)),
-  );
+  const scale = Math.max(1, ...stats.map((s) => (s.avg ?? 0) + (s.std ?? 0)));
   const pct = (value: number) =>
     `${Math.max(0, Math.min(100, (value / scale) * 100))}%`;
 
@@ -255,7 +256,11 @@ export function CompareThd({ entries, referenceIndex }: ViewProps) {
     });
   }
   return (
-    <CompareTable entries={entries} referenceIndex={referenceIndex} rows={rows} />
+    <CompareTable
+      entries={entries}
+      referenceIndex={referenceIndex}
+      rows={rows}
+    />
   );
 }
 

@@ -275,7 +275,9 @@ export function LibraryPage() {
   }
 
   function clearSelection() {
-    setSelectedIds((prev) => prev.filter((id) => !visibleSelected.includes(id)));
+    setSelectedIds((prev) =>
+      prev.filter((id) => !visibleSelected.includes(id)),
+    );
   }
 
   /** Newest measurement of the active type from every device on screen. */
@@ -505,7 +507,9 @@ export function LibraryPage() {
             {selected && <Check size={10} strokeWidth={3} />}
           </span>
           <span className="lib-row-text">
-            <span className={`lib-row-label${summary.label ? "" : " is-untitled"}`}>
+            <span
+              className={`lib-row-label${summary.label ? "" : " is-untitled"}`}
+            >
               {name}
             </span>
             <span className="lib-row-meta">
@@ -916,11 +920,7 @@ export function LibraryPage() {
         ) : (
           <>
             {tabs.length > 0 && (
-              <div
-                className="lib-tabs"
-                role="tablist"
-                aria-label="Test type"
-              >
+              <div className="lib-tabs" role="tablist" aria-label="Test type">
                 {tabs.map((type) => (
                   <button
                     key={type}
@@ -1083,7 +1083,10 @@ export function LibraryPage() {
                       )}
                     </div>
 
-                    <ul className="lib-chips" aria-label="Selected measurements">
+                    <ul
+                      className="lib-chips"
+                      aria-label="Selected measurements"
+                    >
                       {entries.map(({ record, deviceName: name, color }) => (
                         <li key={record.id} className="lib-chip">
                           <span
@@ -1118,18 +1121,20 @@ export function LibraryPage() {
 
                     {notedEntries.length > 0 && (
                       <ul className="lib-notes">
-                        {notedEntries.map(({ record, deviceName: name, color }) => (
-                          <li key={record.id}>
-                            <span
-                              className="chart-swatch"
-                              aria-hidden="true"
-                              style={{ background: color }}
-                            />
-                            <span>
-                              <strong>{name}</strong> {record.notes}
-                            </span>
-                          </li>
-                        ))}
+                        {notedEntries.map(
+                          ({ record, deviceName: name, color }) => (
+                            <li key={record.id}>
+                              <span
+                                className="chart-swatch"
+                                aria-hidden="true"
+                                style={{ background: color }}
+                              />
+                              <span>
+                                <strong>{name}</strong> {record.notes}
+                              </span>
+                            </li>
+                          ),
+                        )}
                       </ul>
                     )}
                   </>
